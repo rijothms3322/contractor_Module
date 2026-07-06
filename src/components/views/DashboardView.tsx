@@ -1,0 +1,1121 @@
+"use client";
+
+import React, { useState, useEffect } from "react";
+import { useApp } from "../../context/AppContext";
+import { Reminder } from "../../lib/mockData";
+import { MedicineBox } from "./MedicineBox";
+import { PredictiveSearch } from "@/components/search/PredictiveSearch";
+import { SymptomAssessment } from "./SymptomAssessment";
+import { AVATAR_CATEGORIES, AVATAR_ITEMS } from "../../lib/avatarLibrary";
+
+const MEDICINE_SUGGESTIONS = [
+  { name: "Atorvastatin", dosage: "10mg", instructions: "After Food" },
+  { name: "Metformin", dosage: "500mg", instructions: "During Meal" },
+  { name: "Lisinopril", dosage: "20mg", instructions: "Before Sleep" },
+  { name: "Amlodipine", dosage: "5mg", instructions: "Morning" },
+  { name: "Levothyroxine", dosage: "50mcg", instructions: "Empty Stomach" },
+  { name: "Omeprazole", dosage: "20mg", instructions: "Empty Stomach" },
+  { name: "Losartan", dosage: "50mg", instructions: "Morning" },
+  { name: "Sertraline", dosage: "50mg", instructions: "With Water" },
+  { name: "Paracetamol", dosage: "650mg", instructions: "After Food" },
+  { name: "Ibuprofen", dosage: "400mg", instructions: "After Food" },
+  { name: "Amoxicillin", dosage: "500mg", instructions: "After Food" },
+  { name: "Vitamin D3", dosage: "60K IU", instructions: "Weekly" }
+];
+
+export const DashboardView: React.FC = () => {
+  const {
+    user,
+    reminders,
+    toggleReminderStatus,
+    adherenceStreak,
+    adherencePercentage,
+    setActiveTab,
+    uploadReportPlaceholder,
+    bookings,
+    addMedicine,
+    familyMembers,
+    addFamilyMember
+  } = useApp();
+
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [extractedInfo, setExtractedInfo] = useState<string | null>(null);
+  const [timeRemaining, setTimeRemaining] = useState("02h 45m");
+
+  const [isAddReminderOpen, setIsAddReminderOpen] = useState(false);
+  const [newMedName, setNewMedName] = useState("");
+  const [newDosage, setNewDosage] = useState("");
+  const [newInstructions, setNewInstructions] = useState("");
+  const [newSelectedTimings, setNewSelectedTimings] = useState<("morning" | "afternoon" | "evening" | "night")[]>(["morning"]);
+  const [newFamilyMemberId, setNewFamilyMemberId] = useState("");
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  const [isAddingNewPerson, setIsAddingNewPerson] = useState(false);
+  const [newPersonName, setNewPersonName] = useState("");
+  const [newPersonNickname, setNewPersonNickname] = useState("");
+  const [newPersonRelationship, setNewPersonRelationship] = useState("Mother");
+  const [newPersonDob, setNewPersonDob] = useState("");
+  const [newPersonGender, setNewPersonGender] = useState("Female");
+  const [newPersonBloodGroup, setNewPersonBloodGroup] = useState("O+");
+  const [newPersonPhone, setNewPersonPhone] = useState("");
+  const [newPersonNotes, setNewPersonNotes] = useState("");
+  const [newPersonColor, setNewPersonColor] = useState("blue");
+  const [selectedAvatarUrl, setSelectedAvatarUrl] = useState("https://api.dicebear.com/7.x/lorelei/svg?seed=adult-seed-2&radius=50");
+  const [activeAvatarCategory, setActiveAvatarCategory] = useState<"adults" | "children" | "babies" | "friends" | "pets">("adults");
+
+  const resetNewPersonForm = () => {
+    setIsAddingNewPerson(false);
+    setNewPersonName("");
+    setNewPersonNickname("");
+    setNewPersonRelationship("Mother");
+    setNewPersonDob("");
+    setNewPersonGender("Female");
+    setNewPersonBloodGroup("O+");
+    setNewPersonPhone("");
+    setNewPersonNotes("");
+    setNewPersonColor("blue");
+    setSelectedAvatarUrl("https://api.dicebear.com/7.x/lorelei/svg?seed=adult-seed-2&radius=50");
+    setActiveAvatarCategory("adults");
+  };
+
+  const handleAddNewPersonSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPersonName) return;
+
+    let age = 40;
+    if (newPersonDob) {
+      const birth = new Date(newPersonDob);
+      const diff = Date.now() - birth.getTime();
+      age = Math.abs(new Date(diff).getUTCFullYear() - 1970);
+    }
+
+    addFamilyMember({
+      name: newPersonName,
+      avatarUrl: selectedAvatarUrl,
+      relationship: newPersonRelationship,
+      age,
+      gender: newPersonGender,
+      medicalConditions: newPersonNotes ? [newPersonNotes] : [],
+      nickname: newPersonNickname || newPersonName,
+      dob: newPersonDob,
+      bloodGroup: newPersonBloodGroup,
+      phone: newPersonPhone,
+      medicalNotes: newPersonNotes,
+      allergies: [],
+      existingDiseases: newPersonNotes ? [newPersonNotes] : [],
+      color: newPersonColor
+    });
+
+    setIsAddingNewPerson(false);
+  };
+
+  useEffect(() => {
+    if (newPersonName) {
+      const added = familyMembers.find(f => f.name === newPersonName);
+      if (added) {
+        setNewFamilyMemberId(added.id);
+      }
+    }
+  }, [familyMembers]);
+
+  const resetAddReminderForm = () => {
+    setNewMedName("");
+    setNewDosage("");
+    setNewInstructions("");
+    setNewSelectedTimings(["morning"]);
+    setNewFamilyMemberId("");
+    setShowSuggestions(false);
+  };
+
+  const handleSelectSuggestion = (s: typeof MEDICINE_SUGGESTIONS[0]) => {
+    setNewMedName(s.name);
+    setNewDosage(s.dosage);
+    if (s.instructions) {
+      setNewInstructions(s.instructions);
+    }
+    setShowSuggestions(false);
+  };
+
+  const handleTimingToggle = (timing: "morning" | "afternoon" | "evening" | "night") => {
+    if (newSelectedTimings.includes(timing)) {
+      setNewSelectedTimings(prev => prev.filter(t => t !== timing));
+    } else {
+      setNewSelectedTimings(prev => [...prev, timing]);
+    }
+  };
+
+  const handleReminderSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMedName || !newDosage || newSelectedTimings.length === 0) return;
+
+    addMedicine(
+      {
+        name: newMedName,
+        dosage: newDosage,
+        instructions: newInstructions || "As directed",
+        frequency: "daily",
+        timings: newSelectedTimings,
+        startDate: new Date().toISOString().split("T")[0]
+      },
+      newFamilyMemberId || null
+    );
+
+    setIsAddReminderOpen(false);
+    resetAddReminderForm();
+  };
+
+  // Filter today's reminders
+  const todayReminders = reminders.filter((r) => {
+    const todayStr = new Date().toISOString().split("T")[0];
+    const schedStr = new Date(r.scheduledTime).toISOString().split("T")[0];
+    return todayStr === schedStr;
+  });
+
+  const pendingReminders = todayReminders.filter((r) => r.status === "pending");
+  const nextReminder = pendingReminders[0] || null;
+  const handleSearchSelect = (item: any) => {
+    if (item.type === "medicine") {
+      setActiveTab("health");
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("medimz_prefill_med", item.name);
+        sessionStorage.setItem("medimz_open_modal", "add_medicine");
+      }
+    } else if (item.type === "lab_test") {
+      setActiveTab("health");
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("medimz_prefill_test", item.raw.id);
+        sessionStorage.setItem("medimz_prefill_lab", item.raw.labId);
+        sessionStorage.setItem("medimz_open_modal", "book_test");
+      }
+    }
+  };
+
+  // Simple dynamic timer to make next pill feel alive
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const hours = Math.floor(Math.random() * 3);
+      const mins = Math.floor(Math.random() * 60);
+      setTimeRemaining(`${hours.toString().padStart(2, "0")}h ${mins.toString().padStart(2, "0")}m`);
+    }, 10000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  // Simulate AI Prescription Parsing
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    setUploading(true);
+    setExtractedInfo(null);
+
+    setTimeout(() => {
+      setUploading(false);
+      setExtractedInfo("Atorvastatin 10mg - Take 1 tablet daily after breakfast");
+    }, 2500);
+  };
+
+  const handleConfirmExtraction = () => {
+    // Inject the parsed report or med
+    uploadReportPlaceholder(
+      "AI Prescription Scan",
+      "Medimz AI successfully extracted: Atorvastatin 10mg. Added to active medicine reminder timeline."
+    );
+    setShowUploadModal(false);
+    setExtractedInfo(null);
+    setActiveTab("health");
+  };
+
+  const filteredSuggestions = newMedName.trim() === ""
+    ? MEDICINE_SUGGESTIONS.slice(0, 4)
+    : MEDICINE_SUGGESTIONS.filter((s) => s.name.toLowerCase().includes(newMedName.toLowerCase()));
+
+  // Find active out for collection booking
+  const activeBooking = bookings.find(
+    (b) => b.status === "out_for_collection" || b.status === "assigned"
+  );
+
+  const todayFormatted = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric"
+  });
+
+  const morningReminders = todayReminders.filter((r) => r.timingSlot === "morning");
+  const afternoonReminders = todayReminders.filter((r) => r.timingSlot === "afternoon");
+  const eveningReminders = todayReminders.filter((r) => r.timingSlot === "evening");
+  const nightReminders = todayReminders.filter((r) => r.timingSlot === "night");
+
+  const isMorningDone = morningReminders.length > 0 && morningReminders.every(r => r.status === "taken");
+  const isAfternoonDone = afternoonReminders.length > 0 && afternoonReminders.every(r => r.status === "taken");
+  const isEveningDone = eveningReminders.length > 0 && eveningReminders.every(r => r.status === "taken");
+  const isNightDone = nightReminders.length > 0 && nightReminders.every(r => r.status === "taken");
+
+  const RECIPIENT_THEMES: Record<string, { border: string, bg: string, text: string }> = {
+    blue: { border: "border-l-blue-500", bg: "bg-blue-50 text-blue-700", text: "text-blue-700" },
+    green: { border: "border-l-emerald-500", bg: "bg-emerald-50 text-emerald-700", text: "text-emerald-700" },
+    purple: { border: "border-l-purple-500", bg: "bg-purple-50 text-purple-700", text: "text-purple-700" },
+    orange: { border: "border-l-orange-500", bg: "bg-orange-50 text-orange-700", text: "text-orange-700" },
+    pink: { border: "border-l-pink-500", bg: "bg-pink-50 text-pink-700", text: "text-pink-700" },
+    teal: { border: "border-l-teal-500", bg: "bg-teal-50 text-teal-700", text: "text-teal-700" },
+    grey: { border: "border-l-slate-500", bg: "bg-slate-50 text-slate-700", text: "text-slate-700" }
+  };
+
+  const renderReminderCard = (r: Reminder) => {
+    const theme = RECIPIENT_THEMES[r.recipientColor || "orange"] || { border: "border-l-primary", bg: "bg-primary/10 text-primary", text: "text-primary" };
+    const borderClass = r.status === "taken" 
+      ? "border-l-tertiary bg-surface-container-low/40 opacity-80" 
+      : `${theme.border} bg-white`;
+      
+    const displayName = r.recipientNickname && r.recipientNickname !== "Myself"
+      ? `${r.recipientNickname}'s ${r.medicineName}`
+      : r.medicineName;
+
+    return (
+      <div key={r.id} className={`glass-card p-4 rounded-2xl shadow-sm flex items-center justify-between border-l-4 transition-all ${borderClass}`}>
+        <div className="flex items-center gap-4 min-w-0">
+          <div className="w-11 h-11 rounded-xl bg-surface-container-highest flex items-center justify-center flex-shrink-0 overflow-hidden border border-outline-variant/10">
+            {r.recipientAvatar && r.recipientNickname !== "Myself" ? (
+              <img src={r.recipientAvatar} alt={r.recipientNickname} className="w-full h-full object-cover" />
+            ) : (
+              <span className="material-symbols-outlined text-secondary text-2xl">
+                {r.timingSlot === "afternoon" ? "vaccines" : "pill"}
+              </span>
+            )}
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <h4 className="font-headline-md text-xs text-on-surface font-bold break-words leading-tight">
+                {displayName}
+              </h4>
+              {r.recipientNickname && r.recipientNickname !== "Myself" && (
+                <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${theme.bg}`}>
+                  {r.recipientNickname}
+                </span>
+              )}
+            </div>
+            <div className="flex gap-1.5 mt-0.5">
+              <span className="font-label-sm text-[10px] text-on-surface-variant">{r.dosage}</span>
+              <span className="text-on-surface-variant/30">•</span>
+              <span className="font-label-sm text-[10px] text-on-surface-variant">{r.instructions}</span>
+            </div>
+          </div>
+        </div>
+        <div className="flex-shrink-0 ml-3">
+          {r.status === "taken" ? (
+            <span className="material-symbols-outlined text-tertiary text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+          ) : (
+            <button
+              onClick={() => toggleReminderStatus(r.id, "taken")}
+              className="bg-primary text-on-primary font-label-md text-[10px] font-bold px-4 py-1.5 rounded-full hover:opacity-90 active:scale-95 transition-all shadow-sm"
+            >
+              Mark Taken
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-stack-lg pb-16">
+      
+      {/* Date Header & Profile Greeting */}
+      <div className="flex justify-between items-center glass-card bg-gradient-to-br from-secondary-container/20 to-white p-5 rounded-2xl border border-outline-variant/20 shadow-sm">
+        <div>
+          <h2 className="font-headline-lg-mobile text-xl text-primary font-extrabold tracking-tight">Today's Schedule</h2>
+          <p className="font-label-md text-xs text-on-surface-variant font-semibold mt-0.5">{todayFormatted}</p>
+        </div>
+        <div className="flex items-center">
+          <button
+            onClick={() => setIsAddReminderOpen(true)}
+            className="px-5 py-2.5 bg-primary text-on-primary font-label-md text-xs font-extrabold rounded-xl flex items-center gap-1.5 hover:opacity-90 active:scale-95 transition-all shadow-md"
+          >
+            <span className="material-symbols-outlined text-sm font-bold">add</span>
+            <span>Add Reminder</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Dynamic Schedule Timeline */}
+      <div className="relative pl-6 space-y-8 mt-2">
+        {/* Continuous timeline connector line */}
+        <div className="absolute left-2.5 top-2 bottom-4 w-0.5 bg-secondary/15 rounded-full" />
+
+        {/* Morning Section */}
+        <section className="relative space-y-3">
+          <div className="flex items-center gap-2.5">
+            <div className="absolute -left-[27px] w-4 h-4 rounded-full bg-white border-4 border-secondary flex items-center justify-center z-10 shadow-sm">
+              <span className="w-1.5 h-1.5 rounded-full bg-secondary" />
+            </div>
+            <h3 className="font-headline-md text-sm text-secondary font-bold">Morning</h3>
+            {morningReminders.length > 0 && (
+              <span className={`font-label-sm text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                isMorningDone ? "bg-tertiary/10 text-tertiary" : "bg-primary/10 text-primary"
+              }`}>
+                {isMorningDone ? "Completed" : "Next Up"}
+              </span>
+            )}
+          </div>
+          <div className="space-y-3">
+            {morningReminders.length === 0 ? (
+              <div className="glass-card p-4 rounded-2xl shadow-sm opacity-60 flex gap-4 items-center">
+                <div className="w-10 h-10 rounded-full bg-surface-container-low flex items-center justify-center text-on-surface-variant/40 flex-shrink-0">
+                  <span className="material-symbols-outlined text-xl">medication</span>
+                </div>
+                <div>
+                  <h4 className="font-headline-md text-xs text-on-surface-variant font-semibold">No Doses Scheduled</h4>
+                  <p className="font-body-md text-[10px] text-on-surface-variant">No medicines scheduled for this morning.</p>
+                </div>
+              </div>
+            ) : (
+              morningReminders.map((r) => renderReminderCard(r))
+            )}
+          </div>
+        </section>
+
+        {/* Afternoon Section */}
+        <section className="relative space-y-3">
+          <div className="flex items-center gap-2.5">
+            <div className="absolute -left-[27px] w-4 h-4 rounded-full bg-white border-4 border-secondary flex items-center justify-center z-10 shadow-sm">
+              <span className="w-1.5 h-1.5 rounded-full bg-secondary" />
+            </div>
+            <h3 className="font-headline-md text-sm text-secondary font-bold">Afternoon</h3>
+            {afternoonReminders.length > 0 && (
+              <span className={`font-label-sm text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                isAfternoonDone ? "bg-tertiary/10 text-tertiary" : "bg-primary/10 text-primary"
+              }`}>
+                {isAfternoonDone ? "Completed" : "Scheduled"}
+              </span>
+            )}
+          </div>
+          <div className="space-y-3">
+            {afternoonReminders.length === 0 ? (
+              <div className="glass-card p-4 rounded-2xl shadow-sm opacity-60 flex gap-4 items-center">
+                <div className="w-10 h-10 rounded-full bg-surface-container-low flex items-center justify-center text-on-surface-variant/40 flex-shrink-0">
+                  <span className="material-symbols-outlined text-xl">medication</span>
+                </div>
+                <div>
+                  <h4 className="font-headline-md text-xs text-on-surface-variant font-semibold">No Doses Scheduled</h4>
+                  <p className="font-body-md text-[10px] text-on-surface-variant">No medicines scheduled for this afternoon.</p>
+                </div>
+              </div>
+            ) : (
+              afternoonReminders.map((r) => renderReminderCard(r))
+            )}
+          </div>
+        </section>
+
+        {/* Evening Section */}
+        <section className="relative space-y-3">
+          <div className="flex items-center gap-2.5">
+            <div className="absolute -left-[27px] w-4 h-4 rounded-full bg-white border-4 border-secondary flex items-center justify-center z-10 shadow-sm">
+              <span className="w-1.5 h-1.5 rounded-full bg-secondary" />
+            </div>
+            <h3 className="font-headline-md text-sm text-secondary font-bold">Evening</h3>
+            {eveningReminders.length > 0 && (
+              <span className={`font-label-sm text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                isEveningDone ? "bg-tertiary/10 text-tertiary" : "bg-primary/10 text-primary"
+              }`}>
+                {isEveningDone ? "Completed" : "Scheduled"}
+              </span>
+            )}
+          </div>
+          <div className="space-y-3">
+            {eveningReminders.length === 0 ? (
+              <div className="glass-card p-4 rounded-2xl shadow-sm opacity-60 flex gap-4 items-center">
+                <div className="w-10 h-10 rounded-full bg-surface-container-low flex items-center justify-center text-on-surface-variant/40 flex-shrink-0">
+                  <span className="material-symbols-outlined text-xl">medication</span>
+                </div>
+                <div>
+                  <h4 className="font-headline-md text-xs text-on-surface-variant font-semibold">No Doses Scheduled</h4>
+                  <p className="font-body-md text-[10px] text-on-surface-variant">No medicines scheduled for this evening.</p>
+                </div>
+              </div>
+            ) : (
+              eveningReminders.map((r) => renderReminderCard(r))
+            )}
+          </div>
+        </section>
+
+        {/* Night Section */}
+        <section className="relative space-y-3">
+          <div className="flex items-center gap-2.5">
+            <div className="absolute -left-[27px] w-4 h-4 rounded-full bg-white border-4 border-secondary flex items-center justify-center z-10 shadow-sm">
+              <span className="w-1.5 h-1.5 rounded-full bg-secondary" />
+            </div>
+            <h3 className="font-headline-md text-sm text-secondary font-bold">Night</h3>
+            {nightReminders.length > 0 && (
+              <span className={`font-label-sm text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                isNightDone ? "bg-tertiary/10 text-tertiary" : "bg-primary/10 text-primary"
+              }`}>
+                {isNightDone ? "Completed" : "Scheduled"}
+              </span>
+            )}
+          </div>
+          <div className="space-y-3">
+            {nightReminders.length === 0 ? (
+              <div className="glass-card p-4 rounded-2xl shadow-sm opacity-60 flex gap-4 items-center">
+                <div className="w-10 h-10 rounded-full bg-surface-container-low flex items-center justify-center text-on-surface-variant/40 flex-shrink-0">
+                  <span className="material-symbols-outlined text-xl">medication</span>
+                </div>
+                <div>
+                  <h4 className="font-headline-md text-xs text-on-surface-variant font-semibold">No Doses Scheduled</h4>
+                  <p className="font-body-md text-[10px] text-on-surface-variant">No medicines scheduled for tonight.</p>
+                </div>
+              </div>
+            ) : (
+              nightReminders.map((r) => renderReminderCard(r))
+            )}
+          </div>
+        </section>
+      </div>
+
+      {/* Adherence Bento Grid Section */}
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-stack-md">
+        <div className="glass-card p-6 rounded-2xl shadow-sm bg-gradient-to-br from-secondary-container/20 to-white border border-outline-variant/20 flex flex-col justify-between">
+          <div>
+            <h4 className="font-label-md text-xs text-secondary font-bold mb-3">Weekly Adherence Progress</h4>
+            <div className="flex items-end gap-2.5 h-20 mb-3 pt-1">
+              <div className="flex-1 bg-tertiary/20 rounded-t-lg h-full"></div>
+              <div className="flex-1 bg-tertiary/40 rounded-t-lg h-[75%]"></div>
+              <div className="flex-1 bg-tertiary/60 rounded-t-lg h-[83%]"></div>
+              <div className="flex-1 bg-tertiary rounded-t-lg h-full"></div>
+              <div className="flex-1 bg-tertiary/30 rounded-t-lg h-[66%]"></div>
+              <div className="flex-1 bg-primary/40 rounded-t-lg h-[50%]"></div>
+              <div className="flex-1 bg-surface-container-highest rounded-t-lg h-[33%]"></div>
+            </div>
+          </div>
+          <p className="font-label-sm text-[11px] text-on-surface-variant leading-relaxed">
+            You've taken <span className="text-tertiary font-bold">{adherencePercentage}%</span> of your doses this week. Keep it up!
+          </p>
+        </div>
+
+        <div className="glass-card p-6 rounded-2xl shadow-sm border border-outline-variant/20 flex flex-col justify-between h-36">
+          <div>
+            <h4 className="font-label-md text-xs text-secondary font-bold mb-1">Pharmacy Refill Alert</h4>
+            <p className="font-body-md text-xs text-on-surface leading-relaxed">3 Prescriptions need refill in 5 days.</p>
+          </div>
+          <button
+            onClick={() => setActiveTab("health")}
+            className="mt-3 text-primary font-label-md text-xs font-bold flex items-center gap-1.5 hover:underline text-left"
+          >
+            <span>Order Refill</span>
+            <span className="material-symbols-outlined text-sm">arrow_forward</span>
+          </button>
+        </div>
+      </section>
+
+      {/* Symptom Checker Module */}
+      <section className="animate-in fade-in duration-300">
+        <SymptomAssessment />
+      </section>
+
+      {/* AI Compliance banner */}
+      <section className="animate-in fade-in duration-300">
+        <div className="glass-card rounded-2xl p-5 shadow-sm border-l-4 border-primary flex flex-col md:flex-row justify-between items-center gap-4">
+          <div className="flex gap-4 items-start">
+            <div className="w-10 h-10 rounded-xl bg-primary-container text-white flex items-center justify-center flex-shrink-0 shadow-sm">
+              <span className="material-symbols-outlined text-xl">psychology</span>
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="font-headline-md text-xs text-secondary font-bold">Medimz AI Pulse</h2>
+                <span className="bg-primary/10 text-primary text-[8px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                  Compliance Check
+                </span>
+              </div>
+              <p className="font-body-md text-xs text-on-surface-variant mt-1 leading-relaxed">
+                "{user?.fullName ? user.fullName.split(" ")[0] : "Sarah"}, your cholesterol consistency is stabilized at <span className="text-tertiary font-bold">12%</span> improvement due to your {adherenceStreak}-day medication compliance streak."
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Quick Diagnostics Actions & Helpers */}
+      <section className="space-y-2">
+        <h3 className="font-headline-md text-xs text-secondary font-bold">Quick Diagnostics & Helpers</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-stack-sm">
+          
+          <button
+            onClick={() => setActiveTab("health")}
+            className="p-4 glass-card rounded-2xl text-left border border-outline-variant/10 hover:border-primary/40 hover:scale-[1.01] active:scale-98 transition-all flex flex-col justify-between h-28"
+          >
+            <div className="w-8 h-8 rounded-xl bg-primary-container/10 text-primary flex items-center justify-center">
+              <span className="material-symbols-outlined text-lg">add_moderator</span>
+            </div>
+            <span className="font-label-md text-xs text-secondary font-bold leading-tight">Add Medicine</span>
+          </button>
+
+          <button
+            onClick={() => setShowUploadModal(true)}
+            className="p-4 glass-card rounded-2xl text-left border border-outline-variant/10 hover:border-primary/40 hover:scale-[1.01] active:scale-98 transition-all flex flex-col justify-between h-28"
+          >
+            <div className="w-8 h-8 rounded-xl bg-secondary-container/15 text-secondary flex items-center justify-center">
+              <span className="material-symbols-outlined text-lg">receipt_long</span>
+            </div>
+            <span className="font-label-md text-xs text-secondary font-bold leading-tight">Upload Rx</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("health")}
+            className="p-4 glass-card rounded-2xl text-left border border-outline-variant/10 hover:border-primary/40 hover:scale-[1.01] active:scale-98 transition-all flex flex-col justify-between h-28"
+          >
+            <div className="w-8 h-8 rounded-xl bg-tertiary-container/10 text-tertiary flex items-center justify-center">
+              <span className="material-symbols-outlined text-lg">biotech</span>
+            </div>
+            <span className="font-label-md text-xs text-secondary font-bold leading-tight">Book Lab</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("insights")}
+            className="p-4 glass-card rounded-2xl text-left border border-outline-variant/10 hover:border-primary/40 hover:scale-[1.01] active:scale-98 transition-all flex flex-col justify-between h-28"
+          >
+            <div className="w-8 h-8 rounded-xl bg-surface-container-highest text-secondary flex items-center justify-center">
+              <span className="material-symbols-outlined text-lg">analytics</span>
+            </div>
+            <span className="font-label-md text-xs text-secondary font-bold leading-tight">View Reports</span>
+          </button>
+
+        </div>
+      </section>
+
+      {/* Live Phlebotomist Tracking Card */}
+      {activeBooking && (
+        <section className="animate-in fade-in duration-300">
+          <div className="bg-gradient-to-r from-secondary-container/30 to-surface-container border border-secondary-container/50 rounded-2xl p-4 shadow-md flex justify-between items-center gap-4">
+            <div className="flex gap-3 items-center">
+              <div className="w-10 h-10 bg-secondary text-white rounded-full flex items-center justify-center flex-shrink-0 animate-pulse">
+                <span className="material-symbols-outlined text-xl">local_shipping</span>
+              </div>
+              <div>
+                <h4 className="font-label-md text-xs text-secondary font-bold">Home Lab Collection active!</h4>
+                <p className="font-body-md text-[10px] text-on-surface-variant mt-0.5 leading-normal">
+                  {activeBooking.phlebotomistName || "Phlebotomist"} is out for collection.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setActiveTab("health")}
+              className="px-3.5 py-1.5 bg-secondary text-white font-bold rounded-xl text-[10px] hover:bg-opacity-90 active:scale-95 transition-all flex items-center gap-0.5 shadow-sm"
+            >
+              <span>Track Live</span>
+              <span className="material-symbols-outlined text-xs">chevron_right</span>
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* Latest Vitals Card */}
+      <section className="glass-card rounded-2xl p-5 shadow-sm border border-outline-variant/20 space-y-3 animate-in fade-in duration-300">
+        <div className="flex justify-between items-center pb-1.5 border-b border-outline-variant/15">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-primary text-lg">bloodtype</span>
+            <h3 className="font-headline-md text-xs text-secondary font-bold">Latest Lipid Profile Checkup</h3>
+          </div>
+          <span className="font-label-sm text-[10px] text-outline font-bold">April 2026</span>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="p-2.5 bg-surface-container-low rounded-xl flex flex-col justify-between min-h-[90px] border border-outline-variant/10">
+            <span className="text-[8px] uppercase font-bold text-outline tracking-wider leading-tight h-5 flex items-center justify-center">
+              Total Cholesterol
+            </span>
+            <div className="my-0.5">
+              <span className="text-base font-bold text-tertiary block leading-none">198</span>
+              <span className="text-[8px] text-on-surface-variant block mt-0.5">mg/dL</span>
+            </div>
+            <span className="text-[8px] text-outline/80 font-bold bg-tertiary/10 text-tertiary py-0.5 rounded-md">Optimal</span>
+          </div>
+
+          <div className="p-2.5 bg-surface-container-low rounded-xl flex flex-col justify-between min-h-[90px] border border-outline-variant/10">
+            <span className="text-[8px] uppercase font-bold text-outline tracking-wider leading-tight h-5 flex items-center justify-center">
+              HDL (Good)
+            </span>
+            <div className="my-0.5">
+              <span className="text-base font-bold text-secondary block leading-none">48</span>
+              <span className="text-[8px] text-on-surface-variant block mt-0.5">mg/dL</span>
+            </div>
+            <span className="text-[8px] text-outline/80 font-bold bg-secondary/10 text-secondary py-0.5 rounded-md">Stable</span>
+          </div>
+
+          <div className="p-2.5 bg-surface-container-low rounded-xl flex flex-col justify-between min-h-[90px] border border-outline-variant/10">
+            <span className="text-[8px] uppercase font-bold text-outline tracking-wider leading-tight h-5 flex items-center justify-center">
+              LDL (Bad)
+            </span>
+            <div className="my-0.5">
+              <span className="text-base font-bold text-primary block leading-none">120</span>
+              <span className="text-[8px] text-on-surface-variant block mt-0.5">mg/dL</span>
+            </div>
+            <span className="text-[8px] text-outline/80 font-bold bg-primary/10 text-primary py-0.5 rounded-md">Borderline</span>
+          </div>
+        </div>
+      </section>
+
+      <PredictiveSearch onSelectItem={handleSearchSelect} />
+      <MedicineBox onOrder={() => {
+        setActiveTab("health");
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem("medimz_open_modal", "add_medicine");
+        }
+      }} />
+
+      {/* Upload prescription modal */}
+      {showUploadModal && (
+        <div className="fixed inset-0 bg-inverse-surface/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-[400px] bg-white rounded-3xl p-6 shadow-2xl border border-outline-variant/30 flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-headline-md text-sm text-secondary font-bold flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-xl">receipt_long</span>
+                <span>AI Prescription Scan</span>
+              </h3>
+              <button
+                onClick={() => {
+                  setShowUploadModal(false);
+                  setExtractedInfo(null);
+                }}
+                className="w-7 h-7 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center focus:outline-none"
+              >
+                <span className="material-symbols-outlined text-xs">close</span>
+              </button>
+            </div>
+
+            <div className="flex-grow space-y-4">
+              <p className="font-body-md text-xs text-on-surface-variant">
+                Upload your doctor's handwritten prescription or a medical report. Medimz AI will parse the medications,
+                frequency, dosage, and automatically configure reminders.
+              </p>
+
+              {!uploading && !extractedInfo && (
+                <label className="border-2 border-dashed border-outline-variant hover:border-primary rounded-2xl p-6 flex flex-col items-center justify-center gap-2 cursor-pointer bg-surface-container-low/40 transition-colors">
+                  <span className="material-symbols-outlined text-3xl text-secondary">cloud_upload</span>
+                  <span className="font-label-md text-xs text-on-surface font-bold">Click or drag prescription PDF/Image</span>
+                  <span className="text-[8px] text-outline uppercase font-bold tracking-tight">Max 10MB (PDF, PNG, JPG)</span>
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                </label>
+              )}
+
+              {uploading && (
+                <div className="py-6 flex flex-col items-center justify-center gap-3">
+                  <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+                  <div className="text-center">
+                    <span className="font-label-md text-xs text-secondary font-bold block animate-pulse">
+                      Medimz AI is parsing prescription...
+                    </span>
+                    <span className="text-[9px] text-outline mt-1 block">Performing OCR Character Recognition</span>
+                  </div>
+                </div>
+              )}
+
+              {extractedInfo && (
+                <div className="p-3 bg-tertiary-container/10 border border-tertiary/20 rounded-xl space-y-3">
+                  <span className="font-label-sm text-[9px] text-tertiary font-bold uppercase tracking-wider block">
+                    AI Extraction Successful!
+                  </span>
+                  <div className="p-2.5 bg-white rounded-lg border border-outline-variant/20 flex gap-3">
+                    <span className="material-symbols-outlined text-primary text-xl">pill</span>
+                    <div>
+                      <h4 className="font-label-md text-xs text-on-surface font-bold">Atorvastatin</h4>
+                      <p className="font-body-md text-[10px] text-on-surface-variant">10mg • After breakfast • Daily</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleConfirmExtraction}
+                    className="w-full py-2.5 bg-tertiary text-white font-bold rounded-xl text-xs hover:opacity-90 active:scale-95 transition-all shadow-md"
+                  >
+                    Confirm & Add to Schedule
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIGURE PRESCRIPTION / ADD REMINDER MODAL */}
+      {isAddReminderOpen && (
+        <div className="fixed inset-0 bg-inverse-surface/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-[420px] bg-white rounded-3xl p-6 shadow-2xl border border-outline-variant/30 flex flex-col max-h-[85vh] overflow-y-auto animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-headline-md text-sm text-secondary font-bold flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-xl">medication</span>
+                <span>Configure Prescription</span>
+              </h3>
+              <button
+                onClick={() => {
+                  setIsAddReminderOpen(false);
+                  resetAddReminderForm();
+                }}
+                className="w-7 h-7 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center focus:outline-none"
+              >
+                <span className="material-symbols-outlined text-xs">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleReminderSubmit} className="space-y-4 text-left">
+              {/* Medicine Name */}
+              <div className="space-y-1 relative">
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Medicine Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Metformin, Atorvastatin"
+                  value={newMedName}
+                  onChange={(e) => {
+                    setNewMedName(e.target.value);
+                    setShowSuggestions(true);
+                  }}
+                  onFocus={() => setShowSuggestions(true)}
+                  className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                />
+
+                {/* Suggestions Dropdown */}
+                {showSuggestions && filteredSuggestions.length > 0 && (
+                  <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-outline-variant/20 rounded-xl shadow-lg z-50 max-h-48 overflow-y-auto divide-y divide-outline-variant/10">
+                    {filteredSuggestions.map((s) => (
+                      <button
+                        key={s.name}
+                        type="button"
+                        onClick={() => handleSelectSuggestion(s)}
+                        className="w-full text-left px-3.5 py-2.5 hover:bg-primary-container/10 transition-colors flex justify-between items-center text-xs focus:outline-none"
+                      >
+                        <div>
+                          <span className="font-bold text-secondary">{s.name}</span>
+                          <span className="text-[10px] text-on-surface-variant block mt-0.5">{s.instructions}</span>
+                        </div>
+                        <span className="text-[10px] text-primary bg-primary/10 px-2 py-0.5 rounded-full font-bold">{s.dosage}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Dosage & Instructions */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Dosage</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. 500mg, 1 tablet"
+                    value={newDosage}
+                    onChange={(e) => setNewDosage(e.target.value)}
+                    className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Instructions</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. After Food, Empty Stomach"
+                    value={newInstructions}
+                    onChange={(e) => setNewInstructions(e.target.value)}
+                    className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              {/* Timing Slots */}
+              <div className="space-y-1.5">
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Schedule Slots</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {["morning", "afternoon", "evening", "night"].map((slot) => {
+                    const isSelected = newSelectedTimings.includes(slot as any);
+                    return (
+                      <button
+                        key={slot}
+                        type="button"
+                        onClick={() => handleTimingToggle(slot as any)}
+                        className={`py-2 px-3 rounded-xl border text-center transition-all flex items-center justify-center gap-1.5 font-label-md text-xs font-bold ${
+                          isSelected
+                            ? "bg-primary-container/20 border-primary text-primary"
+                            : "bg-white border-outline-variant/30 text-on-surface-variant hover:border-primary/30"
+                        }`}
+                      >
+                        <span className="material-symbols-outlined text-sm">
+                          {slot === "morning" && "light_mode"}
+                          {slot === "afternoon" && "sunny"}
+                          {slot === "evening" && "wb_twilight"}
+                          {slot === "night" && "bedtime"}
+                        </span>
+                        <span className="capitalize">{slot}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Family Member Select */}
+              <div className="space-y-1.5">
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Who is this for?</label>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewFamilyMemberId("");
+                      setIsAddingNewPerson(false);
+                    }}
+                    className={`px-3 py-1.5 rounded-full border text-xs font-bold transition-all ${
+                      newFamilyMemberId === "" && !isAddingNewPerson
+                        ? "bg-primary text-on-primary border-primary"
+                        : "bg-surface-container/30 border-outline-variant/30 text-on-surface-variant hover:border-primary/30"
+                    }`}
+                  >
+                    Myself
+                  </button>
+
+                  {familyMembers.map((fm) => (
+                    <button
+                      key={fm.id}
+                      type="button"
+                      onClick={() => {
+                        setNewFamilyMemberId(fm.id);
+                        setIsAddingNewPerson(false);
+                      }}
+                      className={`px-3 py-1.5 rounded-full border text-xs font-bold transition-all ${
+                        newFamilyMemberId === fm.id && !isAddingNewPerson
+                          ? "bg-secondary text-white border-secondary"
+                          : "bg-surface-container/30 border-outline-variant/30 text-on-surface-variant hover:border-primary/30"
+                      }`}
+                    >
+                      {fm.nickname || fm.name} ({fm.relationship})
+                    </button>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddingNewPerson(true);
+                      setNewFamilyMemberId("add_new_person");
+                    }}
+                    className={`px-3 py-1.5 rounded-full border border-dashed text-xs font-bold transition-all flex items-center gap-1 ${
+                      isAddingNewPerson
+                        ? "bg-tertiary text-white border-tertiary"
+                        : "bg-white border-outline-variant/50 text-tertiary hover:border-tertiary/60"
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-sm font-bold">add</span>
+                    <span>Add New Person</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Inline "Add New Person" Form wrapper */}
+              {isAddingNewPerson && (
+                <div className="p-4 bg-surface-container-low border border-outline-variant/30 rounded-2xl space-y-4 animate-in slide-in-from-top-4 duration-300">
+                  <h4 className="font-label-md text-xs text-secondary font-bold border-b border-outline-variant/20 pb-1.5 flex justify-between items-center">
+                    <span>New Care Recipient Profile</span>
+                    <button
+                      type="button"
+                      onClick={resetNewPersonForm}
+                      className="text-[10px] text-primary hover:underline font-bold"
+                    >
+                      Cancel
+                    </button>
+                  </h4>
+
+                  {/* Name Fields */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="block text-[9px] font-bold text-outline uppercase tracking-wider">Full Name</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Ramesh Kumar"
+                        value={newPersonName}
+                        onChange={(e) => setNewPersonName(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-white border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[9px] font-bold text-outline uppercase tracking-wider">Nickname</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Dad, Mom, Bunty"
+                        value={newPersonNickname}
+                        onChange={(e) => setNewPersonNickname(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-white border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Relationship & DOB */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="block text-[9px] font-bold text-outline uppercase tracking-wider">Relationship</label>
+                      <select
+                        value={newPersonRelationship}
+                        onChange={(e) => setNewPersonRelationship(e.target.value)}
+                        className="w-full px-2 py-1.5 bg-white border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                      >
+                        {["Mother", "Father", "Son", "Daughter", "Brother", "Sister", "Grandmother", "Grandfather", "Husband", "Wife", "Partner", "Friend", "Relative", "Neighbor", "Caregiver", "Patient", "Other"].map((r) => (
+                          <option key={r} value={r}>{r}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[9px] font-bold text-outline uppercase tracking-wider">Date of Birth</label>
+                      <input
+                        type="date"
+                        value={newPersonDob}
+                        onChange={(e) => setNewPersonDob(e.target.value)}
+                        className="w-full px-2 py-1 bg-white border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Gender & Blood Group */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="block text-[9px] font-bold text-outline uppercase tracking-wider">Gender</label>
+                      <select
+                        value={newPersonGender}
+                        onChange={(e) => setNewPersonGender(e.target.value)}
+                        className="w-full px-2 py-1.5 bg-white border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                      >
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[9px] font-bold text-outline uppercase tracking-wider">Blood Group</label>
+                      <select
+                        value={newPersonBloodGroup}
+                        onChange={(e) => setNewPersonBloodGroup(e.target.value)}
+                        className="w-full px-2 py-1.5 bg-white border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                      >
+                        {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map((bg) => (
+                          <option key={bg} value={bg}>{bg}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Phone & Notes */}
+                  <div className="grid grid-cols-1 gap-3">
+                    <div className="space-y-1">
+                      <label className="block text-[9px] font-bold text-outline uppercase tracking-wider">Phone Number (Optional)</label>
+                      <input
+                        type="tel"
+                        placeholder="e.g. +91 98765 43210"
+                        value={newPersonPhone}
+                        onChange={(e) => setNewPersonPhone(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-white border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[9px] font-bold text-outline uppercase tracking-wider">Medical Notes / Allergies</label>
+                      <textarea
+                        placeholder="e.g. Penicillin allergy, diabetic, high blood pressure"
+                        value={newPersonNotes}
+                        onChange={(e) => setNewPersonNotes(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-white border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary h-14 resize-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Color coding theme selector */}
+                  <div className="space-y-1.5">
+                    <label className="block text-[9px] font-bold text-outline uppercase tracking-wider">Personalized Identification Color</label>
+                    <div className="flex gap-2">
+                      {["blue", "green", "purple", "orange", "pink", "teal", "grey"].map((c) => {
+                        const isSelected = newPersonColor === c;
+                        const bgColors: Record<string, string> = {
+                          blue: "bg-blue-500",
+                          green: "bg-emerald-500",
+                          purple: "bg-purple-500",
+                          orange: "bg-orange-500",
+                          pink: "bg-pink-500",
+                          teal: "bg-teal-500",
+                          grey: "bg-slate-500"
+                        };
+                        return (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => setNewPersonColor(c)}
+                            className={`w-6 h-6 rounded-full ${bgColors[c] || "bg-blue-500"} transition-all flex items-center justify-center`}
+                            title={c}
+                          >
+                            {isSelected && (
+                              <span className="material-symbols-outlined text-white text-xs font-bold">done</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Avatar Library Grid Selector */}
+                  <div className="space-y-2">
+                    <label className="block text-[9px] font-bold text-outline uppercase tracking-wider">Select Avatar Representative</label>
+                    
+                    {/* Category tabs */}
+                    <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+                      {AVATAR_CATEGORIES.map((cat) => (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => setActiveAvatarCategory(cat.id as any)}
+                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors flex-shrink-0 ${
+                            activeAvatarCategory === cat.id
+                              ? "bg-secondary/15 text-secondary"
+                              : "bg-white text-on-surface-variant border border-outline-variant/20 hover:bg-surface-container"
+                          }`}
+                        >
+                          {cat.name}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Avatar Grid */}
+                    <div className="grid grid-cols-5 gap-2 max-h-36 overflow-y-auto p-1 bg-white border border-outline-variant/10 rounded-xl">
+                      {AVATAR_ITEMS.filter((av) => av.category === activeAvatarCategory).map((av) => {
+                        const isSelected = selectedAvatarUrl === av.url;
+                        return (
+                          <button
+                            key={av.id}
+                            type="button"
+                            onClick={() => setSelectedAvatarUrl(av.url)}
+                            className={`w-11 h-11 rounded-full p-0.5 border-2 transition-all flex items-center justify-center overflow-hidden flex-shrink-0 ${
+                              isSelected ? "border-primary scale-110 shadow-sm" : "border-transparent hover:scale-105"
+                            }`}
+                            title={av.label}
+                          >
+                            <img src={av.url} alt={av.label} className="w-full h-full object-cover" />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleAddNewPersonSubmit}
+                    disabled={!newPersonName}
+                    className="w-full py-2.5 bg-tertiary text-white font-bold rounded-xl text-xs hover:opacity-90 active:scale-95 transition-all shadow-sm disabled:opacity-50"
+                  >
+                    Add & Select Care Recipient
+                  </button>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="w-full py-3 bg-primary text-on-primary font-bold rounded-xl text-xs hover:opacity-90 active:scale-95 transition-all shadow-md mt-2"
+              >
+                Save Prescription Reminder
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+};

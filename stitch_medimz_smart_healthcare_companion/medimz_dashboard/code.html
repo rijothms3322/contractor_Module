@@ -1,0 +1,298 @@
+<!DOCTYPE html><html class="light" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Medimz | Home Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Hanken+Grotesk:wght@500;600&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "background": "#f9f9ff",
+                    "surface-container-lowest": "#ffffff",
+                    "inverse-on-surface": "#ecf1ff",
+                    "on-tertiary-fixed": "#002109",
+                    "outline-variant": "#ddc0b7",
+                    "error": "#ba1a1a",
+                    "surface-container-highest": "#d8e3fb",
+                    "tertiary-fixed-dim": "#4ae176",
+                    "tertiary-fixed": "#6bff8f",
+                    "primary": "#a04117",
+                    "error-container": "#ffdad6",
+                    "on-tertiary": "#ffffff",
+                    "secondary-container": "#8aceff",
+                    "surface": "#f9f9ff",
+                    "secondary": "#096490",
+                    "on-secondary-fixed": "#001e2f",
+                    "on-error-container": "#93000a",
+                    "surface-container-high": "#dee8ff",
+                    "on-secondary-fixed-variant": "#004b6f",
+                    "on-primary-fixed-variant": "#802a00",
+                    "surface-bright": "#f9f9ff",
+                    "secondary-fixed-dim": "#8aceff",
+                    "on-primary-fixed": "#380d00",
+                    "on-surface-variant": "#56423b",
+                    "surface-variant": "#d8e3fb",
+                    "on-primary-container": "#5f1d00",
+                    "surface-container": "#e7eeff",
+                    "inverse-surface": "#263143",
+                    "inverse-primary": "#ffb59a",
+                    "surface-tint": "#a04117",
+                    "tertiary-container": "#00b351",
+                    "tertiary": "#006e2f",
+                    "on-background": "#111c2d",
+                    "on-tertiary-fixed-variant": "#005321",
+                    "primary-fixed": "#ffdbce",
+                    "on-secondary-container": "#005880",
+                    "on-secondary": "#ffffff",
+                    "primary-container": "#ee7b4d",
+                    "on-primary": "#ffffff",
+                    "on-tertiary-container": "#003c16",
+                    "outline": "#8a726a",
+                    "primary-fixed-dim": "#ffb59a",
+                    "surface-container-low": "#f0f3ff",
+                    "surface-dim": "#cfdaf2",
+                    "on-surface": "#111c2d",
+                    "secondary-fixed": "#c9e6ff",
+                    "on-error": "#ffffff"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "gutter": "24px",
+                    "margin-desktop": "40px",
+                    "container-max": "1200px",
+                    "stack-sm": "8px",
+                    "stack-md": "16px",
+                    "margin-mobile": "20px",
+                    "unit": "8px",
+                    "stack-lg": "32px"
+            },
+            "fontFamily": {
+                    "body-lg": ["Manrope"],
+                    "label-md": ["Hanken Grotesk"],
+                    "display-lg": ["Manrope"],
+                    "body-md": ["Manrope"],
+                    "label-sm": ["Hanken Grotesk"],
+                    "headline-md": ["Manrope"],
+                    "headline-lg-mobile": ["Manrope"],
+                    "headline-lg": ["Manrope"]
+            },
+            "fontSize": {
+                    "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                    "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.02em", "fontWeight": "600"}],
+                    "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "800"}],
+                    "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "label-sm": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "headline-lg-mobile": ["28px", {"lineHeight": "36px", "fontWeight": "700"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "700"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body { font-family: 'Manrope', sans-serif; }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+        }
+        .progress-ring-circle {
+            transition: stroke-dashoffset 0.35s;
+            transform: rotate(-90deg);
+            transform-origin: 50% 50%;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-background min-h-screen pb-32">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 flex justify-between items-center px-gutter py-4 max-w-container-max mx-auto bg-surface/80 backdrop-blur-xl shadow-sm">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full overflow-hidden border-2 border-primary/20">
+<img alt="Sarah" class="w-full h-full object-cover" data-alt="A professional and friendly close-up portrait of a young woman with a warm smile, set against a soft-focus clinical but welcoming modern healthcare office. The lighting is bright and airy, reflecting a high-end wellness brand aesthetic with soft blues and crisp whites. The image quality is ultra-sharp, evoking trust and personalized care." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBCs_YGgPk7VOsahsNOdDGaNvTVuV8ZJljMuiD4GSAvQV802koXWwDy1aqg24M8w4jkBOlONbu5i26SUif3gi5LPSJdJTIsezyMH8110SLHE0ozw3THzKTDYhaQlyt_VIlwWfdWx77zbAiEOLAL3ECuPW_nczo2q_K6P86C1sjYXaGLJLM7Yat-hklQsSRx-W2cQpIVZeYlZa67VQOAjruHo1PoamPN_KE5vR8VC_KszfJWHrEx25ab-Kht_hQ65F6W-XhUYitZ3_4">
+</div>
+<img src="{{DATA:IMAGE:IMAGE_8}}" alt="Medimz Logo" class="h-8 w-auto object-contain">
+</div>
+<div class="flex items-center gap-4">
+<button class="material-symbols-outlined text-on-surface-variant hover:opacity-80 transition-opacity p-2 bg-surface-container rounded-full" data-icon="group">group</button>
+</div>
+</header>
+<main class="mt-24 px-gutter max-w-container-max mx-auto space-y-stack-lg">
+<!-- Hero Section -->
+<section class="relative overflow-hidden rounded-3xl p-8 bg-gradient-to-br from-secondary-container/30 to-surface-container-high border border-white/40 shadow-sm">
+<div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
+<div class="space-y-2">
+<h1 class="font-headline-lg-mobile text-headline-lg-mobile md:font-headline-lg md:text-headline-lg text-on-background">Good Morning, Sarah 💙</h1>
+<p class="font-body-md text-body-md text-on-surface-variant max-w-md">You're doing great today. Stay on track with your afternoon medications.</p>
+</div>
+<div class="flex gap-6 items-center">
+<!-- Progress Ring -->
+<div class="relative w-32 h-32 flex items-center justify-center">
+<svg class="w-full h-full">
+<circle class="text-surface-container-highest" cx="64" cy="64" fill="transparent" r="58" stroke="currentColor" stroke-width="8"></circle>
+<circle class="text-primary progress-ring-circle" cx="64" cy="64" fill="transparent" r="58" stroke="currentColor" stroke-dasharray="364.4" stroke-dashoffset="54.6" stroke-linecap="round" stroke-width="8"></circle>
+</svg>
+<div class="absolute flex flex-col items-center">
+<span class="font-headline-md text-headline-md text-primary">85%</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Adherence</span>
+</div>
+</div>
+<!-- Countdown Card -->
+<div class="glass-card p-4 rounded-2xl shadow-sm border border-white/60">
+<p class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Next Medicine</p>
+<div class="flex items-baseline gap-2 mt-1">
+<span class="font-headline-md text-headline-md text-secondary">15</span>
+<span class="font-label-md text-label-md text-secondary">mins</span>
+</div>
+<p class="font-label-sm text-label-sm text-on-primary-container mt-1 bg-primary-fixed px-2 py-0.5 rounded-full inline-block">Atorvastatin 20mg</p>
+</div>
+</div>
+</div>
+<!-- Abstract background shape -->
+<div class="absolute -right-20 -top-20 w-64 h-64 bg-primary/5 rounded-full blur-3xl"></div>
+</section>
+<!-- Quick Actions Grid -->
+<section class="grid grid-cols-2 md:grid-cols-4 gap-stack-md">
+<button class="group glass-card p-6 rounded-[2rem] flex flex-col items-center gap-3 transition-all hover:bg-primary-container hover:border-primary/20">
+<div class="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center group-hover:bg-white/20 transition-colors">
+<span class="material-symbols-outlined text-primary group-hover:text-white text-3xl" data-icon="add_circle">add_circle</span>
+</div>
+<span class="font-label-md text-label-md text-on-surface group-hover:text-white">Add Medicine</span>
+</button>
+<button class="group glass-card p-6 rounded-[2rem] flex flex-col items-center gap-3 transition-all hover:bg-secondary-container hover:border-secondary/20">
+<div class="w-14 h-14 rounded-2xl bg-secondary/10 flex items-center justify-center group-hover:bg-white/20 transition-colors">
+<span class="material-symbols-outlined text-secondary group-hover:text-on-secondary-container text-3xl" data-icon="description">description</span>
+</div>
+<span class="font-label-md text-label-md text-on-surface group-hover:text-on-secondary-container">Upload Rx</span>
+</button>
+<button class="group glass-card p-6 rounded-[2rem] flex flex-col items-center gap-3 transition-all hover:bg-tertiary-container/80 hover:border-tertiary/20">
+<div class="w-14 h-14 rounded-2xl bg-tertiary/10 flex items-center justify-center group-hover:bg-white/20 transition-colors">
+<span class="material-symbols-outlined text-tertiary group-hover:text-white text-3xl" data-icon="biotech">biotech</span>
+</div>
+<span class="font-label-md text-label-md text-on-surface group-hover:text-white">Book Lab</span>
+</button>
+<button class="group glass-card p-6 rounded-[2rem] flex flex-col items-center gap-3 transition-all hover:bg-surface-container-highest hover:border-outline-variant">
+<div class="w-14 h-14 rounded-2xl bg-surface-container-high flex items-center justify-center group-hover:bg-white/20 transition-colors">
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-on-surface text-3xl" data-icon="analytics">analytics</span>
+</div>
+<span class="font-label-md text-label-md text-on-surface group-hover:text-on-surface">View Reports</span>
+</button>
+</section>
+<!-- Main Content Area: Asymmetric Layout -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-stack-lg">
+<!-- Today's Schedule -->
+<section class="lg:col-span-2 space-y-stack-md">
+<div class="flex items-center justify-between">
+<h2 class="font-headline-md text-headline-md text-on-background">Today's Schedule</h2>
+<button class="font-label-md text-label-md text-secondary">View Calendar</button>
+</div>
+<div class="space-y-3">
+<!-- Medicine Card 1 (Taken) -->
+<div class="bg-surface-container-lowest p-5 rounded-3xl border border-outline-variant/30 shadow-sm flex items-center gap-4 opacity-70">
+<div class="bg-tertiary/10 text-tertiary p-3 rounded-2xl">
+<span class="material-symbols-outlined" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</div>
+<div class="flex-grow">
+<h4 class="font-label-md text-label-md text-on-surface">Metformin 500mg</h4>
+<p class="font-label-sm text-label-sm text-on-surface-variant">After breakfast • 8:30 AM</p>
+</div>
+<span class="font-label-sm text-label-sm text-tertiary bg-tertiary-fixed px-3 py-1 rounded-full">Taken</span>
+</div>
+<!-- Medicine Card 2 (Pending) -->
+<div class="bg-surface-container-lowest p-5 rounded-3xl border-l-4 border-l-primary shadow-md flex items-center gap-4">
+<div class="bg-primary/10 text-primary p-3 rounded-2xl">
+<span class="material-symbols-outlined" data-icon="pill">pill</span>
+</div>
+<div class="flex-grow">
+<h4 class="font-label-md text-label-md text-on-surface">Atorvastatin 20mg</h4>
+<p class="font-label-sm text-label-sm text-on-surface-variant">Before Lunch • 1:00 PM</p>
+</div>
+<button class="bg-primary text-on-primary font-label-md text-label-md px-5 py-2 rounded-2xl hover:opacity-90 transition-opacity">Take Now</button>
+</div>
+<!-- Medicine Card 3 (Upcoming) -->
+<div class="bg-surface-container-lowest p-5 rounded-3xl border border-outline-variant/30 shadow-sm flex items-center gap-4">
+<div class="bg-secondary/10 text-secondary p-3 rounded-2xl">
+<span class="material-symbols-outlined" data-icon="pill">pill</span>
+</div>
+<div class="flex-grow">
+<h4 class="font-label-md text-label-md text-on-surface">Vitamin D3</h4>
+<p class="font-label-sm text-label-sm text-on-surface-variant">After dinner • 8:30 PM</p>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="more_vert">more_vert</span>
+</div>
+</div>
+</section>
+<!-- AI Insights & Metrics -->
+<section class="space-y-stack-lg">
+<div class="glass-card p-6 rounded-[2.5rem] bg-gradient-to-br from-tertiary-container/10 to-transparent border-tertiary/10">
+<div class="flex items-center gap-3 mb-4">
+<div class="w-10 h-10 rounded-full bg-tertiary/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-tertiary" data-icon="psychology" style="font-variation-settings: 'FILL' 1;">psychology</span>
+</div>
+<h3 class="font-label-md text-label-md text-on-tertiary-container uppercase tracking-widest">AI Insights</h3>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">
+                        "You've been consistent for <span class="text-tertiary font-bold">7 days</span>! Your blood sugar levels have stabilized by <span class="text-tertiary font-bold">12%</span> since last week. Keep it up!"
+                    </p>
+<div class="mt-6 pt-6 border-t border-tertiary/10">
+<img alt="Health Chart" class="w-full h-32 object-cover rounded-2xl mb-4" data-alt="A clean, minimalist 3D health data visualization chart featuring soft flowing wave lines and floating data points. The chart uses a sophisticated palette of Trust Blue and Warm Coral gradients against a pristine white background. The lighting is soft and diffused, creating a calm and optimistic medical technology atmosphere." src="https://lh3.googleusercontent.com/aida-public/AB6AXuD6vSpWHJZlIRynx_gIOKbMlCCGrdxsIKBS4nJvFoMWNZRY0aRjYeeXtOnFkbhbRikQx5544O0tukux0OQ1eVBTIAWdN6IMdj67KQxk-Ct9CREvO0SyFNcgY09frMMsQzK95t1YZyVugu96Fj7O5iLgXRVQVcDfe3uw9jzrM0bi-CMVt4P04y6k3zUeWjkM2kOHidqeFVxFcs0krUGiMwaf_VxPKcAvLJ8IqVa-1AHTn-c8GIgtyjb41O23b8v2WLO2367kkTBjcgc">
+<button class="w-full py-3 rounded-2xl bg-surface-container-high text-on-surface-variant font-label-md text-label-md hover:bg-surface-container-highest transition-colors">See Detailed Trends</button>
+</div>
+</div>
+<!-- Small Secondary Action -->
+<div class="bg-secondary text-on-secondary p-6 rounded-[2.5rem] shadow-lg relative overflow-hidden">
+<h4 class="font-headline-md text-headline-md mb-2 relative z-10">Lab Test Reminder</h4>
+<p class="font-body-md text-body-md opacity-90 mb-4 relative z-10">Your quarterly Lipid Profile is due in 3 days.</p>
+<button class="bg-white text-secondary font-label-md text-label-md px-6 py-2 rounded-xl relative z-10">Book Slot</button>
+<!-- Decorative Circle -->
+<div class="absolute -bottom-10 -right-10 w-32 h-32 bg-white/10 rounded-full"></div>
+</div>
+</section>
+</div>
+</main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-2 pb-4 pt-2 bg-surface/90 backdrop-blur-2xl shadow-[0_-4px_20px_rgba(9,100,144,0.08)] rounded-t-xl">
+<a class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-full px-4 py-1 scale-90 duration-200 transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="home" style="font-variation-settings: 'FILL' 1;">home</span>
+<span class="font-label-sm text-label-sm">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-opacity" href="#">
+<span class="material-symbols-outlined" data-icon="pill">pill</span>
+<span class="font-label-sm text-label-sm">Medicines</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-opacity" href="#">
+<span class="material-symbols-outlined" data-icon="biotech">biotech</span>
+<span class="font-label-sm text-label-sm">Lab</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-opacity" href="#">
+<span class="material-symbols-outlined" data-icon="psychology">psychology</span>
+<span class="font-label-sm text-label-sm">Insights</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-opacity" href="#">
+<span class="material-symbols-outlined" data-icon="person">person</span>
+<span class="font-label-sm text-label-sm">Profile</span>
+</a>
+</nav>
+<!-- Contextual FAB (Restricted to Home Dashboard) -->
+<button class="fixed bottom-24 right-6 w-14 h-14 bg-primary text-on-primary rounded-full shadow-xl flex items-center justify-center hover:scale-105 active:scale-95 transition-transform z-40">
+<span class="material-symbols-outlined text-3xl" data-icon="chat">chat</span>
+</button>
+
+
+</body></html>

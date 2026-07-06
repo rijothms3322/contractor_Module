@@ -1,0 +1,630 @@
+"use client";
+
+import React, { useState } from "react";
+import { useApp } from "../../context/AppContext";
+import { AVATAR_CATEGORIES, AVATAR_ITEMS } from "../../lib/avatarLibrary";
+import { MemberDashboardView } from "./MemberDashboardView";
+
+export const ProfileView: React.FC = () => {
+  const { user, familyMembers, addFamilyMember, updateUserProfile, logout } = useApp();
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+  
+  // Profile edit fields
+  const [isEditing, setIsEditing] = useState(false);
+  const [fullName, setFullName] = useState(user?.fullName || "");
+  const [age, setAge] = useState(user?.age || 68);
+  const [gender, setGender] = useState(user?.gender || "Female");
+
+  // Address add fields
+  const [showAddAddress, setShowAddAddress] = useState(false);
+  const [addressLabel, setAddressLabel] = useState("Home");
+  const [addressLine1, setAddressLine1] = useState("");
+  const [addressArea, setAddressArea] = useState("");
+  const [addressPincode, setAddressPincode] = useState("");
+
+  // Family member fields
+  const [famName, setFamName] = useState("");
+  const [famNickname, setFamNickname] = useState("");
+  const [famRel, setFamRel] = useState("Mother");
+  const [famDob, setFamDob] = useState("");
+  const [famAge, setFamAge] = useState(40);
+  const [famGender, setFamGender] = useState("Female");
+  const [famBloodGroup, setFamBloodGroup] = useState("O+");
+  const [famPhone, setFamPhone] = useState("");
+  const [famConditions, setFamConditions] = useState("");
+  const [famColor, setFamColor] = useState("blue");
+  const [famAvatarUrl, setFamAvatarUrl] = useState("https://api.dicebear.com/7.x/lorelei/svg?seed=adult-seed-2&radius=50");
+  const [activeAvatarCategory, setActiveAvatarCategory] = useState<"adults" | "children" | "babies" | "friends" | "pets">("adults");
+
+  const handleProfileSave = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateUserProfile({ fullName, age: Number(age), gender });
+    setIsEditing(false);
+  };
+
+  const handleAddMemberSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!famName || !famRel) return;
+
+    let calculatedAge = Number(famAge);
+    if (famDob) {
+      const birth = new Date(famDob);
+      const diff = Date.now() - birth.getTime();
+      calculatedAge = Math.abs(new Date(diff).getUTCFullYear() - 1970);
+    }
+
+    addFamilyMember({
+      name: famName,
+      relationship: famRel,
+      age: calculatedAge,
+      gender: famGender,
+      avatarUrl: famAvatarUrl,
+      medicalConditions: famConditions ? famConditions.split(",").map(s => s.trim()) : [],
+      nickname: famNickname || famName,
+      dob: famDob,
+      bloodGroup: famBloodGroup,
+      phone: famPhone,
+      medicalNotes: famConditions,
+      color: famColor,
+      allergies: [],
+      existingDiseases: famConditions ? famConditions.split(",").map(s => s.trim()) : []
+    });
+
+    setFamName("");
+    setFamNickname("");
+    setFamRel("Mother");
+    setFamDob("");
+    setFamAge(40);
+    setFamGender("Female");
+    setFamBloodGroup("O+");
+    setFamPhone("");
+    setFamConditions("");
+    setFamColor("blue");
+    setFamAvatarUrl("https://api.dicebear.com/7.x/lorelei/svg?seed=adult-seed-2&radius=50");
+    setShowAddMember(false);
+  };
+
+  const handleAddressSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!addressLine1 || !addressArea || !addressPincode) return;
+
+    const newAddress = {
+      id: `addr-${Date.now()}`,
+      label: addressLabel,
+      line1: addressLine1,
+      city: addressArea,
+      area: addressArea,
+      pincode: addressPincode
+    };
+
+    const updatedAddresses = [...(user?.addresses || []), newAddress];
+    updateUserProfile({ addresses: updatedAddresses });
+
+    // Reset fields
+    setAddressLabel("Home");
+    setAddressLine1("");
+    setAddressArea("");
+    setAddressPincode("");
+    setShowAddAddress(false);
+  };
+
+  const selectedMember = familyMembers.find(f => f.id === selectedMemberId);
+
+  if (selectedMember) {
+    return (
+      <MemberDashboardView
+        member={selectedMember}
+        onBack={() => setSelectedMemberId(null)}
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-stack-lg animate-in fade-in duration-300">
+      
+      {/* 1. Sarah's Profile Details Card */}
+      <section className="glass-card rounded-2xl p-6 shadow-sm border border-outline-variant/20">
+        {!isEditing ? (
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+            <div className="flex gap-4 items-center">
+              <img
+                alt={user?.fullName || "User Profile"}
+                className="w-16 h-16 rounded-2xl object-cover border-2 border-primary-container shadow-md"
+                src={user?.avatarUrl || "https://lh3.googleusercontent.com/aida-public/AB6AXuBCs_YGgPk7VOsahsNOdDGaNvTVuV8ZJljMuiD4GSAvQV802koXWwDy1aqg24M8w4jkBOlONbu5i26SUif3gi5LPSJdJTIs"}
+              />
+              <div>
+                <h2 className="font-headline-md text-xl text-secondary font-bold leading-tight">{user?.fullName}</h2>
+                <p className="font-body-md text-xs text-on-surface-variant mt-0.5">
+                  Age: {user?.age} • {user?.gender} • Role: <span className="capitalize font-bold text-primary">{user?.role}</span>
+                </p>
+                <div className="flex gap-1.5 flex-wrap mt-2">
+                  {user?.medicalConditions.map((cond, idx) => (
+                    <span key={idx} className="bg-primary/10 text-primary text-[8px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                      {cond}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setIsEditing(true)}
+                className="px-4 py-2 bg-secondary text-white font-bold rounded-xl text-xs hover:bg-opacity-95 active:scale-95 transition-all flex items-center gap-1 shadow-sm"
+              >
+                <span className="material-symbols-outlined text-sm">edit</span>
+                <span>Edit Profile</span>
+              </button>
+              <button
+                onClick={logout}
+                className="px-3.5 py-2 bg-surface-container text-primary font-bold rounded-xl text-xs hover:bg-surface-container-high transition-colors"
+              >
+                Log Out
+              </button>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={handleProfileSave} className="space-y-4">
+            <h3 className="font-headline-md text-base text-secondary font-bold">Edit Personal Records</h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <label className="block font-label-md text-xs text-on-surface-variant font-bold">Full Name</label>
+                <input
+                  type="text"
+                  required
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-surface-container/40 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary transition-all"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="block font-label-md text-xs text-on-surface-variant font-bold">Age</label>
+                <input
+                  type="number"
+                  required
+                  value={age}
+                  onChange={(e) => setAge(Number(e.target.value))}
+                  className="w-full px-4 py-2.5 bg-surface-container/40 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary transition-all"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="block font-label-md text-xs text-on-surface-variant font-bold">Gender</label>
+                <select
+                  value={gender}
+                  onChange={(e) => setGender(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-surface-container/40 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary transition-all"
+                >
+                  <option value="Female">Female</option>
+                  <option value="Male">Male</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex gap-2 justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setIsEditing(false)}
+                className="px-4 py-2 bg-surface-container text-on-surface font-bold rounded-xl text-xs hover:bg-surface-container-high transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-primary text-on-primary font-bold rounded-xl text-xs hover:bg-opacity-95 active:scale-95 transition-all shadow-md"
+              >
+                Save Changes
+              </button>
+            </div>
+          </form>
+        )}
+      </section>
+
+      {/* 2. Family Health Sync Dashboard (Mom & Dad Card representation) */}
+      <section className="space-y-3">
+        <div className="flex justify-between items-center">
+          <h3 className="font-headline-md text-base text-secondary font-bold">Family Synchronization Hub</h3>
+          <button
+            onClick={() => setShowAddMember(true)}
+            className="text-xs text-primary font-bold hover:underline flex items-center gap-0.5"
+          >
+            <span className="material-symbols-outlined text-sm font-bold">add</span>
+            <span>Sync Member</span>
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-stack-md">
+          {familyMembers.map((fam) => {
+            const BORDER_COLORS: Record<string, string> = {
+              blue: "border-l-blue-500",
+              green: "border-l-emerald-500",
+              purple: "border-l-purple-500",
+              orange: "border-l-orange-500",
+              pink: "border-l-pink-500",
+              teal: "border-l-teal-500",
+              grey: "border-l-slate-500"
+            };
+            return (
+              <div
+                key={fam.id}
+                onClick={() => setSelectedMemberId(fam.id)}
+                className={`p-5 glass-card rounded-2xl border border-outline-variant/20 border-l-4 ${BORDER_COLORS[fam.color || "blue"] || "border-l-blue-500"} flex flex-col justify-between gap-4 hover:border-secondary/35 cursor-pointer hover:scale-[1.01] transition-all shadow-sm`}
+              >
+                <div className="flex gap-3 items-start">
+                  <img
+                    alt={fam.name}
+                    className="w-12 h-12 rounded-xl object-cover border border-outline-variant/30"
+                    src={fam.avatarUrl}
+                  />
+                  <div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <h4 className="font-label-md text-sm text-secondary font-bold leading-tight">{fam.nickname || fam.name}</h4>
+                      <span className="bg-secondary-container/10 text-on-secondary-container text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
+                        {fam.relationship}
+                      </span>
+                    </div>
+                    <p className="font-body-md text-[10px] text-on-surface-variant mt-0.5">
+                      Age: {fam.age} • {fam.gender}
+                    </p>
+                  <div className="flex gap-1 flex-wrap mt-2">
+                    {fam.medicalConditions.map((cond, idx) => (
+                      <span key={idx} className="bg-surface-container text-outline text-[8px] px-1.5 py-0.5 rounded font-bold">
+                        {cond}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Progress visual Adherence */}
+              <div className="space-y-1">
+                <div className="flex justify-between items-center text-[10px] font-bold">
+                  <span className="text-on-surface-variant font-label-sm">Dosing Compliance</span>
+                  <span className="text-tertiary">{fam.adherenceRate || 100}%</span>
+                </div>
+                <div className="h-2 bg-surface-container rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-tertiary rounded-full transition-all duration-500"
+                    style={{ width: `${fam.adherenceRate || 100}%` }}
+                  />
+                </div>
+              </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* 3. Saved Address Book List */}
+      <section className="glass-card rounded-2xl p-6 shadow-sm border border-outline-variant/20 space-y-4 pb-16">
+        <div className="flex justify-between items-center">
+          <h3 className="font-headline-md text-base text-secondary font-bold">Saved Home & Office Addresses</h3>
+          <button
+            onClick={() => setShowAddAddress(true)}
+            className="text-xs text-primary font-bold hover:underline flex items-center gap-0.5"
+          >
+            <span className="material-symbols-outlined text-sm font-bold">add_location</span>
+            <span>Add Address</span>
+          </button>
+        </div>
+
+        <div className="space-y-2">
+          {user?.addresses.map((addr) => (
+            <div key={addr.id} className="p-3.5 bg-surface-container-low rounded-xl flex gap-3 border border-outline-variant/15 hover:bg-surface-container transition-colors">
+              <div className="w-9 h-9 bg-secondary-container/20 text-secondary rounded-lg flex items-center justify-center flex-shrink-0">
+                <span className="material-symbols-outlined text-lg">
+                  {addr.label === "Home" ? "home" : "business"}
+                </span>
+              </div>
+              <div className="text-left">
+                <div className="flex items-center gap-1.5">
+                  <h4 className="font-label-md text-xs text-secondary font-bold leading-none">{addr.label}</h4>
+                  <span className="bg-primary/5 text-primary text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
+                    {addr.area}
+                  </span>
+                </div>
+                <p className="font-body-md text-[10px] text-on-surface-variant mt-1 leading-relaxed">
+                  {addr.line1}, {addr.area}, Pincode: {addr.pincode}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* 3.5 ADD ADDRESS MODAL */}
+      {showAddAddress && (
+        <div className="fixed inset-0 bg-inverse-surface/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-[360px] bg-white rounded-3xl p-6 shadow-2xl border border-outline-variant/30 flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-headline-md text-sm text-secondary font-bold flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-xl">add_location_alt</span>
+                <span>Add Address</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowAddAddress(false)}
+                className="w-8 h-8 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center focus:outline-none"
+              >
+                <span className="material-symbols-outlined text-sm">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleAddressSubmit} className="space-y-4 text-left">
+              <div className="space-y-1">
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Address Label</label>
+                <select
+                  value={addressLabel}
+                  onChange={(e) => setAddressLabel(e.target.value)}
+                  className="w-full px-2 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                >
+                  <option value="Home">Home</option>
+                  <option value="Office">Office</option>
+                  <option value="Parent's House">Parent's House</option>
+                  <option value="Doctor's Clinic">Doctor's Clinic</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Street Address (Line 1)</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Flat 402, Block A, Green Glen Layout"
+                  value={addressLine1}
+                  onChange={(e) => setAddressLine1(e.target.value)}
+                  className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Area / Locality</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Pune, Bangalore"
+                    value={addressArea}
+                    onChange={(e) => setAddressArea(e.target.value)}
+                    className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Pincode</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. 411001"
+                    value={addressPincode}
+                    onChange={(e) => setAddressPincode(e.target.value)}
+                    className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3 bg-primary text-on-primary font-bold rounded-xl text-xs hover:opacity-90 active:scale-95 transition-all shadow-md mt-2"
+              >
+                Add Address
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 4. ADD FAMILY MEMBER MODAL */}
+      {showAddMember && (
+        <div className="fixed inset-0 bg-inverse-surface/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-[420px] bg-white rounded-3xl p-6 shadow-2xl border border-outline-variant/30 flex flex-col max-h-[85vh] overflow-y-auto animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-headline-md text-sm text-secondary font-bold flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-xl">group_add</span>
+                <span>Sync Family Profile</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowAddMember(false)}
+                className="w-8 h-8 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center focus:outline-none"
+              >
+                <span className="material-symbols-outlined text-sm">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleAddMemberSubmit} className="space-y-4 text-left">
+              {/* Name & Nickname */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Full Name</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Thomas D'Souza"
+                    value={famName}
+                    onChange={(e) => setFamName(e.target.value)}
+                    className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Nickname</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Dad, Mom"
+                    value={famNickname}
+                    onChange={(e) => setFamNickname(e.target.value)}
+                    className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              {/* Relationship & DOB */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Relationship</label>
+                  <select
+                    value={famRel}
+                    onChange={(e) => setFamRel(e.target.value)}
+                    className="w-full px-2 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                  >
+                    {["Mother", "Father", "Son", "Daughter", "Brother", "Sister", "Grandmother", "Grandfather", "Husband", "Wife", "Partner", "Friend", "Relative", "Neighbor", "Caregiver", "Patient", "Other"].map((r) => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Date of Birth</label>
+                  <input
+                    type="date"
+                    value={famDob}
+                    onChange={(e) => setFamDob(e.target.value)}
+                    className="w-full px-2 py-1.5 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              {/* Gender & Blood Group */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Gender</label>
+                  <select
+                    value={famGender}
+                    onChange={(e) => setFamGender(e.target.value)}
+                    className="w-full px-2 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                  >
+                    <option value="Female">Female</option>
+                    <option value="Male">Male</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Blood Group</label>
+                  <select
+                    value={famBloodGroup}
+                    onChange={(e) => setFamBloodGroup(e.target.value)}
+                    className="w-full px-2 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                  >
+                    {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map((bg) => (
+                      <option key={bg} value={bg}>{bg}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Phone & Notes */}
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Phone Number</label>
+                  <input
+                    type="tel"
+                    placeholder="e.g. +91 98765 43210"
+                    value={famPhone}
+                    onChange={(e) => setFamPhone(e.target.value)}
+                    className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Medical Notes / Conditions</label>
+                  <textarea
+                    placeholder="e.g. Penicillin allergy, diabetes, high blood pressure"
+                    value={famConditions}
+                    onChange={(e) => setFamConditions(e.target.value)}
+                    className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary h-14 resize-none"
+                  />
+                </div>
+              </div>
+
+              {/* Identification Color Picker */}
+              <div className="space-y-1.5">
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider font-bold">Personalized Accent Color</label>
+                <div className="flex gap-2">
+                  {["blue", "green", "purple", "orange", "pink", "teal", "grey"].map((c) => {
+                    const isSelected = famColor === c;
+                    const bgColors: Record<string, string> = {
+                      blue: "bg-blue-500",
+                      green: "bg-emerald-500",
+                      purple: "bg-purple-500",
+                      orange: "bg-orange-500",
+                      pink: "bg-pink-500",
+                      teal: "bg-teal-500",
+                      grey: "bg-slate-500"
+                    };
+                    return (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setFamColor(c)}
+                        className={`w-6 h-6 rounded-full ${bgColors[c] || "bg-blue-500"} transition-all flex items-center justify-center`}
+                        title={c}
+                      >
+                        {isSelected && (
+                          <span className="material-symbols-outlined text-white text-xs font-bold">done</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Avatar Selector Grid */}
+              <div className="space-y-2">
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Select Representative Avatar</label>
+                
+                {/* Categories */}
+                <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+                  {AVATAR_CATEGORIES.map((cat) => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setActiveAvatarCategory(cat.id as any)}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors flex-shrink-0 ${
+                        activeAvatarCategory === cat.id
+                          ? "bg-secondary/15 text-secondary"
+                          : "bg-white text-on-surface-variant border border-outline-variant/20 hover:bg-surface-container"
+                      }`}
+                    >
+                      {cat.name}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Avatar items */}
+                <div className="grid grid-cols-5 gap-2 max-h-36 overflow-y-auto p-1 bg-white border border-outline-variant/10 rounded-xl">
+                  {AVATAR_ITEMS.filter((av) => av.category === activeAvatarCategory).map((av) => {
+                    const isSelected = famAvatarUrl === av.url;
+                    return (
+                      <button
+                        key={av.id}
+                        type="button"
+                        onClick={() => setFamAvatarUrl(av.url)}
+                        className={`w-11 h-11 rounded-full p-0.5 border-2 transition-all flex items-center justify-center overflow-hidden flex-shrink-0 ${
+                          isSelected ? "border-primary scale-110 shadow-sm" : "border-transparent hover:scale-105"
+                        }`}
+                        title={av.label}
+                      >
+                        <img src={av.url} alt={av.label} className="w-full h-full object-cover" />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={!famName}
+                className="w-full py-3 bg-primary text-on-primary font-bold rounded-xl text-xs hover:opacity-90 active:scale-95 transition-all shadow-md mt-2 disabled:opacity-50"
+              >
+                Establish Health Sync
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+};

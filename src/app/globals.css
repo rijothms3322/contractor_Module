@@ -1,0 +1,175 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #f9f9ff;
+  --color-surface-container-lowest: #ffffff;
+  --color-inverse-on-surface: #ecf1ff;
+  --color-on-tertiary-fixed: #002109;
+  --color-outline-variant: #ddc0b7;
+  --color-error: #ba1a1a;
+  --color-surface-container-highest: #d8e3fb;
+  --color-tertiary-fixed-dim: #4ae176;
+  --color-tertiary-fixed: #6bff8f;
+  --color-primary: #a04117;
+  --color-error-container: #ffdad6;
+  --color-on-tertiary: #ffffff;
+  --color-secondary-container: #8aceff;
+  --color-surface: #f9f9ff;
+  --color-secondary: #096490;
+  --color-on-secondary-fixed: #001e2f;
+  --color-on-error-container: #93000a;
+  --color-surface-container-high: #dee8ff;
+  --color-on-secondary-fixed-variant: #004b6f;
+  --color-on-primary-fixed-variant: #802a00;
+  --color-surface-bright: #f9f9ff;
+  --color-secondary-fixed-dim: #8aceff;
+  --color-on-primary-fixed: #380d00;
+  --color-on-surface-variant: #56423b;
+  --color-surface-variant: #d8e3fb;
+  --color-on-primary-container: #5f1d00;
+  --color-surface-container: #e7eeff;
+  --color-inverse-surface: #263143;
+  --color-inverse-primary: #ffb59a;
+  --color-surface-tint: #a04117;
+  --color-tertiary-container: #00b351;
+  --color-tertiary: #006e2f;
+  --color-on-background: #111c2d;
+  --color-on-tertiary-fixed-variant: #005321;
+  --color-primary-fixed: #ffdbce;
+  --color-on-secondary-container: #005880;
+  --color-on-secondary: #ffffff;
+  --color-primary-container: #ee7b4d;
+  --color-on-primary: #ffffff;
+  --color-on-tertiary-container: #003c16;
+  --color-outline: #8a726a;
+  --color-primary-fixed-dim: #ffb59a;
+  --color-surface-container-low: #f0f3ff;
+  --color-surface-dim: #cfdaf2;
+  --color-on-surface: #111c2d;
+  --color-secondary-fixed: #c9e6ff;
+  --color-on-error: #ffffff;
+
+  --radius-DEFAULT: 0.25rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-full: 9999px;
+
+  --spacing-gutter: 24px;
+  --spacing-margin-desktop: 40px;
+  --spacing-container-max: 1200px;
+  --spacing-stack-sm: 8px;
+  --spacing-stack-md: 16px;
+  --spacing-margin-mobile: 20px;
+  --spacing-unit: 8px;
+  --spacing-stack-lg: 32px;
+}
+
+/* Custom Theme Utilities for Medimz */
+@utility font-headline-lg-mobile {
+  font-family: var(--font-manrope), sans-serif;
+  font-weight: 700;
+}
+@utility text-headline-lg-mobile {
+  font-size: 28px;
+  line-height: 36px;
+}
+@utility font-headline-lg {
+  font-family: var(--font-manrope), sans-serif;
+  font-weight: 700;
+}
+@utility text-headline-lg {
+  font-size: 32px;
+  line-height: 40px;
+  letter-spacing: -0.01em;
+}
+@utility font-headline-md {
+  font-family: var(--font-manrope), sans-serif;
+  font-weight: 600;
+}
+@utility text-headline-md {
+  font-size: 24px;
+  line-height: 32px;
+}
+@utility font-body-lg {
+  font-family: var(--font-manrope), sans-serif;
+  font-weight: 400;
+}
+@utility text-body-lg {
+  font-size: 18px;
+  line-height: 28px;
+}
+@utility font-body-md {
+  font-family: var(--font-manrope), sans-serif;
+  font-weight: 400;
+}
+@utility text-body-md {
+  font-size: 16px;
+  line-height: 24px;
+}
+@utility font-label-md {
+  font-family: var(--font-hanken), sans-serif;
+  font-weight: 600;
+}
+@utility text-label-md {
+  font-size: 14px;
+  line-height: 20px;
+  letter-spacing: 0.02em;
+}
+@utility font-label-sm {
+  font-family: var(--font-hanken), sans-serif;
+  font-weight: 500;
+}
+@utility text-label-sm {
+  font-size: 12px;
+  line-height: 16px;
+  letter-spacing: 0.05em;
+}
+@utility font-display-lg {
+  font-family: var(--font-manrope), sans-serif;
+  font-weight: 800;
+}
+@utility text-display-lg {
+  font-size: 48px;
+  line-height: 56px;
+  letter-spacing: -0.02em;
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-on-background);
+  font-family: var(--font-manrope), sans-serif;
+}
+
+/* Glassmorphism Classes */
+.glass-card {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.glass-pulse {
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 8px 32px 0 rgba(9, 100, 144, 0.1);
+}
+
+.timeline-line {
+  width: 2px;
+  background: repeating-linear-gradient(to bottom, #096490 0, #096490 4px, transparent 4px, transparent 8px);
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.progress-ring-circle {
+  transition: stroke-dashoffset 0.35s;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+}
