@@ -9,6 +9,10 @@ export interface Profile {
   age: number;
   gender: string;
   medicalConditions: string[];
+  nickname?: string;
+  dob?: string;
+  bloodGroup?: string;
+  phone?: string;
   addresses: {
     id: string;
     label: string;
@@ -48,6 +52,7 @@ export interface Medicine {
   timings: ("morning" | "afternoon" | "evening" | "night")[];
   startDate: string;
   endDate?: string;
+  intakeTimes?: string[];
 }
 
 export interface Reminder {
@@ -65,6 +70,8 @@ export interface Reminder {
   recipientNickname?: string;
   recipientAvatar?: string;
   recipientColor?: string;
+  intakeTime?: string;
+  snoozedUntil?: string;
 }
 
 export interface Lab {

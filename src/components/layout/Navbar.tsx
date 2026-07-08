@@ -10,8 +10,7 @@ export const Navbar: React.FC = () => {
     { tab: "home", icon: "home", label: "Home" },
     { tab: "health", icon: "medical_services", label: "Health" },
     { tab: "insights", icon: "psychology", label: "Insights" },
-    { tab: "wellness", icon: "self_improvement", label: "Wellness" },
-    { tab: "profile", icon: "person", label: "Profile" }
+    { tab: "wellness", icon: "self_improvement", label: "Wellness" }
   ];
 
   // Add Admin tab dynamically if user has admin permissions

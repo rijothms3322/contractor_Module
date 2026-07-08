@@ -91,6 +91,9 @@ interface AppContextType {
   medicines: Medicine[];
   reminders: Reminder[];
   addMedicine: (medicine: Omit<Medicine, "id">, targetFamilyMemberId?: string | null) => void;
+  editMedicine: (medicineId: string, updatedFields: Partial<Medicine>, targetFamilyMemberId?: string | null) => void;
+  deleteMedicine: (medicineId: string) => void;
+  snoozeReminder: (reminderId: string, minutes: number) => void;
   toggleReminderStatus: (reminderId: string, status: "pending" | "taken" | "missed") => void;
   adherenceStreak: number;
   adherencePercentage: number;
@@ -507,16 +510,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const updated = { ...user, ...profileData };
       setUser(updated);
 
+      if (typeof window !== "undefined") {
+        safeLocalStorage.setItem("medimz_user", JSON.stringify(updated));
+      }
+
       if (isSupabaseConfigured) {
         authService.updateProfile(user.id, profileData)
           .then(dbP => {
-            setUser(dbP);
-            reminderService.addNotification(user.id, "Profile Updated!", "Your personal health records were successfully synchronized.", "system")
-              .then(n => setNotifications(prev => [n, ...prev]));
+            const merged = { ...updated, ...dbP };
+            setUser(merged);
+            if (typeof window !== "undefined") {
+              safeLocalStorage.setItem("medimz_user", JSON.stringify(merged));
+            }
+            return reminderService.addNotification(user.id, "Profile Synchronized! 🧬", "Your profile changes have been successfully saved and synced to the cloud.", "system")
+              .then(n => setNotifications(prev => [n, ...prev]))
+              .catch(err => console.error("Failed to sync profile success notification:", err));
           })
-          .catch(err => console.error("Failed to sync profile update:", err));
+          .catch(err => {
+            console.error("Failed to sync profile update:", err?.message || err?.details || err);
+            // Graceful fallback warning notification so they know it is saved locally
+            addNotification("Saved Locally 💾", "Failed to sync to database due to security policies. Your updates are saved on this device.", "system");
+          });
       } else {
-        addNotification("Profile Updated!", "Your personal health records were successfully synchronized.", "system");
+        addNotification("Profile Updated! 💾", "Your personal health records were successfully saved locally.", "system");
       }
     }
   };
@@ -572,12 +588,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newReminders: Reminder[] = [];
     const today = new Date();
     const familyMember = familyMembers.find(f => f.id === targetFamilyMemberId);
+
+    const timesToSchedule = (medicine.intakeTimes && medicine.intakeTimes.length > 0)
+      ? medicine.intakeTimes
+      : medicine.timings.map(slot => {
+          if (slot === "morning") return "08:00";
+          if (slot === "afternoon") return "13:00";
+          if (slot === "evening") return "18:00";
+          return "21:00";
+        });
  
-    medicine.timings.forEach(slot => {
-      let hour = 8;
-      if (slot === "afternoon") hour = 13;
-      else if (slot === "evening") hour = 18;
-      else if (slot === "night") hour = 21;
+    timesToSchedule.forEach((timeStr, idx) => {
+      const [hStr, mStr] = timeStr.split(":");
+      const hour = parseInt(hStr, 10) || 8;
+      const minute = parseInt(mStr, 10) || 0;
+
+      let slot: "morning" | "afternoon" | "evening" | "night" = "morning";
+      if (hour >= 12 && hour < 17) slot = "afternoon";
+      else if (hour >= 17 && hour < 20) slot = "evening";
+      else if (hour >= 20 || hour < 6) slot = "night";
  
       for (let dayOffset = 0; dayOffset < 3; dayOffset++) {
         const scheduledDay = new Date();
@@ -588,11 +617,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           scheduledDay.getMonth(),
           scheduledDay.getDate(),
           hour,
-          0
+          minute
         ).toISOString();
  
         newReminders.push({
-          id: `rem-${medId}-${slot}-${dayOffset}`,
+          id: `rem-${medId}-${idx}-${dayOffset}`,
           medicineId: medId,
           medicineName: medicine.name,
           dosage: medicine.dosage,
@@ -604,7 +633,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           status: "pending",
           recipientNickname: familyMember ? (familyMember.nickname || familyMember.name) : "Myself",
           recipientAvatar: familyMember ? familyMember.avatarUrl : (user?.avatarUrl || "https://api.dicebear.com/7.x/initials/svg?seed=Sarah"),
-          recipientColor: familyMember ? (familyMember.color || "blue") : "orange"
+          recipientColor: familyMember ? (familyMember.color || "blue") : "orange",
+          intakeTime: timeStr
         });
       }
     });
@@ -622,7 +652,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             familyMemberId: targetFamilyMemberId || null,
             scheduledTime: r.scheduledTime,
             timingSlot: r.timingSlot,
-            status: r.status as any
+            status: r.status as any,
+            intakeTime: r.intakeTime
           }));
  
           reminderService.addReminders(user.id, dbRems).then(() => {
@@ -652,6 +683,100 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
     } else {
       addNotification("Medicine Added 💊", `${medicine.name} (${medicine.dosage}) added successfully. Reminders created!`, "reminder");
+    }
+  };
+
+  const editMedicine = (medicineId: string, updatedFields: Partial<Medicine>, targetFamilyMemberId?: string | null) => {
+    setMedicines(prev => prev.map(m => m.id === medicineId ? { ...m, ...updatedFields } : m));
+    setReminders(prev => {
+      const nonPending = prev.filter(r => r.medicineId !== medicineId || r.status !== "pending");
+      const updatedMed = medicines.find(m => m.id === medicineId);
+      if (!updatedMed) return prev;
+      
+      const mergedMed = { ...updatedMed, ...updatedFields };
+      const newReminders: Reminder[] = [];
+      const today = new Date();
+      const familyMember = familyMembers.find(f => f.id === targetFamilyMemberId);
+
+      const timesToSchedule = (mergedMed.intakeTimes && mergedMed.intakeTimes.length > 0)
+        ? mergedMed.intakeTimes
+        : mergedMed.timings.map(slot => {
+            if (slot === "morning") return "08:00";
+            if (slot === "afternoon") return "13:00";
+            if (slot === "evening") return "18:00";
+            return "21:00";
+          });
+
+      timesToSchedule.forEach((timeStr, idx) => {
+        const [hStr, mStr] = timeStr.split(":");
+        const hour = parseInt(hStr, 10) || 8;
+        const minute = parseInt(mStr, 10) || 0;
+
+        let slot: "morning" | "afternoon" | "evening" | "night" = "morning";
+        if (hour >= 12 && hour < 17) slot = "afternoon";
+        else if (hour >= 17 && hour < 20) slot = "evening";
+        else if (hour >= 20 || hour < 6) slot = "night";
+
+        for (let dayOffset = 0; dayOffset < 3; dayOffset++) {
+          const scheduledDay = new Date();
+          scheduledDay.setDate(today.getDate() + dayOffset);
+
+          const scheduledTime = new Date(
+            scheduledDay.getFullYear(),
+            scheduledDay.getMonth(),
+            scheduledDay.getDate(),
+            hour,
+            minute
+          ).toISOString();
+
+          newReminders.push({
+            id: `rem-${medicineId}-${idx}-${dayOffset}-edit-${Date.now()}`,
+            medicineId: medicineId,
+            medicineName: mergedMed.name,
+            dosage: mergedMed.dosage,
+            instructions: mergedMed.instructions,
+            familyMemberId: targetFamilyMemberId || null,
+            familyMemberName: familyMember ? familyMember.name : undefined,
+            scheduledTime,
+            timingSlot: slot,
+            status: "pending",
+            recipientNickname: familyMember ? (familyMember.nickname || familyMember.name) : "Myself",
+            recipientAvatar: familyMember ? familyMember.avatarUrl : (user?.avatarUrl || "https://api.dicebear.com/7.x/initials/svg?seed=Sarah"),
+            recipientColor: familyMember ? (familyMember.color || "blue") : "orange",
+            intakeTime: timeStr
+          });
+        }
+      });
+
+      return [...newReminders, ...nonPending];
+    });
+
+    addNotification("Medicine Updated 📝", `Medication details and future reminders updated successfully.`, "reminder");
+  };
+
+  const deleteMedicine = (medicineId: string) => {
+    setMedicines(prev => prev.filter(m => m.id !== medicineId));
+    setReminders(prev => prev.filter(r => r.medicineId !== medicineId || r.status !== "pending"));
+    addNotification("Medicine Deleted 🗑️", `Medication and its scheduled reminders have been removed.`, "reminder");
+  };
+
+  const snoozeReminder = (reminderId: string, minutes: number) => {
+    const now = new Date();
+    const snoozedTime = new Date(now.getTime() + minutes * 60000).toISOString();
+
+    setReminders(prev => prev.map(rem => {
+      if (rem.id === reminderId) {
+        return {
+          ...rem,
+          snoozedUntil: snoozedTime
+        };
+      }
+      return rem;
+    }));
+
+    const targetRem = reminders.find(r => r.id === reminderId);
+    if (targetRem) {
+      addNotification("Dose Snoozed ⏰", `Snoozed ${targetRem.medicineName} for ${minutes} mins.`, "reminder");
     }
   };
 
@@ -960,6 +1085,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         medicines,
         reminders,
         addMedicine,
+        editMedicine,
+        deleteMedicine,
+        snoozeReminder,
         toggleReminderStatus,
         adherenceStreak,
         adherencePercentage,

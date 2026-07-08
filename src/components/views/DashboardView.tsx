@@ -34,8 +34,12 @@ export const DashboardView: React.FC = () => {
     uploadReportPlaceholder,
     bookings,
     addMedicine,
+    editMedicine,
+    deleteMedicine,
+    snoozeReminder,
     familyMembers,
-    addFamilyMember
+    addFamilyMember,
+    medicines
   } = useApp();
 
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -50,6 +54,16 @@ export const DashboardView: React.FC = () => {
   const [newSelectedTimings, setNewSelectedTimings] = useState<("morning" | "afternoon" | "evening" | "night")[]>(["morning"]);
   const [newFamilyMemberId, setNewFamilyMemberId] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [newIntakeTimes, setNewIntakeTimes] = useState<string[]>([]);
+  const [timeInput, setTimeInput] = useState("08:00");
+  const [newEndDate, setNewEndDate] = useState("");
+  const [untilStopped, setUntilStopped] = useState(true);
+
+  const [editingMedId, setEditingMedId] = useState<string | null>(null);
+  const [snoozeReminderId, setSnoozeReminderId] = useState<string | null>(null);
+  const [snoozeMinutes, setSnoozeMinutes] = useState(5);
+  const [customSnoozeHours, setCustomSnoozeHours] = useState(0);
+  const [customSnoozeMins, setCustomSnoozeMins] = useState(10);
 
   const [isAddingNewPerson, setIsAddingNewPerson] = useState(false);
   const [newPersonName, setNewPersonName] = useState("");
@@ -126,6 +140,11 @@ export const DashboardView: React.FC = () => {
     setNewSelectedTimings(["morning"]);
     setNewFamilyMemberId("");
     setShowSuggestions(false);
+    setNewIntakeTimes([]);
+    setTimeInput("08:00");
+    setEditingMedId(null);
+    setNewEndDate("");
+    setUntilStopped(true);
   };
 
   const handleSelectSuggestion = (s: typeof MEDICINE_SUGGESTIONS[0]) => {
@@ -147,23 +166,101 @@ export const DashboardView: React.FC = () => {
 
   const handleReminderSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMedName || !newDosage || newSelectedTimings.length === 0) return;
+    if (!newMedName || !newDosage) return;
 
-    addMedicine(
-      {
-        name: newMedName,
-        dosage: newDosage,
-        instructions: newInstructions || "As directed",
-        frequency: "daily",
-        timings: newSelectedTimings,
-        startDate: new Date().toISOString().split("T")[0]
-      },
-      newFamilyMemberId || null
-    );
+    const payload = {
+      name: newMedName,
+      dosage: newDosage,
+      instructions: newInstructions || "As directed",
+      frequency: "daily" as const,
+      timings: newSelectedTimings.length > 0 ? newSelectedTimings : ["morning" as const],
+      startDate: new Date().toISOString().split("T")[0],
+      endDate: untilStopped ? undefined : newEndDate || undefined,
+      intakeTimes: newIntakeTimes
+    };
+
+    if (editingMedId) {
+      editMedicine(editingMedId, payload, newFamilyMemberId || null);
+    } else {
+      addMedicine(payload, newFamilyMemberId || null);
+    }
 
     setIsAddReminderOpen(false);
     resetAddReminderForm();
   };
+
+  const getIntakeTimeOptions = () => {
+    const options: { value: string; label: string }[] = [];
+    
+    if (newSelectedTimings.includes("morning")) {
+      for (let h = 5; h <= 12; h++) {
+        const hStr = h.toString().padStart(2, "0");
+        const label = h === 12 ? "12:00 PM" : `${h}:00 AM`;
+        options.push({ value: `${hStr}:00`, label });
+        if (h !== 12) {
+          options.push({ value: `${hStr}:30`, label: `${h}:30 AM` });
+        }
+      }
+    }
+    
+    if (newSelectedTimings.includes("afternoon")) {
+      for (let h = 12; h <= 17; h++) {
+        const displayHour = h > 12 ? h - 12 : h;
+        const hStr = h.toString().padStart(2, "0");
+        const label = `${displayHour}:00 PM`;
+        options.push({ value: `${hStr}:00`, label });
+        if (h !== 17) {
+          options.push({ value: `${hStr}:30`, label: `${displayHour}:30 PM` });
+        }
+      }
+    }
+    
+    if (newSelectedTimings.includes("evening")) {
+      for (let h = 17; h <= 20; h++) {
+        const displayHour = h - 12;
+        const hStr = h.toString().padStart(2, "0");
+        const label = `${displayHour}:00 PM`;
+        options.push({ value: `${hStr}:00`, label });
+        if (h !== 20) {
+          options.push({ value: `${hStr}:30`, label: `${displayHour}:30 PM` });
+        }
+      }
+    }
+    
+    if (newSelectedTimings.includes("night")) {
+      for (let h = 20; h <= 23; h++) {
+        const displayHour = h - 12;
+        const hStr = h.toString().padStart(2, "0");
+        options.push({ value: `${hStr}:00`, label: `${displayHour}:00 PM` });
+        options.push({ value: `${hStr}:30`, label: `${displayHour}:30 PM` });
+      }
+      for (let h = 0; h < 5; h++) {
+        const displayHour = h === 0 ? 12 : h;
+        const hStr = h.toString().padStart(2, "0");
+        options.push({ value: `${hStr}:00`, label: `${displayHour}:00 AM` });
+        options.push({ value: `${hStr}:30`, label: `${displayHour}:30 AM` });
+      }
+    }
+    
+    const uniqueOptions: { value: string; label: string }[] = [];
+    const seen = new Set<string>();
+    options.forEach(opt => {
+      if (!seen.has(opt.value)) {
+        seen.add(opt.value);
+        uniqueOptions.push(opt);
+      }
+    });
+
+    return uniqueOptions;
+  };
+
+  const timeOptions = getIntakeTimeOptions();
+
+  useEffect(() => {
+    if (timeOptions.length > 0 && !timeOptions.some(opt => opt.value === timeInput)) {
+      setTimeInput(timeOptions[0].value);
+    }
+  }, [newSelectedTimings, timeOptions]);
 
   // Filter today's reminders
   const todayReminders = reminders.filter((r) => {
@@ -260,6 +357,21 @@ export const DashboardView: React.FC = () => {
     grey: { border: "border-l-slate-500", bg: "bg-slate-50 text-slate-700", text: "text-slate-700" }
   };
 
+  const handleEditClick = (medicineId: string, familyMemberId: string | null) => {
+    const med = medicines.find(m => m.id === medicineId);
+    if (!med) return;
+    setNewMedName(med.name);
+    setNewDosage(med.dosage);
+    setNewInstructions(med.instructions);
+    setNewSelectedTimings(med.timings);
+    setNewFamilyMemberId(familyMemberId || "");
+    setNewIntakeTimes(med.intakeTimes || []);
+    setNewEndDate(med.endDate || "");
+    setUntilStopped(!med.endDate);
+    setEditingMedId(medicineId);
+    setIsAddReminderOpen(true);
+  };
+
   const renderReminderCard = (r: Reminder) => {
     const theme = RECIPIENT_THEMES[r.recipientColor || "orange"] || { border: "border-l-primary", bg: "bg-primary/10 text-primary", text: "text-primary" };
     const borderClass = r.status === "taken" 
@@ -270,8 +382,27 @@ export const DashboardView: React.FC = () => {
       ? `${r.recipientNickname}'s ${r.medicineName}`
       : r.medicineName;
 
+    let timeLabel = "";
+    if (r.intakeTime) {
+      const [hStr, mStr] = r.intakeTime.split(":");
+      const h = parseInt(hStr, 10);
+      const ampm = h >= 12 ? "PM" : "AM";
+      const displayHour = h % 12 === 0 ? 12 : h % 12;
+      timeLabel = `${displayHour}:${mStr} ${ampm}`;
+    } else {
+      const date = new Date(r.scheduledTime);
+      timeLabel = date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+    }
+
+    const isSnoozed = r.snoozedUntil ? new Date(r.snoozedUntil) > new Date() : false;
+    let snoozeLabel = "";
+    if (isSnoozed && r.snoozedUntil) {
+      const date = new Date(r.snoozedUntil);
+      snoozeLabel = date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+    }
+
     return (
-      <div key={r.id} className={`glass-card p-4 rounded-2xl shadow-sm flex items-center justify-between border-l-4 transition-all ${borderClass}`}>
+      <div key={r.id} className={`glass-card p-4 rounded-2xl shadow-sm flex flex-col sm:flex-row sm:items-center justify-between border-l-4 transition-all gap-3 ${borderClass}`}>
         <div className="flex items-center gap-4 min-w-0">
           <div className="w-11 h-11 rounded-xl bg-surface-container-highest flex items-center justify-center flex-shrink-0 overflow-hidden border border-outline-variant/10">
             {r.recipientAvatar && r.recipientNickname !== "Myself" ? (
@@ -282,7 +413,7 @@ export const DashboardView: React.FC = () => {
               </span>
             )}
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 text-left">
             <div className="flex items-center gap-1.5 flex-wrap">
               <h4 className="font-headline-md text-xs text-on-surface font-bold break-words leading-tight">
                 {displayName}
@@ -292,21 +423,55 @@ export const DashboardView: React.FC = () => {
                   {r.recipientNickname}
                 </span>
               )}
+              {isSnoozed && (
+                <span className="bg-orange-50 text-orange-700 text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider flex items-center gap-0.5 border border-orange-200">
+                  <span className="material-symbols-outlined text-[10px]">snooze</span>
+                  <span>Snoozed till {snoozeLabel}</span>
+                </span>
+              )}
             </div>
-            <div className="flex gap-1.5 mt-0.5">
+            <div className="flex gap-1.5 mt-0.5 flex-wrap items-center">
               <span className="font-label-sm text-[10px] text-on-surface-variant">{r.dosage}</span>
               <span className="text-on-surface-variant/30">•</span>
               <span className="font-label-sm text-[10px] text-on-surface-variant">{r.instructions}</span>
+              <span className="text-on-surface-variant/30">•</span>
+              <span className="bg-primary/5 text-primary text-[9px] px-2 py-0.5 rounded font-bold">{timeLabel}</span>
             </div>
           </div>
         </div>
-        <div className="flex-shrink-0 ml-3">
+        <div className="flex items-center gap-2 justify-end self-end sm:self-auto">
+          {r.status === "pending" && (
+            <button
+              type="button"
+              onClick={() => setSnoozeReminderId(r.id)}
+              className="w-7 h-7 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center border border-outline-variant/15 text-secondary hover:text-primary transition-all active:scale-90"
+              title="Snooze Reminder"
+            >
+              <span className="material-symbols-outlined text-xs">snooze</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => {
+              if (confirm("Are you sure you want to delete this medication and all its scheduled reminders?")) {
+                deleteMedicine(r.medicineId);
+              }
+            }}
+            className="w-7 h-7 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center border border-outline-variant/15 text-secondary hover:text-red-500 transition-all active:scale-90"
+            title="Delete Medication"
+          >
+            <span className="material-symbols-outlined text-xs">delete</span>
+          </button>
+          
+          <div className="border-l border-outline-variant/20 h-5 mx-1" />
+
           {r.status === "taken" ? (
             <span className="material-symbols-outlined text-tertiary text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
           ) : (
             <button
               onClick={() => toggleReminderStatus(r.id, "taken")}
-              className="bg-primary text-on-primary font-label-md text-[10px] font-bold px-4 py-1.5 rounded-full hover:opacity-90 active:scale-95 transition-all shadow-sm"
+              className="bg-primary text-on-primary font-label-md text-[10px] font-bold px-3 py-1.5 rounded-full hover:opacity-90 active:scale-95 transition-all shadow-sm"
             >
               Mark Taken
             </button>
@@ -744,7 +909,7 @@ export const DashboardView: React.FC = () => {
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-headline-md text-sm text-secondary font-bold flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary text-xl">medication</span>
-                <span>Configure Prescription</span>
+                <span>{editingMedId ? "Edit Medication Details" : "Configure Prescription"}</span>
               </h3>
               <button
                 onClick={() => {
@@ -822,7 +987,7 @@ export const DashboardView: React.FC = () => {
 
               {/* Timing Slots */}
               <div className="space-y-1.5">
-                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Schedule Slots</label>
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Schedule Slots (General Category)</label>
                 <div className="grid grid-cols-2 gap-2">
                   {["morning", "afternoon", "evening", "night"].map((slot) => {
                     const isSelected = newSelectedTimings.includes(slot as any);
@@ -848,6 +1013,90 @@ export const DashboardView: React.FC = () => {
                     );
                   })}
                 </div>
+              </div>
+
+              {/* Preferred Intake Times */}
+              <div className="space-y-1.5 bg-surface-container-low/40 p-3 rounded-2xl border border-outline-variant/10">
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Preferred Intake Times</label>
+                <div className="flex gap-2">
+                  <select
+                    value={timeInput}
+                    onChange={(e) => setTimeInput(e.target.value)}
+                    className="flex-1 px-3 py-2 bg-white border border-outline-variant/30 rounded-xl font-body-md text-xs focus:outline-none focus:border-primary text-on-surface"
+                  >
+                    {timeOptions.length > 0 ? (
+                      timeOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="">Select general slot first</option>
+                    )}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (timeInput && !newIntakeTimes.includes(timeInput)) {
+                        setNewIntakeTimes(prev => [...prev, timeInput].sort());
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-primary text-on-primary font-bold rounded-xl text-xs hover:opacity-90 active:scale-95 transition-all"
+                  >
+                    Add Time
+                  </button>
+                </div>
+                {newIntakeTimes.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1.5">
+                    {newIntakeTimes.map(t => {
+                      const [hStr, mStr] = t.split(":");
+                      const h = parseInt(hStr, 10);
+                      const ampm = h >= 12 ? "PM" : "AM";
+                      const displayHour = h % 12 === 0 ? 12 : h % 12;
+                      const formattedTime = `${displayHour}:${mStr} ${ampm}`;
+                      return (
+                        <span key={t} className="bg-primary/5 text-primary text-[10px] pl-2.5 pr-1.5 py-0.5 rounded-full font-bold flex items-center gap-1 border border-primary/10">
+                          <span>{formattedTime}</span>
+                          <button
+                            type="button"
+                            onClick={() => setNewIntakeTimes(prev => prev.filter(item => item !== t))}
+                            className="w-4 h-4 rounded-full flex items-center justify-center hover:bg-primary/10 text-primary"
+                          >
+                            <span className="material-symbols-outlined text-[10px] font-bold">close</span>
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Reminder Duration / End Date */}
+              <div className="space-y-2 bg-surface-container-low/40 p-3 rounded-2xl border border-outline-variant/10">
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Reminder Duration</label>
+                <div className="flex items-center gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={untilStopped}
+                      onChange={(e) => setUntilStopped(e.target.checked)}
+                      className="w-4 h-4 rounded text-primary focus:ring-primary border-outline-variant/50"
+                    />
+                    <span className="font-label-sm text-xs font-bold text-secondary">Set reminder until stopped</span>
+                  </label>
+                </div>
+                {!untilStopped && (
+                  <div className="space-y-1.5 pt-1.5 animate-in slide-in-from-top-2 duration-200">
+                    <label className="block text-[9px] font-bold text-outline uppercase tracking-wider">Remind Until Date</label>
+                    <input
+                      type="date"
+                      required={!untilStopped}
+                      value={newEndDate}
+                      onChange={(e) => setNewEndDate(e.target.value)}
+                      className="w-full px-3 py-1.5 bg-white border border-outline-variant/30 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Family Member Select */}
@@ -1112,6 +1361,110 @@ export const DashboardView: React.FC = () => {
                 Save Prescription Reminder
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* SNOOZE SELECTION DIALOG */}
+      {snoozeReminderId && (
+        <div className="fixed inset-0 bg-inverse-surface/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-[360px] bg-white rounded-3xl p-6 shadow-2xl border border-outline-variant/30 flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-headline-md text-sm text-secondary font-bold flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-xl">snooze</span>
+                <span>Snooze Reminder</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setSnoozeReminderId(null)}
+                className="w-8 h-8 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center focus:outline-none"
+              >
+                <span className="material-symbols-outlined text-sm">close</span>
+              </button>
+            </div>
+
+            <div className="space-y-4 text-left">
+              {/* Preset Buttons */}
+              <div className="space-y-1.5">
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Quick Presets</label>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {[5, 10, 15, 30, 60].map((mins) => {
+                    const isSelected = snoozeMinutes === mins;
+                    return (
+                      <button
+                        key={mins}
+                        type="button"
+                        onClick={() => {
+                          setSnoozeMinutes(mins);
+                          setCustomSnoozeHours(0);
+                          setCustomSnoozeMins(0);
+                        }}
+                        className={`py-2 text-center rounded-xl font-bold text-xs transition-all ${
+                          isSelected && customSnoozeHours === 0 && customSnoozeMins === 0
+                            ? "bg-primary text-on-primary shadow-sm"
+                            : "bg-surface-container-low border border-outline-variant/10 text-on-surface-variant hover:bg-surface-container"
+                        }`}
+                      >
+                        {mins}m
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Custom Duration Selector */}
+              <div className="space-y-1.5 bg-surface-container-low/40 p-3 rounded-2xl border border-outline-variant/10">
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Custom Duration</label>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1.5 flex-1">
+                    <select
+                      value={customSnoozeHours}
+                      onChange={(e) => {
+                        setCustomSnoozeHours(parseInt(e.target.value, 10));
+                        setSnoozeMinutes(0); // clear preset selection highlight
+                      }}
+                      className="w-full px-2 py-1.5 bg-white border border-outline-variant/30 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                    >
+                      {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(h => (
+                        <option key={h} value={h}>{h} hrs</option>
+                      ))}
+                    </select>
+                  </div>
+                  <span className="text-xs text-on-surface-variant font-bold">:</span>
+                  <div className="flex items-center gap-1.5 flex-1">
+                    <select
+                      value={customSnoozeMins}
+                      onChange={(e) => {
+                        setCustomSnoozeMins(parseInt(e.target.value, 10));
+                        setSnoozeMinutes(0);
+                      }}
+                      className="w-full px-2 py-1.5 bg-white border border-outline-variant/30 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                    >
+                      {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map(m => (
+                        <option key={m} value={m}>{m} mins</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  let totalMinutes = snoozeMinutes;
+                  if (totalMinutes === 0) {
+                    totalMinutes = customSnoozeHours * 60 + customSnoozeMins;
+                  }
+                  if (totalMinutes > 0) {
+                    snoozeReminder(snoozeReminderId, totalMinutes);
+                  }
+                  setSnoozeReminderId(null);
+                }}
+                className="w-full py-3 bg-primary text-on-primary font-bold rounded-xl text-xs hover:opacity-90 active:scale-95 transition-all shadow-md mt-2"
+              >
+                Snooze Dosing Alert
+              </button>
+            </div>
           </div>
         </div>
       )}

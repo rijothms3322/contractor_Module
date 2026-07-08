@@ -122,7 +122,7 @@ export const authService = {
     }
 
     // Prepare database fields
-    const dbPayload: any = {};
+    const dbPayload: any = { id: userId };
     if (profileData.fullName !== undefined) dbPayload.full_name = profileData.fullName;
     if (profileData.avatarUrl !== undefined) dbPayload.avatar_url = profileData.avatarUrl;
     if (profileData.age !== undefined) dbPayload.age = Number(profileData.age);
@@ -133,12 +133,13 @@ export const authService = {
 
     const { data, error } = await supabase
       .from("profiles")
-      .update(dbPayload)
-      .eq("id", userId)
+      .upsert(dbPayload)
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      throw new Error(error.message || "Database update failed");
+    }
 
     return {
       id: data.id,

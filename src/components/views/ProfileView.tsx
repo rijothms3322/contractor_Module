@@ -15,6 +15,13 @@ export const ProfileView: React.FC = () => {
   const [fullName, setFullName] = useState(user?.fullName || "");
   const [age, setAge] = useState(user?.age || 68);
   const [gender, setGender] = useState(user?.gender || "Female");
+  const [userNickname, setUserNickname] = useState(user?.nickname || "");
+  const [userDob, setUserDob] = useState(user?.dob || "");
+  const [userBloodGroup, setUserBloodGroup] = useState(user?.bloodGroup || "O+");
+  const [userPhone, setUserPhone] = useState(user?.phone || "");
+  const [userConditions, setUserConditions] = useState(user?.medicalConditions.join(", ") || "");
+  const [userAvatarUrl, setUserAvatarUrl] = useState(user?.avatarUrl || "https://api.dicebear.com/7.x/initials/svg?seed=Sarah");
+  const [activeUserAvatarCategory, setActiveUserAvatarCategory] = useState<"adults" | "children" | "babies" | "friends" | "pets">("adults");
 
   // Address add fields
   const [showAddAddress, setShowAddAddress] = useState(false);
@@ -39,7 +46,27 @@ export const ProfileView: React.FC = () => {
 
   const handleProfileSave = (e: React.FormEvent) => {
     e.preventDefault();
-    updateUserProfile({ fullName, age: Number(age), gender });
+    if (!fullName) return;
+
+    let calculatedAge = Number(age);
+    if (userDob) {
+      const birth = new Date(userDob);
+      const diff = Date.now() - birth.getTime();
+      calculatedAge = Math.abs(new Date(diff).getUTCFullYear() - 1970);
+    }
+
+    updateUserProfile({
+      fullName,
+      nickname: userNickname || fullName,
+      dob: userDob,
+      age: calculatedAge,
+      gender,
+      bloodGroup: userBloodGroup,
+      phone: userPhone,
+      medicalConditions: userConditions ? userConditions.split(",").map((s) => s.trim()) : [],
+      avatarUrl: userAvatarUrl
+    });
+
     setIsEditing(false);
   };
 
@@ -109,6 +136,11 @@ export const ProfileView: React.FC = () => {
     setShowAddAddress(false);
   };
 
+  const handleDeleteAddress = (id: string) => {
+    const updatedAddresses = (user?.addresses || []).filter((addr) => addr.id !== id);
+    updateUserProfile({ addresses: updatedAddresses });
+  };
+
   const selectedMember = familyMembers.find(f => f.id === selectedMemberId);
 
   if (selectedMember) {
@@ -125,103 +157,51 @@ export const ProfileView: React.FC = () => {
       
       {/* 1. Sarah's Profile Details Card */}
       <section className="glass-card rounded-2xl p-6 shadow-sm border border-outline-variant/20">
-        {!isEditing ? (
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <div className="flex gap-4 items-center">
-              <img
-                alt={user?.fullName || "User Profile"}
-                className="w-16 h-16 rounded-2xl object-cover border-2 border-primary-container shadow-md"
-                src={user?.avatarUrl || "https://lh3.googleusercontent.com/aida-public/AB6AXuBCs_YGgPk7VOsahsNOdDGaNvTVuV8ZJljMuiD4GSAvQV802koXWwDy1aqg24M8w4jkBOlONbu5i26SUif3gi5LPSJdJTIs"}
-              />
-              <div>
+        <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+          <div className="flex gap-4 items-center text-left">
+            <img
+              alt={user?.fullName || "User Profile"}
+              className="w-16 h-16 rounded-2xl object-cover border-2 border-primary-container shadow-md"
+              src={user?.avatarUrl || "https://lh3.googleusercontent.com/aida-public/AB6AXuBCs_YGgPk7VOsahsNOdDGaNvTVuV8ZJljMuiD4GSAvQV802koXWwDy1aqg24M8w4jkBOlONbu5i26SUif3gi5LPSJdJTIs"}
+            />
+            <div>
+              <div className="flex items-center gap-2">
                 <h2 className="font-headline-md text-xl text-secondary font-bold leading-tight">{user?.fullName}</h2>
-                <p className="font-body-md text-xs text-on-surface-variant mt-0.5">
-                  Age: {user?.age} • {user?.gender} • Role: <span className="capitalize font-bold text-primary">{user?.role}</span>
-                </p>
-                <div className="flex gap-1.5 flex-wrap mt-2">
-                  {user?.medicalConditions.map((cond, idx) => (
-                    <span key={idx} className="bg-primary/10 text-primary text-[8px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
-                      {cond}
-                    </span>
-                  ))}
-                </div>
+                {user?.nickname && user?.nickname !== user?.fullName && (
+                  <span className="bg-primary/5 text-primary text-[8px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                    {user?.nickname}
+                  </span>
+                )}
               </div>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => setIsEditing(true)}
-                className="px-4 py-2 bg-secondary text-white font-bold rounded-xl text-xs hover:bg-opacity-95 active:scale-95 transition-all flex items-center gap-1 shadow-sm"
-              >
-                <span className="material-symbols-outlined text-sm">edit</span>
-                <span>Edit Profile</span>
-              </button>
-              <button
-                onClick={logout}
-                className="px-3.5 py-2 bg-surface-container text-primary font-bold rounded-xl text-xs hover:bg-surface-container-high transition-colors"
-              >
-                Log Out
-              </button>
+              <p className="font-body-md text-xs text-on-surface-variant mt-0.5">
+                Age: {user?.age} • {user?.gender} • Blood Type: <span className="font-bold text-secondary">{user?.bloodGroup || "O+"}</span>
+              </p>
+              <div className="flex gap-1.5 flex-wrap mt-2">
+                {user?.medicalConditions.map((cond, idx) => (
+                  <span key={idx} className="bg-primary/10 text-primary text-[8px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                    {cond}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
-        ) : (
-          <form onSubmit={handleProfileSave} className="space-y-4">
-            <h3 className="font-headline-md text-base text-secondary font-bold">Edit Personal Records</h3>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-1">
-                <label className="block font-label-md text-xs text-on-surface-variant font-bold">Full Name</label>
-                <input
-                  type="text"
-                  required
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-surface-container/40 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary transition-all"
-                />
-              </div>
 
-              <div className="space-y-1">
-                <label className="block font-label-md text-xs text-on-surface-variant font-bold">Age</label>
-                <input
-                  type="number"
-                  required
-                  value={age}
-                  onChange={(e) => setAge(Number(e.target.value))}
-                  className="w-full px-4 py-2.5 bg-surface-container/40 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary transition-all"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block font-label-md text-xs text-on-surface-variant font-bold">Gender</label>
-                <select
-                  value={gender}
-                  onChange={(e) => setGender(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-surface-container/40 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary transition-all"
-                >
-                  <option value="Female">Female</option>
-                  <option value="Male">Male</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="flex gap-2 justify-end pt-2">
-              <button
-                type="button"
-                onClick={() => setIsEditing(false)}
-                className="px-4 py-2 bg-surface-container text-on-surface font-bold rounded-xl text-xs hover:bg-surface-container-high transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-2 bg-primary text-on-primary font-bold rounded-xl text-xs hover:bg-opacity-95 active:scale-95 transition-all shadow-md"
-              >
-                Save Changes
-              </button>
-            </div>
-          </form>
-        )}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setIsEditing(true)}
+              className="px-4 py-2 bg-secondary text-white font-bold rounded-xl text-xs hover:bg-opacity-95 active:scale-95 transition-all flex items-center gap-1 shadow-sm"
+            >
+              <span className="material-symbols-outlined text-sm">edit</span>
+              <span>Edit Profile</span>
+            </button>
+            <button
+              onClick={logout}
+              className="px-3.5 py-2 bg-surface-container text-primary font-bold rounded-xl text-xs hover:bg-surface-container-high transition-colors"
+            >
+              Log Out
+            </button>
+          </div>
+        </div>
       </section>
 
       {/* 2. Family Health Sync Dashboard (Mom & Dad Card representation) */}
@@ -314,23 +294,33 @@ export const ProfileView: React.FC = () => {
 
         <div className="space-y-2">
           {user?.addresses.map((addr) => (
-            <div key={addr.id} className="p-3.5 bg-surface-container-low rounded-xl flex gap-3 border border-outline-variant/15 hover:bg-surface-container transition-colors">
-              <div className="w-9 h-9 bg-secondary-container/20 text-secondary rounded-lg flex items-center justify-center flex-shrink-0">
-                <span className="material-symbols-outlined text-lg">
-                  {addr.label === "Home" ? "home" : "business"}
-                </span>
-              </div>
-              <div className="text-left">
-                <div className="flex items-center gap-1.5">
-                  <h4 className="font-label-md text-xs text-secondary font-bold leading-none">{addr.label}</h4>
-                  <span className="bg-primary/5 text-primary text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
-                    {addr.area}
+            <div key={addr.id} className="p-3.5 bg-surface-container-low rounded-xl flex gap-3 border border-outline-variant/15 hover:bg-surface-container transition-colors items-center justify-between">
+              <div className="flex gap-3">
+                <div className="w-9 h-9 bg-secondary-container/20 text-secondary rounded-lg flex items-center justify-center flex-shrink-0">
+                  <span className="material-symbols-outlined text-lg">
+                    {addr.label === "Home" ? "home" : "business"}
                   </span>
                 </div>
-                <p className="font-body-md text-[10px] text-on-surface-variant mt-1 leading-relaxed">
-                  {addr.line1}, {addr.area}, Pincode: {addr.pincode}
-                </p>
+                <div className="text-left">
+                  <div className="flex items-center gap-1.5">
+                    <h4 className="font-label-md text-xs text-secondary font-bold leading-none">{addr.label}</h4>
+                    <span className="bg-primary/5 text-primary text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
+                      {addr.area}
+                    </span>
+                  </div>
+                  <p className="font-body-md text-[10px] text-on-surface-variant mt-1 leading-relaxed">
+                    {addr.line1}, {addr.area}, Pincode: {addr.pincode}
+                  </p>
+                </div>
               </div>
+              <button
+                type="button"
+                onClick={() => handleDeleteAddress(addr.id)}
+                className="text-on-surface-variant/40 hover:text-red-500 transition-colors p-1"
+                title="Delete Address"
+              >
+                <span className="material-symbols-outlined text-base">delete</span>
+              </button>
             </div>
           ))}
         </div>
@@ -419,6 +409,173 @@ export const ProfileView: React.FC = () => {
       )}
 
       {/* 4. ADD FAMILY MEMBER MODAL */}
+      {/* 1.5 EDIT USER PROFILE MODAL */}
+      {isEditing && (
+        <div className="fixed inset-0 bg-inverse-surface/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-[420px] bg-white rounded-3xl p-6 shadow-2xl border border-outline-variant/30 flex flex-col max-h-[85vh] overflow-y-auto animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-headline-md text-sm text-secondary font-bold flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-xl">manage_accounts</span>
+                <span>Edit Personal Profile</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsEditing(false)}
+                className="w-8 h-8 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center focus:outline-none"
+              >
+                <span className="material-symbols-outlined text-sm">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleProfileSave} className="space-y-4 text-left">
+              {/* Name & Nickname */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Full Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Nickname</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Sarah"
+                    value={userNickname}
+                    onChange={(e) => setUserNickname(e.target.value)}
+                    className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              {/* Age & DOB */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Age</label>
+                  <input
+                    type="number"
+                    required
+                    value={age}
+                    onChange={(e) => setAge(Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Date of Birth</label>
+                  <input
+                    type="date"
+                    value={userDob}
+                    onChange={(e) => setUserDob(e.target.value)}
+                    className="w-full px-2 py-1.5 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              {/* Gender & Blood Group */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Gender</label>
+                  <select
+                    value={gender}
+                    onChange={(e) => setGender(e.target.value)}
+                    className="w-full px-2 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                  >
+                    <option value="Female">Female</option>
+                    <option value="Male">Male</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Blood Group</label>
+                  <select
+                    value={userBloodGroup}
+                    onChange={(e) => setUserBloodGroup(e.target.value)}
+                    className="w-full px-2 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                  >
+                    {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map((bg) => (
+                      <option key={bg} value={bg}>{bg}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Phone & Conditions */}
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Phone Number</label>
+                  <input
+                    type="tel"
+                    placeholder="e.g. +91 98765 43210"
+                    value={userPhone}
+                    onChange={(e) => setUserPhone(e.target.value)}
+                    className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Medical Conditions (Comma Separated)</label>
+                  <textarea
+                    placeholder="e.g. Hypertension, Pre-Diabetes"
+                    value={userConditions}
+                    onChange={(e) => setUserConditions(e.target.value)}
+                    className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary h-14 resize-none"
+                  />
+                </div>
+              </div>
+
+              {/* Avatar Selector Grid */}
+              <div className="space-y-2">
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Select Avatar</label>
+                <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+                  {AVATAR_CATEGORIES.map((cat) => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setActiveUserAvatarCategory(cat.id as any)}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors flex-shrink-0 ${
+                        activeUserAvatarCategory === cat.id
+                          ? "bg-secondary/15 text-secondary"
+                          : "bg-white text-on-surface-variant border border-outline-variant/20 hover:bg-surface-container"
+                      }`}
+                    >
+                      {cat.name}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-5 gap-2 max-h-32 overflow-y-auto p-1 bg-white border border-outline-variant/10 rounded-xl">
+                  {AVATAR_ITEMS.filter((av) => av.category === activeUserAvatarCategory).map((av) => {
+                    const isSelected = userAvatarUrl === av.url;
+                    return (
+                      <button
+                        key={av.id}
+                        type="button"
+                        onClick={() => setUserAvatarUrl(av.url)}
+                        className={`w-11 h-11 rounded-full p-0.5 border-2 transition-all flex items-center justify-center overflow-hidden flex-shrink-0 ${
+                          isSelected ? "border-primary scale-110 shadow-sm" : "border-transparent hover:scale-105"
+                        }`}
+                      >
+                        <img src={av.url} alt={av.label} className="w-full h-full object-cover" />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3 bg-primary text-on-primary font-bold rounded-xl text-xs hover:opacity-90 active:scale-95 transition-all shadow-md mt-2"
+              >
+                Save Changes
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+      
       {showAddMember && (
         <div className="fixed inset-0 bg-inverse-surface/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="w-full max-w-[420px] bg-white rounded-3xl p-6 shadow-2xl border border-outline-variant/30 flex flex-col max-h-[85vh] overflow-y-auto animate-in zoom-in-95 duration-200">
