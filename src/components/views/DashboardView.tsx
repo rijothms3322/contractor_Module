@@ -36,6 +36,7 @@ export const DashboardView: React.FC = () => {
     addMedicine,
     editMedicine,
     deleteMedicine,
+    deleteReminder,
     snoozeReminder,
     familyMembers,
     addFamilyMember,
@@ -454,12 +455,12 @@ export const DashboardView: React.FC = () => {
           <button
             type="button"
             onClick={() => {
-              if (confirm("Are you sure you want to delete this medication and all its scheduled reminders?")) {
-                deleteMedicine(r.medicineId);
+              if (confirm("Are you sure you want to delete this specific reminder slot?")) {
+                deleteReminder(r.id);
               }
             }}
             className="w-7 h-7 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center border border-outline-variant/15 text-secondary hover:text-red-500 transition-all active:scale-90"
-            title="Delete Medication"
+            title="Delete Reminder Slot"
           >
             <span className="material-symbols-outlined text-xs">delete</span>
           </button>

@@ -177,5 +177,17 @@ export const reminderService = {
       .eq("user_id", userId);
 
     if (error) throw error;
+  },
+
+  /**
+   * Deletes a specific reminder by ID
+   */
+  async deleteReminder(reminderId: string): Promise<void> {
+    if (!isSupabaseConfigured) throw new Error("Supabase is not configured.");
+    const { error } = await supabase
+      .from("reminders")
+      .delete()
+      .eq("id", reminderId);
+    if (error) throw error;
   }
 };

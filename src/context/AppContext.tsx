@@ -93,6 +93,7 @@ interface AppContextType {
   addMedicine: (medicine: Omit<Medicine, "id">, targetFamilyMemberId?: string | null) => void;
   editMedicine: (medicineId: string, updatedFields: Partial<Medicine>, targetFamilyMemberId?: string | null) => void;
   deleteMedicine: (medicineId: string) => void;
+  deleteReminder: (reminderId: string) => void;
   snoozeReminder: (reminderId: string, minutes: number) => void;
   toggleReminderStatus: (reminderId: string, status: "pending" | "taken" | "missed") => void;
   adherenceStreak: number;
@@ -760,6 +761,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addNotification("Medicine Deleted 🗑️", `Medication and its scheduled reminders have been removed.`, "reminder");
   };
 
+  const deleteReminder = (reminderId: string) => {
+    const targetRem = reminders.find(r => r.id === reminderId);
+    if (!targetRem) return;
+
+    const med = medicines.find(m => m.id === targetRem.medicineId);
+    if (med) {
+      const hasMultipleIntakeTimes = med.intakeTimes && med.intakeTimes.length > 1;
+      const hasMultipleTimings = med.timings && med.timings.length > 1;
+
+      if (hasMultipleIntakeTimes && targetRem.intakeTime) {
+        const updatedIntakeTimes = (med.intakeTimes || []).filter(t => t !== targetRem.intakeTime);
+        const updatedTimings = Array.from(new Set(updatedIntakeTimes.map(timeStr => {
+          const hour = parseInt(timeStr.split(":")[0], 10);
+          if (hour >= 5 && hour < 12) return "morning" as const;
+          if (hour >= 12 && hour < 17) return "afternoon" as const;
+          if (hour >= 17 && hour < 20) return "evening" as const;
+          return "night" as const;
+        })));
+        
+        editMedicine(med.id, { intakeTimes: updatedIntakeTimes, timings: updatedTimings }, targetRem.familyMemberId || null);
+        addNotification("Reminder Updated 🗑️", `Removed ${targetRem.medicineName} dose at ${targetRem.intakeTime}.`, "reminder");
+        return;
+      } else if (hasMultipleTimings) {
+        const updatedTimings = med.timings.filter(t => t !== targetRem.timingSlot);
+        editMedicine(med.id, { timings: updatedTimings }, targetRem.familyMemberId || null);
+        addNotification("Reminder Updated 🗑️", `Removed ${targetRem.medicineName} ${targetRem.timingSlot} dose.`, "reminder");
+        return;
+      }
+    }
+
+    if (med) {
+      deleteMedicine(med.id);
+    } else {
+      setReminders(prev => prev.filter(r => r.id !== reminderId));
+      if (isSupabaseConfigured && user) {
+        reminderService.deleteReminder(reminderId)
+          .catch(err => console.error("Failed to delete reminder from DB:", err));
+      }
+    }
+  };
+
   const snoozeReminder = (reminderId: string, minutes: number) => {
     const now = new Date();
     const snoozedTime = new Date(now.getTime() + minutes * 60000).toISOString();
@@ -1087,6 +1129,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addMedicine,
         editMedicine,
         deleteMedicine,
+        deleteReminder,
         snoozeReminder,
         toggleReminderStatus,
         adherenceStreak,

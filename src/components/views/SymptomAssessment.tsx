@@ -163,6 +163,24 @@ export const SymptomAssessment: React.FC = () => {
 
   // Error/Emergency States
   const [emergencyTriggered, setEmergencyTriggered] = useState(false);
+  const [emergencyBooked, setEmergencyBooked] = useState(false);
+  const [emergencyCountdown, setEmergencyCountdown] = useState(300);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (emergencyBooked && emergencyCountdown > 0) {
+      timer = setInterval(() => {
+        setEmergencyCountdown(prev => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [emergencyBooked, emergencyCountdown]);
+
+  const formatCountdown = () => {
+    const mins = Math.floor(emergencyCountdown / 60);
+    const secs = emergencyCountdown % 60;
+    return `${mins}m ${secs < 10 ? "0" : ""}${secs}s`;
+  };
 
   useEffect(() => {
     setSavedHistory(getSavedAssessments());
@@ -363,31 +381,104 @@ export const SymptomAssessment: React.FC = () => {
         </div>
       )}
 
-      {/* Emergency Alert Overlay */}
+      {/* Emergency Consultation Booking Flow */}
       {emergencyTriggered && (
-        <div className="p-8 text-center bg-error-container text-on-error-container space-y-5 animate-in fade-in duration-300">
-          <div className="w-16 h-16 rounded-full bg-error text-white flex items-center justify-center mx-auto shadow-md">
-            <span className="material-symbols-outlined text-3xl font-bold">e911_emergency</span>
-          </div>
-          <div className="space-y-2">
-            <h4 className="font-headline-md text-lg text-error font-extrabold tracking-tight">🚨 Emergency Warning</h4>
-            <p className="font-body-md text-sm leading-relaxed">
-              Your selected symptoms or red-flag indicators match clinical emergency conditions.
-            </p>
-            <p className="font-body-md text-xs font-bold leading-relaxed bg-white/40 p-4 rounded-xl border border-error/20 mt-3">
-              "Your symptoms may indicate a medical emergency. Please seek immediate care at the nearest emergency department or call your local emergency services (108 / 112)."
-            </p>
-          </div>
-          <button
-            onClick={() => {
-              setEmergencyTriggered(false);
-              setSelectedSymptoms([]);
-              setStep("intro");
-            }}
-            className="w-full py-3.5 bg-error text-white font-bold rounded-xl shadow-md hover:bg-error/90 active:scale-98 transition-all text-xs"
-          >
-            Acknowledge & Go Back
-          </button>
+        <div className="p-8 text-center bg-[#ffebeb] text-[#ba1a1a] space-y-6 animate-in fade-in duration-300 rounded-3xl border border-[#ffb4ab]">
+          {!emergencyBooked ? (
+            <>
+              <div className="w-16 h-16 rounded-full bg-[#ffdad6] text-[#ba1a1a] flex items-center justify-center mx-auto shadow-sm">
+                <span className="material-symbols-outlined text-3xl font-bold">medical_services</span>
+              </div>
+              <div className="space-y-3">
+                <h4 className="font-headline-md text-base text-secondary font-bold">Emergency Consultation Recommended</h4>
+                <p className="font-body-md text-xs text-on-surface-variant leading-relaxed">
+                  Your selected symptoms or red-flag indicators match clinical emergency conditions.
+                </p>
+                <div className="p-4 bg-white rounded-2xl border border-outline-variant/30 text-left space-y-2">
+                  <span className="text-[10px] font-bold text-outline uppercase tracking-wider block">Urgent Symptoms Checked</span>
+                  <div className="flex flex-wrap gap-1">
+                    {selectedSymptoms.map((sym) => (
+                      <span key={sym} className="bg-error/10 text-error text-[10px] font-bold px-2.5 py-1 rounded-full border border-error/20">
+                        {sym}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <p className="font-headline-md text-sm text-secondary font-bold pt-2">
+                  Would you like to book an immediate emergency video consultation with our on-duty doctor?
+                </p>
+              </div>
+              
+              <div className="space-y-2 pt-2">
+                <button
+                  onClick={() => {
+                    setEmergencyBooked(true);
+                    setEmergencyCountdown(300);
+                  }}
+                  className="w-full py-3.5 bg-primary text-on-primary font-bold rounded-xl shadow-md hover:opacity-90 active:scale-98 transition-all text-xs flex items-center justify-center gap-2"
+                >
+                  <span className="material-symbols-outlined text-sm">video_call</span>
+                  <span>Yes, Book Emergency Consultation</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setEmergencyTriggered(false);
+                    setSelectedSymptoms([]);
+                    setStep("intro");
+                  }}
+                  className="w-full py-3 bg-white text-secondary border border-outline-variant/30 font-bold rounded-xl hover:bg-surface-container-high text-xs transition-all"
+                >
+                  No, Return to Symptom Checker
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="space-y-6 py-2 animate-in zoom-in-95 duration-200 text-center">
+              <div className="relative w-20 h-20 mx-auto flex items-center justify-center">
+                <div className="absolute inset-0 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
+                <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-3xl text-primary animate-pulse">video_chat</span>
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <span className="text-[10px] bg-tertiary/10 text-tertiary font-bold px-3 py-1 rounded-full uppercase tracking-wider border border-tertiary/20">
+                  Booking Confirmed
+                </span>
+                <h4 className="font-headline-md text-base text-secondary font-bold">Connecting with On-Duty Doctor</h4>
+                <p className="font-body-md text-xs text-on-surface-variant leading-relaxed">
+                  We are assigning a primary care physician to your consultation. Please stay on this screen.
+                </p>
+                
+                <div className="bg-white p-4 rounded-2xl border border-outline-variant/20 shadow-sm mt-4 text-left flex gap-3 items-center">
+                  <img
+                    src="https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&w=150&q=80"
+                    alt="Doctor Avatar"
+                    className="w-12 h-12 rounded-xl object-cover"
+                  />
+                  <div>
+                    <h5 className="font-label-md text-xs text-secondary font-bold">Dr. Amit Verma (MD, Medicine)</h5>
+                    <p className="text-[10px] text-on-surface-variant">Emergency Telehealth Specialist • ⭐ 4.9</p>
+                    <p className="text-[10px] text-primary font-bold mt-1">Starting in {formatCountdown()}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  onClick={() => {
+                    setEmergencyTriggered(false);
+                    setEmergencyBooked(false);
+                    setSelectedSymptoms([]);
+                    setStep("intro");
+                  }}
+                  className="w-full py-3.5 bg-error text-white font-bold rounded-xl text-xs hover:opacity-90 active:scale-98 transition-all"
+                >
+                  Cancel Consultation & Exit
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
