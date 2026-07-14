@@ -957,6 +957,15 @@ export const DashboardView: React.FC = () => {
             setEditingStockValue(med.stockCount !== undefined ? String(med.stockCount) : "30");
           }
         }}
+<<<<<<< HEAD
+=======
+        onOrder={() => {
+          setActiveTab("health");
+          if (typeof window !== "undefined") {
+            sessionStorage.setItem("medimz_open_modal", "add_medicine");
+          }
+        }}
+>>>>>>> 1b7c02fbf3629dfa31ae093335f56633265c8d3f
       />
 
       {/* Upload prescription modal */}
