@@ -299,8 +299,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               .from("medicines")
               .delete()
               .in("id", duplicateMedIds)
-              .then(({ error }) => {
-                if (error) console.error("Failed to clean up duplicate medicines from database:", error);
+              .then((res: any) => {
+                if (res.error) console.error("Failed to clean up duplicate medicines from database:", res.error);
               });
           }
 
@@ -324,8 +324,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               .from("reminders")
               .delete()
               .in("id", duplicateIdsToDelete)
-              .then(({ error }) => {
-                if (error) console.error("Failed to clean up duplicate reminders from database:", error);
+              .then((res: any) => {
+                if (res.error) console.error("Failed to clean up duplicate reminders from database:", res.error);
               });
           }
 
@@ -1287,8 +1287,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .from("medicines")
         .update({ stock_count: newStock })
         .eq("id", medicineId)
-        .then(({ error }) => {
-          if (error) console.error("Failed to update stock in database:", error);
+        .then((res: any) => {
+          if (res.error) console.error("Failed to update stock in database:", res.error);
         });
     }
     addNotification("Stock Updated 📦", `Medication stock count updated successfully.`, "system");
@@ -1388,8 +1388,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               .from("medicines")
               .update({ stock_count: newStock })
               .eq("id", m.id)
-              .then(({ error }) => {
-                if (error) console.error("Failed to update medication stock in database:", error);
+              .then((res: any) => {
+                if (res.error) console.error("Failed to update medication stock in database:", res.error);
               });
           }
           return { ...m, stockCount: newStock };
