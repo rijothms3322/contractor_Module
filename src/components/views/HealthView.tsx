@@ -442,8 +442,7 @@ export const HealthView: React.FC = () => {
   return (
     <div className="space-y-4 animate-in fade-in duration-300">
       
-      {/* HEALTH INSIGHTS SECTION (Merged Page 2 and 3) - Only AI Sync card at top */}
-      <InsightsView hideDiagnosticBlocks={true} hideBento={true} />
+      <InsightsView hideDiagnosticBlocks={true} />
       
       {/* 1. HEALTH OVERVIEW - PREMIUM WELLNESS SCORE DASHBOARD */}
       <section className="bg-gradient-to-br from-primary/10 via-secondary/5 to-tertiary/10 p-5 rounded-3xl border border-outline-variant/20 shadow-sm space-y-4">
