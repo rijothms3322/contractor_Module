@@ -24,7 +24,9 @@ export const medicineService = {
       frequency: m.frequency as "daily" | "weekly",
       timings: m.timings || [],
       startDate: m.start_date,
-      endDate: m.end_date || undefined
+      endDate: m.end_date || undefined,
+      stockCount: m.stock_count !== null ? m.stock_count : undefined,
+      isPrivate: !!m.is_private
     }));
   },
 
@@ -37,6 +39,7 @@ export const medicineService = {
     const { data, error } = await supabase
       .from("medicines")
       .insert({
+        id: crypto.randomUUID(),
         user_id: userId,
         name: medicine.name,
         dosage: medicine.dosage,
@@ -44,7 +47,9 @@ export const medicineService = {
         frequency: medicine.frequency,
         timings: medicine.timings,
         start_date: medicine.startDate,
-        end_date: medicine.endDate || null
+        end_date: medicine.endDate || null,
+        stock_count: medicine.stockCount || null,
+        is_private: !!medicine.isPrivate
       })
       .select()
       .single();
@@ -59,7 +64,9 @@ export const medicineService = {
       frequency: data.frequency,
       timings: data.timings || [],
       startDate: data.start_date,
-      endDate: data.end_date || undefined
+      endDate: data.end_date || undefined,
+      stockCount: data.stock_count !== null ? data.stock_count : undefined,
+      isPrivate: !!data.is_private
     };
   },
 

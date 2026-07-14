@@ -1,5 +1,29 @@
 import { Medicine } from "../lib/mockData";
 
+export const DEFAULT_AI_INSIGHTS = [
+  "Drinking a warm glass of water right after waking up helps jumpstart your metabolism and hydrates your cells after a long night of sleep.",
+  "Taking a short 10-minute walk after your meals is an easy and effective way to support digestion and keep your energy levels steady.",
+  "Consistency is key to wellness. Try to keep your daily routines, meals, and rest times aligned to support your body's natural circadian rhythm.",
+  "Taking a few deep, slow breaths can instantly calm your nervous system, reduce muscle tension, and bring focus back to your day.",
+  "Keeping a reusable water bottle near your workspace is a simple habit to ensure you stay consistently hydrated throughout the day.",
+  "Regular, gentle stretching helps maintain flexibility, relieves joint stiffness, and improves blood circulation across your body.",
+  "Prioritizing 7 to 8 hours of quality sleep tonight will give your body the rest it needs to repair cells and restore natural energy.",
+  "Reducing your daily sodium intake by choosing fresh herbs over salt is a great habit that supports long-term heart and arterial health.",
+  "Linking a new healthy habit to an existing daily routine—like stretching while tea brews—makes it much easier to stay consistent.",
+  "Taking breaks to rest your eyes and stretch your shoulders every hour helps prevent fatigue when working at a desk.",
+  "Incorporating a variety of colorful vegetables into your meals provides a rich spectrum of vitamins and antioxidants to boost immunity.",
+  "A calm mind supports a healthy body. Dedicating just 5 minutes to quiet meditation can help reduce daily stress and lower cortisol levels.",
+  "Remember that physical health and mental wellness go hand in hand. Make time today for an activity that brings you genuine joy.",
+  "Opting for whole grains over refined carbohydrates provides sustained energy release and supports healthy digestion.",
+  "A brisk walk in the morning sunlight helps set your sleep-wake cycle and naturally boosts your mood and Vitamin D levels.",
+  "Listen to your body. Rest is just as productive as activity when it comes to maintaining long-term wellness and preventing burnout.",
+  "Replacing sugary drinks with herbal teas or infused water is an excellent step toward reducing empty calories and staying refreshed.",
+  "Small, daily steps lead to big, long-term changes. Focus on making one positive health choice at a time.",
+  "Practicing box breathing (inhaling, holding, exhaling, and holding for equal counts) is a fast way to reset during busy moments.",
+  "Keeping a positive mindset and celebrating small milestones in your wellness journey helps build lasting motivation."
+];
+
+
 export interface WellnessRecommendation {
   id: string;
   category: string;

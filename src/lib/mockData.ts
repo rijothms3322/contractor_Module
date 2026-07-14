@@ -53,6 +53,8 @@ export interface Medicine {
   startDate: string;
   endDate?: string;
   intakeTimes?: string[];
+  stockCount?: number;
+  isPrivate?: boolean;
 }
 
 export interface Reminder {
@@ -72,6 +74,7 @@ export interface Reminder {
   recipientColor?: string;
   intakeTime?: string;
   snoozedUntil?: string;
+  isPrivate?: boolean;
 }
 
 export interface Lab {

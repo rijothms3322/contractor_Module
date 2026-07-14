@@ -35,6 +35,7 @@ export const DashboardView: React.FC = () => {
     bookings,
     addMedicine,
     editMedicine,
+    updateMedicineStock,
     deleteMedicine,
     deleteReminder,
     snoozeReminder,
@@ -59,6 +60,55 @@ export const DashboardView: React.FC = () => {
   const [timeInput, setTimeInput] = useState("08:00");
   const [newEndDate, setNewEndDate] = useState("");
   const [untilStopped, setUntilStopped] = useState(true);
+  const [newStockCount, setNewStockCount] = useState<string>("");
+
+  // Family Portal & Invite States
+  const [familyPortalActive, setFamilyPortalActive] = useState(false);
+  const familyId = user ? `FAM-${user.id.slice(0, 6).toUpperCase()}` : "FAM-871239";
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [invitations, setInvitations] = useState<{ email: string; status: "Pending" | "Joined" }[]>([]);
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [joinFamilyId, setJoinFamilyId] = useState("");
+
+  // Lab Vitals & Report Logging States
+  const [showLogReportModal, setShowLogReportModal] = useState(false);
+  const [reportPatientId, setReportPatientId] = useState("Myself");
+  const [reportTestCategory, setReportTestCategory] = useState("Lipid Profile");
+  const [reportDate, setReportDate] = useState(new Date().toISOString().split("T")[0]);
+  
+  const [loggedReports, setLoggedReports] = useState<Array<{
+    id: string;
+    category: string;
+    patientName: string;
+    date: string;
+    fields: Record<string, string>;
+  }>>([
+    {
+      id: "rep-1",
+      category: "Lipid Profile",
+      patientName: "Sarah (Myself)",
+      date: "Apr 2026",
+      fields: {
+        "Total Cholesterol": "198",
+        "HDL (Good)": "48",
+        "LDL (Bad)": "120"
+      }
+    }
+  ]);
+
+  const [reportFields, setReportFields] = useState<Record<string, string>>({
+    "Total Cholesterol": "198",
+    "HDL (Good)": "48",
+    "LDL (Bad)": "120",
+    "Triglycerides": "145"
+  });
+
+  const [customReportFields, setCustomReportFields] = useState<{ name: string; value: string }[]>([]);
+  const [newCustomFieldName, setNewCustomFieldName] = useState("");
+  const [newCustomFieldValue, setNewCustomFieldValue] = useState("");
+  const [editingStockMedId, setEditingStockMedId] = useState<string | null>(null);
+  const [editingStockValue, setEditingStockValue] = useState("");
 
   const [editingMedId, setEditingMedId] = useState<string | null>(null);
   const [snoozeReminderId, setSnoozeReminderId] = useState<string | null>(null);
@@ -146,6 +196,8 @@ export const DashboardView: React.FC = () => {
     setEditingMedId(null);
     setNewEndDate("");
     setUntilStopped(true);
+    setNewStockCount("");
+    setIsPrivate(false);
   };
 
   const handleSelectSuggestion = (s: typeof MEDICINE_SUGGESTIONS[0]) => {
@@ -177,13 +229,17 @@ export const DashboardView: React.FC = () => {
       timings: newSelectedTimings.length > 0 ? newSelectedTimings : ["morning" as const],
       startDate: new Date().toISOString().split("T")[0],
       endDate: untilStopped ? undefined : newEndDate || undefined,
-      intakeTimes: newIntakeTimes
+      intakeTimes: newIntakeTimes,
+      stockCount: newStockCount ? parseInt(newStockCount, 10) : undefined,
+      isPrivate: isPrivate
     };
 
+    const targetFamilyId = isPrivate ? null : (newFamilyMemberId || null);
+
     if (editingMedId) {
-      editMedicine(editingMedId, payload, newFamilyMemberId || null);
+      editMedicine(editingMedId, payload, targetFamilyId);
     } else {
-      addMedicine(payload, newFamilyMemberId || null);
+      addMedicine(payload, targetFamilyId);
     }
 
     setIsAddReminderOpen(false);
@@ -265,9 +321,19 @@ export const DashboardView: React.FC = () => {
 
   // Filter today's reminders
   const todayReminders = reminders.filter((r) => {
-    const todayStr = new Date().toISOString().split("T")[0];
-    const schedStr = new Date(r.scheduledTime).toISOString().split("T")[0];
-    return todayStr === schedStr;
+    const todayLocal = new Date();
+    const schedLocal = new Date(r.scheduledTime);
+    const isToday = todayLocal.getFullYear() === schedLocal.getFullYear() &&
+                    todayLocal.getMonth() === schedLocal.getMonth() &&
+                    todayLocal.getDate() === schedLocal.getDate();
+    if (!isToday) return false;
+
+    // Hide private reminders belonging to other family members
+    if (r.isPrivate && r.familyMemberId !== null) {
+      return false;
+    }
+
+    return true;
   });
 
   const pendingReminders = todayReminders.filter((r) => r.status === "pending");
@@ -369,6 +435,8 @@ export const DashboardView: React.FC = () => {
     setNewIntakeTimes(med.intakeTimes || []);
     setNewEndDate(med.endDate || "");
     setUntilStopped(!med.endDate);
+    setNewStockCount(med.stockCount !== undefined ? String(med.stockCount) : "");
+    setIsPrivate(!!med.isPrivate);
     setEditingMedId(medicineId);
     setIsAddReminderOpen(true);
   };
@@ -377,6 +445,8 @@ export const DashboardView: React.FC = () => {
     const theme = RECIPIENT_THEMES[r.recipientColor || "orange"] || { border: "border-l-primary", bg: "bg-primary/10 text-primary", text: "text-primary" };
     const borderClass = r.status === "taken" 
       ? "border-l-tertiary bg-surface-container-low/40 opacity-80" 
+      : r.status === "missed"
+      ? "border-l-red-500 bg-red-50/20 opacity-80"
       : `${theme.border} bg-white`;
       
     const displayName = r.recipientNickname && r.recipientNickname !== "Myself"
@@ -442,14 +512,24 @@ export const DashboardView: React.FC = () => {
         </div>
         <div className="flex items-center gap-2 justify-end self-end sm:self-auto">
           {r.status === "pending" && (
-            <button
-              type="button"
-              onClick={() => setSnoozeReminderId(r.id)}
-              className="w-7 h-7 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center border border-outline-variant/15 text-secondary hover:text-primary transition-all active:scale-90"
-              title="Snooze Reminder"
-            >
-              <span className="material-symbols-outlined text-xs">snooze</span>
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setSnoozeReminderId(r.id)}
+                className="w-7 h-7 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center border border-outline-variant/15 text-secondary hover:text-primary transition-all active:scale-90"
+                title="Snooze Reminder"
+              >
+                <span className="material-symbols-outlined text-xs">snooze</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleReminderStatus(r.id, "missed")}
+                className="w-7 h-7 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center border border-outline-variant/15 text-secondary hover:text-red-500 transition-all active:scale-90"
+                title="Skip Dose"
+              >
+                <span className="material-symbols-outlined text-xs">block</span>
+              </button>
+            </>
           )}
 
           <button
@@ -469,6 +549,11 @@ export const DashboardView: React.FC = () => {
 
           {r.status === "taken" ? (
             <span className="material-symbols-outlined text-tertiary text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+          ) : r.status === "missed" ? (
+            <span className="text-red-600 font-bold text-xs uppercase tracking-wide flex items-center gap-1">
+              <span className="material-symbols-outlined text-base">cancel</span>
+              <span>Skipped</span>
+            </span>
           ) : (
             <button
               onClick={() => toggleReminderStatus(r.id, "taken")}
@@ -481,6 +566,28 @@ export const DashboardView: React.FC = () => {
       </div>
     );
   };
+
+  // Dynamic Refill Alert Calculations
+  const medicinesNeedingRefill = medicines.map(med => {
+    const medStock = med.stockCount;
+    if (medStock === undefined) return null;
+    const dailyDoses = med.timings ? med.timings.length : 1;
+    const remainingDays = Math.floor(medStock / (dailyDoses || 1));
+    return {
+      ...med,
+      remainingDays
+    };
+  }).filter(item => item !== null && item.remainingDays <= 6) as any[];
+
+  let refillAlertText = "Please add your prescriptions to the system so we can calculate your remaining medicine days.";
+  const hasConfiguredStock = medicines.some(m => m.stockCount !== undefined);
+  if (hasConfiguredStock) {
+    if (medicinesNeedingRefill.length > 0) {
+      refillAlertText = medicinesNeedingRefill.map(m => `${m.name} needs refill in ${m.remainingDays} days`).join(", ") + ".";
+    } else {
+      refillAlertText = "You are all Set. No medicine needs refill";
+    }
+  }
 
   return (
     <div className="space-y-stack-lg pb-16">
@@ -659,22 +766,21 @@ export const DashboardView: React.FC = () => {
         <div className="glass-card p-6 rounded-2xl shadow-sm border border-outline-variant/20 flex flex-col justify-between h-36">
           <div>
             <h4 className="font-label-md text-xs text-secondary font-bold mb-1">Pharmacy Refill Alert</h4>
-            <p className="font-body-md text-xs text-on-surface leading-relaxed">3 Prescriptions need refill in 5 days.</p>
+            <p className="font-body-md text-xs text-on-surface leading-relaxed">{refillAlertText}</p>
           </div>
           <button
-            onClick={() => setActiveTab("health")}
+            onClick={() => setShowUploadModal(true)}
             className="mt-3 text-primary font-label-md text-xs font-bold flex items-center gap-1.5 hover:underline text-left"
           >
-            <span>Order Refill</span>
+            <span>Add Prescription</span>
             <span className="material-symbols-outlined text-sm">arrow_forward</span>
           </button>
         </div>
       </section>
 
-      {/* Symptom Checker Module */}
-      <section className="animate-in fade-in duration-300">
-        <SymptomAssessment />
-      </section>
+
+
+
 
       {/* AI Compliance banner */}
       <section className="animate-in fade-in duration-300">
@@ -700,8 +806,13 @@ export const DashboardView: React.FC = () => {
 
       {/* Quick Diagnostics Actions & Helpers */}
       <section className="space-y-2">
-        <h3 className="font-headline-md text-xs text-secondary font-bold">Quick Diagnostics & Helpers</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-stack-sm">
+        <div className="flex items-center gap-2">
+          <h3 className="font-headline-md text-xs text-secondary font-bold">Quick Diagnostics & Helpers</h3>
+          <span className="bg-primary/10 text-primary text-[8px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+            Coming Soon
+          </span>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-stack-sm opacity-50 pointer-events-none cursor-not-allowed select-none">
           
           <button
             onClick={() => setActiveTab("health")}
@@ -746,85 +857,107 @@ export const DashboardView: React.FC = () => {
         </div>
       </section>
 
-      {/* Live Phlebotomist Tracking Card */}
-      {activeBooking && (
-        <section className="animate-in fade-in duration-300">
-          <div className="bg-gradient-to-r from-secondary-container/30 to-surface-container border border-secondary-container/50 rounded-2xl p-4 shadow-md flex justify-between items-center gap-4">
-            <div className="flex gap-3 items-center">
-              <div className="w-10 h-10 bg-secondary text-white rounded-full flex items-center justify-center flex-shrink-0 animate-pulse">
-                <span className="material-symbols-outlined text-xl">local_shipping</span>
-              </div>
-              <div>
-                <h4 className="font-label-md text-xs text-secondary font-bold">Home Lab Collection active!</h4>
-                <p className="font-body-md text-[10px] text-on-surface-variant mt-0.5 leading-normal">
-                  {activeBooking.phlebotomistName || "Phlebotomist"} is out for collection.
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => setActiveTab("health")}
-              className="px-3.5 py-1.5 bg-secondary text-white font-bold rounded-xl text-[10px] hover:bg-opacity-90 active:scale-95 transition-all flex items-center gap-0.5 shadow-sm"
-            >
-              <span>Track Live</span>
-              <span className="material-symbols-outlined text-xs">chevron_right</span>
-            </button>
-          </div>
-        </section>
-      )}
 
-      {/* Latest Vitals Card */}
-      <section className="glass-card rounded-2xl p-5 shadow-sm border border-outline-variant/20 space-y-3 animate-in fade-in duration-300">
-        <div className="flex justify-between items-center pb-1.5 border-b border-outline-variant/15">
-          <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary text-lg">bloodtype</span>
-            <h3 className="font-headline-md text-xs text-secondary font-bold">Latest Lipid Profile Checkup</h3>
-          </div>
-          <span className="font-label-sm text-[10px] text-outline font-bold">April 2026</span>
+      {/* Latest Lab Reports Stack */}
+      <div className="space-y-4">
+        <div className="flex justify-between items-center px-1">
+          <h3 className="font-headline-md text-xs text-secondary font-bold flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-primary text-base">bloodtype</span>
+            <span>Latest Lab Checkups & Vitals</span>
+          </h3>
+          <button
+            onClick={() => setShowLogReportModal(true)}
+            className="px-2.5 py-1 bg-primary/10 text-primary text-[9px] font-bold rounded-lg flex items-center gap-1 hover:bg-primary/20 transition-all active:scale-95"
+          >
+            <span className="material-symbols-outlined text-xs">add</span>
+            <span>Log Report</span>
+          </button>
         </div>
 
-        <div className="grid grid-cols-3 gap-2 text-center">
-          <div className="p-2.5 bg-surface-container-low rounded-xl flex flex-col justify-between min-h-[90px] border border-outline-variant/10">
-            <span className="text-[8px] uppercase font-bold text-outline tracking-wider leading-tight h-5 flex items-center justify-center">
-              Total Cholesterol
-            </span>
-            <div className="my-0.5">
-              <span className="text-base font-bold text-tertiary block leading-none">198</span>
-              <span className="text-[8px] text-on-surface-variant block mt-0.5">mg/dL</span>
+        {loggedReports.map((report) => (
+          <section key={report.id} className="glass-card rounded-2xl p-5 shadow-sm border border-outline-variant/20 space-y-3 animate-in fade-in duration-300">
+            <div className="flex justify-between items-center pb-1.5 border-b border-outline-variant/15">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-secondary text-base">description</span>
+                <div>
+                  <h4 className="font-headline-md text-[11px] text-secondary font-bold">Latest {report.category} Checkup</h4>
+                  <p className="text-[9px] text-on-surface-variant leading-none mt-0.5">{report.patientName} • {report.date}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm("Are you sure you want to delete this report?")) {
+                    setLoggedReports(prev => prev.filter(r => r.id !== report.id));
+                  }
+                }}
+                className="w-5 h-5 rounded-full hover:bg-red-50 flex items-center justify-center text-outline hover:text-red-500 transition-colors"
+                title="Delete Report"
+              >
+                <span className="material-symbols-outlined text-xs">delete</span>
+              </button>
             </div>
-            <span className="text-[8px] text-outline/80 font-bold bg-tertiary/10 text-tertiary py-0.5 rounded-md">Optimal</span>
-          </div>
 
-          <div className="p-2.5 bg-surface-container-low rounded-xl flex flex-col justify-between min-h-[90px] border border-outline-variant/10">
-            <span className="text-[8px] uppercase font-bold text-outline tracking-wider leading-tight h-5 flex items-center justify-center">
-              HDL (Good)
-            </span>
-            <div className="my-0.5">
-              <span className="text-base font-bold text-secondary block leading-none">48</span>
-              <span className="text-[8px] text-on-surface-variant block mt-0.5">mg/dL</span>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              {Object.entries(report.fields).slice(0, 3).map(([fieldName, fieldValue]) => {
+                const valNum = parseFloat(fieldValue) || 0;
+                let status = "Optimal";
+                let badgeColor = "bg-tertiary/10 text-tertiary";
+                let unit = "mg/dL";
+
+                if (fieldName.includes("Total Cholesterol") || fieldName.includes("LDL")) {
+                  const maxVal = fieldName.includes("Total Cholesterol") ? 200 : 100;
+                  status = valNum < maxVal ? "Optimal" : "High";
+                  badgeColor = valNum < maxVal ? "bg-tertiary/10 text-tertiary" : "bg-orange-50 text-orange-700";
+                } else if (fieldName.includes("HDL")) {
+                  status = valNum >= 40 ? "Stable" : "Low";
+                  badgeColor = valNum >= 40 ? "bg-secondary/10 text-secondary" : "bg-red-50 text-red-700";
+                } else if (fieldName.includes("HbA1c")) {
+                  unit = "%";
+                  status = valNum < 5.7 ? "Normal" : valNum < 6.5 ? "Prediabetes" : "Diabetic";
+                  badgeColor = valNum < 5.7 ? "bg-tertiary/10 text-tertiary" : valNum < 6.5 ? "bg-orange-50 text-orange-700" : "bg-red-50 text-red-700";
+                } else if (fieldName.includes("Sugar")) {
+                  status = valNum < 100 ? "Normal" : "High";
+                  badgeColor = valNum < 100 ? "bg-tertiary/10 text-tertiary" : "bg-red-50 text-red-700";
+                } else if (fieldName.includes("TSH")) {
+                  unit = "uIU/mL";
+                  status = valNum >= 0.45 && valNum <= 4.5 ? "Normal" : "Out of Range";
+                  badgeColor = valNum >= 0.45 && valNum <= 4.5 ? "bg-tertiary/10 text-tertiary" : "bg-red-50 text-red-700";
+                } else if (fieldName.includes("Hemoglobin")) {
+                  unit = "g/dL";
+                  status = valNum >= 12 && valNum <= 17.5 ? "Optimal" : "Anemic";
+                  badgeColor = valNum >= 12 && valNum <= 17.5 ? "bg-tertiary/10 text-tertiary" : "bg-red-50 text-red-700";
+                }
+
+                return (
+                  <div key={fieldName} className="p-2.5 bg-surface-container-low rounded-xl flex flex-col justify-between min-h-[90px] border border-outline-variant/10">
+                    <span className="text-[8px] uppercase font-bold text-outline tracking-wider leading-tight h-5 flex items-center justify-center">
+                      {fieldName}
+                    </span>
+                    <div className="my-0.5">
+                      <span className="text-base font-bold text-secondary block leading-none">{fieldValue || "--"}</span>
+                      <span className="text-[8px] text-on-surface-variant block mt-0.5">{unit}</span>
+                    </div>
+                    <span className={`text-[8px] text-outline/80 font-bold py-0.5 rounded-md ${badgeColor}`}>
+                      {status}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
-            <span className="text-[8px] text-outline/80 font-bold bg-secondary/10 text-secondary py-0.5 rounded-md">Stable</span>
-          </div>
+          </section>
+        ))}
+      </div>
 
-          <div className="p-2.5 bg-surface-container-low rounded-xl flex flex-col justify-between min-h-[90px] border border-outline-variant/10">
-            <span className="text-[8px] uppercase font-bold text-outline tracking-wider leading-tight h-5 flex items-center justify-center">
-              LDL (Bad)
-            </span>
-            <div className="my-0.5">
-              <span className="text-base font-bold text-primary block leading-none">120</span>
-              <span className="text-[8px] text-on-surface-variant block mt-0.5">mg/dL</span>
-            </div>
-            <span className="text-[8px] text-outline/80 font-bold bg-primary/10 text-primary py-0.5 rounded-md">Borderline</span>
-          </div>
-        </div>
-      </section>
-
-      <PredictiveSearch onSelectItem={handleSearchSelect} />
-      <MedicineBox onOrder={() => {
-        setActiveTab("health");
-        if (typeof window !== "undefined") {
-          sessionStorage.setItem("medimz_open_modal", "add_medicine");
-        }
-      }} />
+      <MedicineBox
+        onEditMed={(medId) => {
+          const med = medicines.find(m => m.id === medId);
+          if (med) {
+            setEditingStockMedId(medId);
+            setEditingStockValue(med.stockCount !== undefined ? String(med.stockCount) : "30");
+          }
+        }}
+      />
 
       {/* Upload prescription modal */}
       {showUploadModal && (
@@ -853,17 +986,35 @@ export const DashboardView: React.FC = () => {
               </p>
 
               {!uploading && !extractedInfo && (
-                <label className="border-2 border-dashed border-outline-variant hover:border-primary rounded-2xl p-6 flex flex-col items-center justify-center gap-2 cursor-pointer bg-surface-container-low/40 transition-colors">
-                  <span className="material-symbols-outlined text-3xl text-secondary">cloud_upload</span>
-                  <span className="font-label-md text-xs text-on-surface font-bold">Click or drag prescription PDF/Image</span>
-                  <span className="text-[8px] text-outline uppercase font-bold tracking-tight">Max 10MB (PDF, PNG, JPG)</span>
-                  <input
-                    type="file"
-                    accept="image/*,application/pdf"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                  />
-                </label>
+                <div className="flex flex-col gap-3">
+                  <label className="border-2 border-dashed border-outline-variant hover:border-primary rounded-2xl p-6 flex flex-col items-center justify-center gap-2 cursor-pointer bg-surface-container-low/40 transition-colors">
+                    <span className="material-symbols-outlined text-3xl text-secondary">cloud_upload</span>
+                    <span className="font-label-md text-xs text-on-surface font-bold">Click or drag prescription PDF/Image</span>
+                    <span className="text-[8px] text-outline uppercase font-bold tracking-tight">Max 10MB (PDF, PNG, JPG)</span>
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                    />
+                  </label>
+                  <div className="flex items-center my-1">
+                    <div className="flex-grow h-[1px] bg-outline-variant/30"></div>
+                    <span className="px-3 text-[10px] text-outline font-bold uppercase tracking-wider">Or</span>
+                    <div className="flex-grow h-[1px] bg-outline-variant/30"></div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowUploadModal(false);
+                      resetAddReminderForm();
+                      setIsAddReminderOpen(true);
+                    }}
+                    className="w-full py-2.5 bg-surface-container hover:bg-surface-container-high border border-outline-variant/30 rounded-xl font-label-md text-xs text-secondary font-bold flex items-center justify-center gap-2 transition-all active:scale-98"
+                  >
+                    <span className="material-symbols-outlined text-sm">edit_note</span>
+                    <span>Add Manually by Typing Name</span>
+                  </button>
+                </div>
               )}
 
               {uploading && (
@@ -898,6 +1049,395 @@ export const DashboardView: React.FC = () => {
                   </button>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sync Family Modal */}
+      {showSyncModal && (
+        <div className="fixed inset-0 bg-inverse-surface/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-[400px] bg-white rounded-3xl p-6 shadow-2xl border border-outline-variant/30 flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-headline-md text-sm text-secondary font-bold flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-xl">diversity_1</span>
+                <span>Family Sync Hub</span>
+              </h3>
+              <button
+                onClick={() => setShowSyncModal(false)}
+                className="w-7 h-7 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center focus:outline-none"
+              >
+                <span className="material-symbols-outlined text-xs">close</span>
+              </button>
+            </div>
+
+            <div className="flex-grow space-y-4 text-left">
+              {/* Unique Family ID Display */}
+              <div className="p-4 bg-primary/5 rounded-2xl border border-primary/20 text-center space-y-1">
+                <span className="text-[9px] text-outline font-bold uppercase tracking-wider block">Your Unique Family ID</span>
+                <span className="font-headline-md text-xl font-extrabold text-primary tracking-widest">{familyId}</span>
+                <span className="text-[9px] text-on-surface-variant block mt-0.5">Share this ID to link other member portals</span>
+              </div>
+
+              {/* Send Invitation Form */}
+              <div className="space-y-2">
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Invite Family Member</label>
+                <div className="flex gap-2">
+                  <input
+                    type="email"
+                    placeholder="Enter email e.g. mom@family.com"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    className="flex-1 px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                  />
+                  <button
+                    onClick={() => {
+                      if (inviteEmail) {
+                        setInvitations(prev => [...prev, { email: inviteEmail, status: "Pending" }]);
+                        setInviteEmail("");
+                      }
+                    }}
+                    className="px-4 py-2 bg-primary text-on-primary font-bold rounded-xl text-xs hover:opacity-90 active:scale-95 transition-all shadow-sm"
+                  >
+                    Invite
+                  </button>
+                </div>
+              </div>
+
+              {/* Join Existing Family Portal Form */}
+              <div className="space-y-2 border-t border-outline-variant/15 pt-3">
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Join Existing Family Portal</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Enter Family ID (e.g. FAM-871239)"
+                    value={joinFamilyId}
+                    onChange={(e) => setJoinFamilyId(e.target.value)}
+                    className="flex-1 px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary uppercase"
+                  />
+                  <button
+                    onClick={() => {
+                      if (joinFamilyId.trim()) {
+                        setFamilyPortalActive(true);
+                        alert(`Successfully connected to Family Portal: ${joinFamilyId.toUpperCase()}`);
+                        setJoinFamilyId("");
+                        setShowSyncModal(false);
+                      }
+                    }}
+                    className="px-4 py-2 bg-tertiary text-white font-bold rounded-xl text-xs hover:opacity-90 active:scale-95 transition-all shadow-sm"
+                  >
+                    Join
+                  </button>
+                </div>
+              </div>
+
+              {/* Active / Pending Invitations List */}
+              <div className="space-y-2">
+                <h4 className="text-[10px] font-bold text-outline uppercase tracking-wider">Connections & Invitations</h4>
+                {invitations.length === 0 ? (
+                  <p className="text-[10px] text-on-surface-variant italic py-2">No active invitations. Invite a member above.</p>
+                ) : (
+                  <div className="divide-y divide-outline-variant/10 border border-outline-variant/10 rounded-xl overflow-hidden">
+                    {invitations.map((inv, idx) => (
+                      <div key={idx} className="p-3 bg-surface-container-low/20 flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <span className="font-bold text-xs text-secondary truncate block">{inv.email}</span>
+                          <span className="text-[9px] text-outline mt-0.5 block">Role: Care Recipient / Viewer</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[8px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${
+                            inv.status === "Joined" 
+                              ? "bg-tertiary/10 text-tertiary border border-tertiary/10" 
+                              : "bg-orange-50 text-orange-700 border border-orange-200"
+                          }`}>
+                            {inv.status}
+                          </span>
+                          {inv.status === "Pending" && (
+                            <button
+                              onClick={() => {
+                                setInvitations(prev => prev.map((item, i) => i === idx ? { ...item, status: "Joined" } : item));
+                                setFamilyPortalActive(true);
+                              }}
+                              className="px-2 py-1 bg-tertiary text-white rounded font-bold text-[9px] hover:opacity-90 active:scale-95 transition-all"
+                            >
+                              Simulate Accept
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Log Lab Report Modal */}
+      {showLogReportModal && (
+        <div className="fixed inset-0 bg-inverse-surface/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-[420px] bg-white rounded-3xl p-6 shadow-2xl border border-outline-variant/30 flex flex-col max-h-[85vh] overflow-y-auto animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-headline-md text-sm text-secondary font-bold flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-xl">file_upload</span>
+                <span>Log Lab Report</span>
+              </h3>
+              <button
+                onClick={() => {
+                  setShowLogReportModal(false);
+                  setCustomReportFields([]);
+                }}
+                className="w-7 h-7 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center focus:outline-none"
+              >
+                <span className="material-symbols-outlined text-xs">close</span>
+              </button>
+            </div>
+
+            <div className="space-y-4 text-left">
+              {/* Patient Selector */}
+              <div className="space-y-1">
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Patient Profile</label>
+                <select
+                  value={reportPatientId}
+                  onChange={(e) => setReportPatientId(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                >
+                  <option value="Myself">Myself (Sarah)</option>
+                  {familyMembers.map((fm) => (
+                    <option key={fm.id} value={fm.id}>{fm.name} ({fm.relationship})</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Test Category Selector */}
+              <div className="space-y-1">
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Test Category</label>
+                <select
+                  value={reportTestCategory}
+                  onChange={(e) => {
+                    const category = e.target.value;
+                    setReportTestCategory(category);
+                    const presets = {
+                      "Lipid Profile": ["Total Cholesterol", "HDL (Good)", "LDL (Bad)", "Triglycerides"],
+                      "Thyroid Profile": ["TSH", "Free T3", "Free T4"],
+                      "Diabetic Profile": ["HbA1c", "Fasting Blood Sugar", "Post-Prandial Sugar"],
+                      "Complete Blood Count (CBC)": ["Hemoglobin", "WBC Count", "Platelets", "RBC Count"]
+                    }[category] || [];
+                    const fields: Record<string, string> = {};
+                    presets.forEach(f => { fields[f] = ""; });
+                    setReportFields(fields);
+                  }}
+                  className="w-full px-3 py-2.5 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                >
+                  <option value="Lipid Profile">Lipid Profile</option>
+                  <option value="Thyroid Profile">Thyroid Profile</option>
+                  <option value="Diabetic Profile">Diabetic Profile</option>
+                  <option value="Complete Blood Count (CBC)">Complete Blood Count (CBC)</option>
+                </select>
+              </div>
+
+              {/* Date Input */}
+              <div className="space-y-1">
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Test Date</label>
+                <input
+                  type="date"
+                  value={reportDate}
+                  onChange={(e) => setReportDate(e.target.value)}
+                  className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                />
+              </div>
+
+              {/* Upload Report Block */}
+              <div className="space-y-1.5">
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Upload Lab Report File (Optional)</label>
+                <label className="border-2 border-dashed border-outline-variant hover:border-primary rounded-xl p-4 flex flex-col items-center justify-center gap-1 cursor-pointer bg-surface-container-low/40 transition-colors">
+                  <span className="material-symbols-outlined text-2xl text-secondary">cloud_upload</span>
+                  <span className="font-label-md text-[10px] text-on-surface font-bold">Upload PDF or Image</span>
+                  <input type="file" className="hidden" onChange={() => alert("File uploaded successfully. Proceeding with manual metadata entries.")} />
+                </label>
+              </div>
+
+              {/* Dynamic Fields Section */}
+              <div className="space-y-3 border-t border-outline-variant/15 pt-3">
+                <h4 className="text-[10px] font-bold text-outline uppercase tracking-wider mb-2">Test Parameters & Results</h4>
+                
+                <div className="grid grid-cols-2 gap-3">
+                  {Object.keys(reportFields).map((field) => (
+                    <div key={field} className="space-y-1">
+                      <label className="block text-[9px] font-bold text-secondary uppercase tracking-wider">{field}</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 120"
+                        value={reportFields[field] || ""}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setReportFields(prev => ({ ...prev, [field]: val }));
+                        }}
+                        className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                      />
+                    </div>
+                  ))}
+                  
+                  {/* Custom Parameter Fields */}
+                  {customReportFields.map((field, idx) => (
+                    <div key={idx} className="space-y-1">
+                      <label className="block text-[9px] font-bold text-secondary uppercase tracking-wider">{field.name}</label>
+                      <input
+                        type="text"
+                        value={field.value}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setCustomReportFields(prev => prev.map((item, i) => i === idx ? { ...item, value: val } : item));
+                        }}
+                        className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Custom Parameter Form */}
+              <div className="space-y-2 border-t border-outline-variant/15 pt-3">
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Add Custom Parameter (Not in presets)</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="e.g. VLDL, Vitamin D3"
+                    value={newCustomFieldName}
+                    onChange={(e) => setNewCustomFieldName(e.target.value)}
+                    className="flex-1 px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Value"
+                    value={newCustomFieldValue}
+                    onChange={(e) => setNewCustomFieldValue(e.target.value)}
+                    className="w-20 px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (newCustomFieldName.trim() && newCustomFieldValue.trim()) {
+                        setCustomReportFields(prev => [...prev, { name: newCustomFieldName, value: newCustomFieldValue }]);
+                        setNewCustomFieldName("");
+                        setNewCustomFieldValue("");
+                      }
+                    }}
+                    className="px-3 py-2 bg-surface-container hover:bg-surface-container-high border border-outline-variant/30 text-secondary font-bold rounded-xl text-xs"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+
+              {/* Save Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  const patientName = reportPatientId === "Myself"
+                    ? "Sarah (Myself)"
+                    : familyMembers.find(f => f.id === reportPatientId)?.name || "Family Member";
+
+                  const mergedFields: Record<string, string> = { ...reportFields };
+                  customReportFields.forEach(f => {
+                    if (f.name) mergedFields[f.name] = f.value;
+                  });
+
+                  setLoggedReports(prev => [
+                    {
+                      id: `rep-${Date.now()}`,
+                      category: reportTestCategory,
+                      patientName,
+                      date: reportDate ? new Date(reportDate).toLocaleDateString("en-US", { month: "short", year: "numeric" }) : "Today",
+                      fields: mergedFields
+                    },
+                    ...prev
+                  ]);
+
+                  const entries = Object.entries(mergedFields)
+                    .map(([k, v]) => `${k}: ${v}`)
+                    .join(", ");
+                  
+                  uploadReportPlaceholder(reportTestCategory, `Patient: ${patientName}. Date: ${reportDate}. Values: ${entries}`);
+                  
+                  setShowLogReportModal(false);
+                  setCustomReportFields([]);
+                  alert(`Successfully logged ${reportTestCategory} checkup for ${patientName}!`);
+                }}
+                className="w-full py-2.5 bg-primary text-on-primary font-bold rounded-xl text-xs hover:opacity-90 active:scale-95 transition-all shadow-md mt-4"
+              >
+                Save Report & Update Vitals
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* UPDATE STOCK INVENTORY MODAL */}
+      {editingStockMedId !== null && (
+        <div className="fixed inset-0 bg-inverse-surface/40 backdrop-blur-md z-[99] flex items-center justify-center p-4">
+          <div className="w-full max-w-[340px] bg-white rounded-3xl p-6 shadow-2xl border border-outline-variant/30 flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-headline-md text-sm text-secondary font-bold flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-xl">inventory_2</span>
+                <span>Update Stock Inventory</span>
+              </h3>
+              <button
+                onClick={() => {
+                  setEditingStockMedId(null);
+                  setEditingStockValue("");
+                }}
+                className="w-7 h-7 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center focus:outline-none"
+              >
+                <span className="material-symbols-outlined text-xs">close</span>
+              </button>
+            </div>
+
+            <div className="space-y-4 text-left">
+              <p className="text-xs text-on-surface-variant leading-relaxed">
+                Enter the remaining count for <strong className="text-secondary">{medicines.find(m => m.id === editingStockMedId)?.name}</strong>. This updates your stock status and refill alerts.
+              </p>
+
+              <div className="space-y-1">
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Remaining Doses</label>
+                <input
+                  type="number"
+                  min="0"
+                  required
+                  placeholder="e.g. 30"
+                  value={editingStockValue}
+                  onChange={(e) => setEditingStockValue(e.target.value)}
+                  className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary text-center font-bold"
+                />
+              </div>
+
+              <div className="flex gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingStockMedId(null);
+                    setEditingStockValue("");
+                  }}
+                  className="flex-1 py-2 bg-surface-container hover:bg-surface-container-high text-secondary font-bold rounded-xl text-xs transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newStockNum = parseInt(editingStockValue, 10);
+                    if (!isNaN(newStockNum)) {
+                      updateMedicineStock(editingStockMedId, newStockNum);
+                    }
+                    setEditingStockMedId(null);
+                    setEditingStockValue("");
+                  }}
+                  className="flex-1 py-2 bg-primary text-on-primary font-bold rounded-xl text-xs hover:opacity-90 active:scale-95 transition-all shadow-md"
+                >
+                  Update Stock
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -984,6 +1524,34 @@ export const DashboardView: React.FC = () => {
                     className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
                   />
                 </div>
+              </div>
+              
+              {/* Current Stock Input */}
+              <div className="space-y-1">
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Number of Medicines in Hand (Stock Count)</label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  placeholder="e.g. 30 (pills/doses)"
+                  value={newStockCount}
+                  onChange={(e) => setNewStockCount(e.target.value)}
+                  className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                />
+              </div>
+
+              {/* Keep Private Checkbox */}
+              <div className="space-y-1.5 p-3 rounded-2xl bg-orange-50/30 border border-orange-200/40 flex items-center justify-between">
+                <div>
+                  <label className="block text-[10px] font-bold text-secondary uppercase tracking-wider">Keep Private</label>
+                  <span className="text-[10px] text-on-surface-variant block">Do not share this medicine details on the family portal</span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={isPrivate}
+                  onChange={(e) => setIsPrivate(e.target.checked)}
+                  className="w-4 h-4 rounded text-primary focus:ring-primary border-outline-variant/50"
+                />
               </div>
 
               {/* Timing Slots */}

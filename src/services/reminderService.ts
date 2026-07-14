@@ -59,6 +59,7 @@ export const reminderService = {
     if (!isSupabaseConfigured) throw new Error("Supabase is not configured.");
 
     const dbPayload = reminders.map((r: any) => ({
+      id: crypto.randomUUID(),
       user_id: userId,
       medicine_id: r.medicineId,
       family_member_id: r.familyMemberId || null,
@@ -125,6 +126,7 @@ export const reminderService = {
     const { data, error } = await supabase
       .from("notifications")
       .insert({
+        id: crypto.randomUUID(),
         user_id: userId,
         title,
         message,
