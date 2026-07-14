@@ -96,7 +96,7 @@ export const HealthView: React.FC = () => {
       setEditMedName(r.medicineName);
       setEditDosage(r.dosage);
       setEditInstructions(r.instructions);
-      setEditSelectedTimings([r.timing]);
+      setEditSelectedTimings([r.timingSlot]);
       setEditStockCount("30");
       setEditIsPrivate(false);
       setEditFamilyMemberId(r.familyMemberId || "");
