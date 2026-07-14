@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from "react";
 import { useApp } from "../../context/AppContext";
-import { wellnessService } from "../../services/wellnessService";
 
 type ViewState = 'dashboard' | 'library' | 'detail' | 'session';
 
@@ -34,12 +33,10 @@ const EXERCISE_LIBRARY: Exercise[] = [
 
 const CATEGORIES = ['All', 'Yoga', 'Cardio', 'Walking', 'Meditation', 'Stretching', 'Breathing Exercises', 'Senior Wellness', 'Diabetes Support', 'BP Wellness', 'Thyroid Wellness'];
 
-export const WellnessView: React.FC = () => {
-  const { user, adherenceStreak, medicines } = useApp();
+export const WellnessView: React.FC<{ hideHero?: boolean }> = ({ hideHero = false }) => {
+  const { user, adherenceStreak } = useApp();
   
   const [viewState, setViewState] = useState<ViewState>('dashboard');
-  const [insights, setInsights] = useState<string[]>([]);
-  const [wellnessScore, setWellnessScore] = useState(0);
   
   // Library State
   const [activeCategory, setActiveCategory] = useState('All');
@@ -50,21 +47,6 @@ export const WellnessView: React.FC = () => {
   const [sessionTimeLeft, setSessionTimeLeft] = useState(0);
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [sessionProgress, setSessionProgress] = useState(0);
-  
-  useEffect(() => {
-    const condInsights = wellnessService.getConditionsInsights(medicines);
-    const score = wellnessService.getWellnessScore(adherenceStreak);
-    
-    // Placeholder AI insights
-    const enhancedInsights = [
-      ...condInsights,
-      "Morning walks may support your overall cardiovascular health.",
-      "A 5-minute meditation session could help lower stress levels tonight."
-    ];
-
-    setInsights(enhancedInsights);
-    setWellnessScore(score + 15 > 100 ? 100 : score + 15);
-  }, [medicines, adherenceStreak]);
 
   // Session Timer Logic
   useEffect(() => {
@@ -109,82 +91,46 @@ export const WellnessView: React.FC = () => {
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-24">
       
       {/* Hero Wellness AI Banner with Animated Gradients */}
-      <section className="relative overflow-hidden rounded-3xl p-6 shadow-lg border border-white/20 bg-gradient-to-br from-tertiary-container/80 via-surface to-primary-container/40">
-        <div className="absolute inset-0 opacity-10 mix-blend-overlay pointer-events-none bg-dots-pattern"></div>
-        <div className="absolute top-0 right-0 w-64 h-64 bg-primary/20 rounded-full blur-3xl animate-pulse pointer-events-none transform translate-x-1/2 -translate-y-1/2"></div>
-        <div className="absolute bottom-0 left-0 w-48 h-48 bg-tertiary/20 rounded-full blur-3xl animate-pulse pointer-events-none transform -translate-x-1/2 translate-y-1/2" style={{ animationDelay: '1s' }}></div>
-        
-        <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-6">
-          <div className="flex gap-5 items-start w-full">
-            <div className="w-14 h-14 rounded-2xl bg-white/40 backdrop-blur-md text-tertiary flex items-center justify-center flex-shrink-0 shadow-sm border border-white/50">
-              <span className="material-symbols-outlined text-3xl font-bold">spa</span>
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <h2 className="font-headline-md text-xl text-secondary font-bold tracking-tight">Morning, {user?.fullName?.split(" ")[0] || "there"}</h2>
-                <span className="bg-primary/10 text-primary text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider flex items-center gap-1">
-                  <span className="material-symbols-outlined text-[10px]">auto_awesome</span> AI Sync
-                </span>
+      {!hideHero && (
+        <section className="relative overflow-hidden rounded-3xl p-6 shadow-lg border border-white/20 bg-gradient-to-br from-tertiary-container/80 via-surface to-primary-container/40">
+          <div className="absolute inset-0 opacity-10 mix-blend-overlay pointer-events-none bg-dots-pattern"></div>
+          <div className="absolute top-0 right-0 w-64 h-64 bg-primary/20 rounded-full blur-3xl animate-pulse pointer-events-none transform translate-x-1/2 -translate-y-1/2"></div>
+          <div className="absolute bottom-0 left-0 w-48 h-48 bg-tertiary/20 rounded-full blur-3xl animate-pulse pointer-events-none transform -translate-x-1/2 translate-y-1/2" style={{ animationDelay: '1s' }}></div>
+          
+          <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-6">
+            <div className="flex gap-5 items-start w-full">
+              <div className="w-14 h-14 rounded-2xl bg-white/40 backdrop-blur-md text-tertiary flex items-center justify-center flex-shrink-0 shadow-sm border border-white/50">
+                <span className="material-symbols-outlined text-3xl font-bold">spa</span>
               </div>
-              <p className="font-body-md text-sm text-on-surface-variant leading-relaxed opacity-90 max-w-md">
-                "Small daily habits create incredible lifelong health." Let's build your wellness routine today.
-              </p>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <h2 className="font-headline-md text-xl text-secondary font-bold tracking-tight">Morning, {user?.fullName?.split(" ")[0] || "there"}</h2>
+                  <span className="bg-primary/10 text-primary text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[10px]">auto_awesome</span> AI Sync
+                  </span>
+                </div>
+                <p className="font-body-md text-sm text-on-surface-variant leading-relaxed opacity-90 max-w-md">
+                  "Small daily habits create incredible lifelong health." Let's build your wellness routine today.
+                </p>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* Wellness Metrics & Streak System */}
-      <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {/* Score Card */}
-        <div className="glass-card rounded-3xl p-5 shadow-sm border border-outline-variant/20 flex flex-col items-center justify-center text-center gap-3 relative overflow-hidden group hover:-translate-y-1 transition-transform duration-300">
-          <div className="absolute inset-0 bg-gradient-to-t from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-          <div className="relative w-20 h-20 flex items-center justify-center">
-            <svg className="w-full h-full -rotate-90">
-              <circle cx="40" cy="40" r="34" fill="transparent" stroke="currentColor" strokeWidth="8" className="text-surface-container-highest" />
-              <circle cx="40" cy="40" r="34" fill="transparent" stroke="currentColor" strokeWidth="8" strokeDasharray={2 * Math.PI * 34} strokeDashoffset={2 * Math.PI * 34 * (1 - wellnessScore / 100)} className="text-primary drop-shadow-[0_0_8px_rgba(var(--color-primary),0.5)] transition-all duration-1000 ease-out" strokeLinecap="round" />
-            </svg>
-            <div className="absolute flex flex-col items-center justify-center">
-              <span className="text-2xl font-black text-on-background">{wellnessScore}</span>
-            </div>
-          </div>
-          <div>
-            <h3 className="font-label-md text-sm font-bold text-secondary">Wellness Score</h3>
-            <p className="text-[10px] text-outline">Top 15% today</p>
-          </div>
-        </div>
-
-        {/* Streak Card */}
-        <div className="glass-card rounded-3xl p-5 shadow-sm border border-outline-variant/20 flex flex-col justify-between relative overflow-hidden group hover:-translate-y-1 transition-transform duration-300">
-          <div className="absolute -right-4 -top-4 w-24 h-24 bg-error/10 rounded-full blur-2xl group-hover:bg-error/20 transition-colors duration-500"></div>
-          <div className="w-10 h-10 rounded-2xl bg-error/10 text-error flex items-center justify-center mb-4">
-            <span className="material-symbols-outlined text-xl">local_fire_department</span>
-          </div>
-          <div className="relative z-10">
-            <div className="flex items-end gap-1 mb-1">
-              <span className="text-3xl font-black text-secondary">{adherenceStreak}</span>
-              <span className="text-sm font-bold text-secondary mb-1">Days</span>
-            </div>
-            <h3 className="font-label-md text-sm font-bold text-on-surface-variant">Consistency Streak</h3>
-            <div className="flex gap-1 mt-2">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className={`h-1.5 flex-1 rounded-full ${i < 4 ? 'bg-error' : 'bg-surface-container-highest'}`}></div>
-              ))}
-            </div>
-          </div>
-        </div>
-
+      <section className="grid grid-cols-1 gap-4">
         {/* Action / CTA Card to Library */}
         <div 
           onClick={() => setViewState('library')}
-          className="col-span-2 glass-card rounded-3xl p-6 shadow-md border border-tertiary/30 bg-gradient-to-r from-tertiary/10 to-transparent flex flex-col justify-center cursor-pointer group hover:-translate-y-1 hover:shadow-lg transition-all duration-300 overflow-hidden relative"
+          className="glass-card rounded-3xl p-6 shadow-md border border-tertiary/30 bg-gradient-to-r from-tertiary/10 to-transparent flex flex-col justify-center cursor-pointer group hover:-translate-y-1 hover:shadow-lg transition-all duration-300 overflow-hidden relative"
         >
           <div className="absolute right-0 top-0 h-full w-1/2 bg-gradient-to-l from-white/20 to-transparent transform translate-x-full group-hover:-translate-x-0 transition-transform duration-700 ease-out"></div>
           <div className="flex justify-between items-center relative z-10">
             <div>
-              <span className="text-[10px] text-tertiary font-bold uppercase tracking-widest mb-1 block">Explore</span>
-              <h3 className="font-headline-md text-xl text-secondary font-black">Exercise Library</h3>
-              <p className="text-xs text-on-surface-variant mt-1">Discover guided routines tailored for you.</p>
+              <span className="text-[10px] text-tertiary font-bold uppercase tracking-widest mb-1 block text-left">Explore</span>
+              <h3 className="font-headline-md text-xl text-secondary font-black text-left">Exercise Library</h3>
+              <p className="text-xs text-on-surface-variant mt-1 text-left">Discover guided routines tailored for you.</p>
             </div>
             <div className="w-12 h-12 rounded-full bg-white shadow-sm flex items-center justify-center text-tertiary group-hover:scale-110 transition-transform duration-300">
               <span className="material-symbols-outlined">arrow_forward</span>
@@ -193,44 +139,7 @@ export const WellnessView: React.FC = () => {
         </div>
       </section>
 
-      {/* AI Wellness Insights */}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="font-headline-md text-lg text-secondary font-bold flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary">tips_and_updates</span>
-            AI Insights
-          </h3>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {insights.slice(0, 4).map((insight, idx) => (
-            <div key={idx} className="glass-card rounded-2xl p-4 border border-outline-variant/10 hover:border-primary/30 transition-colors flex gap-4 items-start group">
-              <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center flex-shrink-0 group-hover:bg-primary group-hover:text-white transition-colors duration-300">
-                <span className="material-symbols-outlined text-lg">psychiatry</span>
-              </div>
-              <p className="font-body-md text-sm text-on-surface leading-relaxed mt-1">{insight}</p>
-            </div>
-          ))}
-        </div>
-      </section>
 
-      {/* Family Wellness Mode */}
-      <section className="mt-8 mb-8">
-        <div className="rounded-3xl p-6 border border-secondary/10 bg-secondary/5 relative overflow-hidden">
-          <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-secondary/10 rounded-full blur-3xl"></div>
-          <div className="flex flex-col md:flex-row gap-6 items-center relative z-10">
-            <div className="w-16 h-16 rounded-full bg-white shadow-md flex items-center justify-center text-secondary flex-shrink-0">
-              <span className="material-symbols-outlined text-3xl">family_home</span>
-            </div>
-            <div className="flex-1 text-center md:text-left">
-              <h3 className="font-headline-md text-lg text-secondary font-bold">Family Wellness Mode</h3>
-              <p className="font-body-md text-sm text-on-surface-variant mt-1 mb-3">Sync health goals and track wellness streaks together with your loved ones.</p>
-              <button className="px-5 py-2 bg-white text-secondary font-bold text-xs rounded-full shadow-sm hover:shadow-md transition-shadow">
-                Invite Family
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
 
     </div>
   );

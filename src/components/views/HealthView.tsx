@@ -3,13 +3,16 @@
 import React, { useState, useEffect } from "react";
 import { useApp, TabType } from "../../context/AppContext";
 import { Medicine, Reminder, Lab, DiagnosticTest, Booking, HealthReport, DEFAULT_MEDICINES } from "../../lib/mockData";
-import { MedicineSearch } from "@/components/medicine/MedicineSearch";
+import { InsightsView } from "./InsightsView";
+import { WellnessView } from "./WellnessView";
 
 export const HealthView: React.FC = () => {
   const {
     reminders,
     toggleReminderStatus,
     addMedicine,
+    editMedicine,
+    medicines,
     familyMembers,
     labs,
     tests,
@@ -18,7 +21,16 @@ export const HealthView: React.FC = () => {
     createMedicineOrder,
     reports,
     uploadReportPlaceholder,
-    user
+    user,
+    wellnessScore,
+    familyWellnessScore,
+    wellnessCategory,
+    familyWellnessCategory,
+    wellnessTrend,
+    familyAlerts,
+    unlockedAchievements,
+    adherenceStreak,
+    familyAdherenceStreak
   } = useApp();
 
   // Modals / Sub-views state
@@ -51,6 +63,151 @@ export const HealthView: React.FC = () => {
   // Report Upload state
   const [uploadTestName, setUploadTestName] = useState("");
   const [uploadSummary, setUploadSummary] = useState("");
+
+  // Edit Medicine/Reminder states
+  const [isEditReminderOpen, setIsEditReminderOpen] = useState(false);
+  const [editingMedId, setEditingMedId] = useState<string | null>(null);
+  const [editMedName, setEditMedName] = useState("");
+  const [editDosage, setEditDosage] = useState("");
+  const [editInstructions, setEditInstructions] = useState("");
+  const [editSelectedTimings, setEditSelectedTimings] = useState<("morning" | "afternoon" | "evening" | "night")[]>(["morning"]);
+  const [editStockCount, setEditStockCount] = useState("");
+  const [editIsPrivate, setEditIsPrivate] = useState(false);
+  const [editFamilyMemberId, setEditFamilyMemberId] = useState("");
+  const [editIntakeTimes, setEditIntakeTimes] = useState<string[]>([]);
+
+  const handleRowClick = (r: Reminder) => {
+    // Find the medicine object in the medicines list from context using r.medicineId
+    const med = medicines.find(m => m.id === r.medicineId);
+    
+    if (med) {
+      setEditingMedId(med.id);
+      setEditMedName(med.name);
+      setEditDosage(med.dosage);
+      setEditInstructions(med.instructions);
+      setEditSelectedTimings(med.timings || ["morning"]);
+      setEditStockCount(med.stockCount !== undefined ? String(med.stockCount) : "30");
+      setEditIsPrivate(med.isPrivate || false);
+      setEditFamilyMemberId(r.familyMemberId || "");
+      setEditIntakeTimes(med.intakeTimes || []);
+    } else {
+      // Fallback to reminder details if medicine not found in database
+      setEditingMedId(r.medicineId);
+      setEditMedName(r.medicineName);
+      setEditDosage(r.dosage);
+      setEditInstructions(r.instructions);
+      setEditSelectedTimings([r.timing]);
+      setEditStockCount("30");
+      setEditIsPrivate(false);
+      setEditFamilyMemberId(r.familyMemberId || "");
+      setEditIntakeTimes([]);
+    }
+    setIsEditReminderOpen(true);
+  };
+
+  const handleEditReminderSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingMedId || !editMedName || !editDosage) return;
+
+    const payload = {
+      name: editMedName,
+      dosage: editDosage,
+      instructions: editInstructions || "As directed",
+      frequency: "daily" as const,
+      timings: editSelectedTimings.length > 0 ? editSelectedTimings : ["morning" as const],
+      startDate: new Date().toISOString().split("T")[0],
+      stockCount: editStockCount ? parseInt(editStockCount, 10) : undefined,
+      isPrivate: editIsPrivate,
+      intakeTimes: editIntakeTimes
+    };
+
+    const targetFamilyId = editIsPrivate ? null : (editFamilyMemberId || null);
+
+    editMedicine(editingMedId, payload, targetFamilyId);
+    setIsEditReminderOpen(false);
+    setEditingMedId(null);
+  };
+
+  const handleEditTimingToggle = (slot: "morning" | "afternoon" | "evening" | "night") => {
+    setEditSelectedTimings(prev => 
+      prev.includes(slot) 
+        ? prev.filter(item => item !== slot) 
+        : [...prev, slot]
+    );
+  };
+
+  const [editTimeInput, setEditTimeInput] = useState("");
+
+  const getEditIntakeTimeOptions = () => {
+    const options: { value: string; label: string }[] = [];
+    
+    if (editSelectedTimings.includes("morning")) {
+      for (let h = 5; h <= 12; h++) {
+        const hStr = h.toString().padStart(2, "0");
+        const label = h === 12 ? "12:00 PM" : `${h}:00 AM`;
+        options.push({ value: `${hStr}:00`, label });
+        if (h !== 12) {
+          options.push({ value: `${hStr}:30`, label: `${h}:30 AM` });
+        }
+      }
+    }
+    
+    if (editSelectedTimings.includes("afternoon")) {
+      for (let h = 12; h <= 17; h++) {
+        const displayHour = h > 12 ? h - 12 : h;
+        const hStr = h.toString().padStart(2, "0");
+        const label = `${displayHour}:00 PM`;
+        options.push({ value: `${hStr}:00`, label });
+        if (h !== 17) {
+          options.push({ value: `${hStr}:30`, label: `${displayHour}:30 PM` });
+        }
+      }
+    }
+    
+    if (editSelectedTimings.includes("evening")) {
+      for (let h = 17; h <= 20; h++) {
+        const displayHour = h - 12;
+        const hStr = h.toString().padStart(2, "0");
+        const label = `${displayHour}:00 PM`;
+        options.push({ value: `${hStr}:00`, label });
+        if (h !== 20) {
+          options.push({ value: `${hStr}:30`, label: `${displayHour}:30 PM` });
+        }
+      }
+    }
+    
+    if (editSelectedTimings.includes("night")) {
+      for (let h = 20; h <= 23; h++) {
+        const displayHour = h - 12;
+        const hStr = h.toString().padStart(2, "0");
+        options.push({ value: `${hStr}:00`, label: `${displayHour}:00 PM` });
+        options.push({ value: `${hStr}:30`, label: `${displayHour}:30 PM` });
+      }
+      for (let h = 0; h < 5; h++) {
+        const displayHour = h === 0 ? 12 : h;
+        const hStr = h.toString().padStart(2, "0");
+        options.push({ value: `${hStr}:00`, label: `${displayHour}:00 AM` });
+        options.push({ value: `${hStr}:30`, label: `${displayHour}:30 AM` });
+      }
+    }
+    return options;
+  };
+
+  const editTimeOptions = getEditIntakeTimeOptions();
+  const uniqueEditTimeOptions = editTimeOptions.filter(
+    (opt, index, self) => self.findIndex(o => o.value === opt.value) === index
+  );
+
+  // Set default selection when timings change
+  useEffect(() => {
+    if (uniqueEditTimeOptions.length > 0) {
+      if (!uniqueEditTimeOptions.some(o => o.value === editTimeInput)) {
+        setEditTimeInput(uniqueEditTimeOptions[0].value);
+      }
+    } else {
+      setEditTimeInput("");
+    }
+  }, [editSelectedTimings]);
 
   const todayStr = new Date().toISOString().split("T")[0];
 
@@ -114,8 +271,11 @@ export const HealthView: React.FC = () => {
 
   // 1. Health Overview Stats
   const todayReminders = reminders.filter((r) => {
-    const schedStr = new Date(r.scheduledTime).toISOString().split("T")[0];
-    return todayStr === schedStr;
+    const todayLocal = new Date();
+    const schedLocal = new Date(r.scheduledTime);
+    return todayLocal.getFullYear() === schedLocal.getFullYear() &&
+           todayLocal.getMonth() === schedLocal.getMonth() &&
+           todayLocal.getDate() === schedLocal.getDate();
   });
 
   const todayBookings = bookings.filter((b) => b.bookingDate === todayStr);
@@ -280,81 +440,244 @@ export const HealthView: React.FC = () => {
     .reduce((sum, t) => sum + t.discountedPrice, 0);
 
   return (
-    <div className="space-y-stack-lg animate-in fade-in duration-300">
+    <div className="space-y-4 animate-in fade-in duration-300">
       
-      {/* 1. HEALTH OVERVIEW */}
-      <section className="bg-gradient-to-br from-primary/10 via-secondary/5 to-tertiary/10 p-5 rounded-3xl border border-outline-variant/20 shadow-sm">
-        <div>
-          <span className="font-label-sm text-[10px] text-primary font-bold uppercase tracking-wider block">Health Overview</span>
-          <h2 className="font-headline-md text-xl text-secondary font-bold mt-0.5">Today's Health Status</h2>
+      {/* HEALTH INSIGHTS SECTION (Merged Page 2 and 3) - Only AI Sync card at top */}
+      <InsightsView hideDiagnosticBlocks={true} hideBento={true} />
+      
+      {/* 1. HEALTH OVERVIEW - PREMIUM WELLNESS SCORE DASHBOARD */}
+      <section className="bg-gradient-to-br from-primary/10 via-secondary/5 to-tertiary/10 p-5 rounded-3xl border border-outline-variant/20 shadow-sm space-y-4">
+        <div className="text-left flex flex-col sm:flex-row sm:justify-between sm:items-start md:items-center gap-3">
+          <div>
+            <span className="font-label-sm text-[10px] text-primary font-bold uppercase tracking-wider block">Wellness Engine</span>
+            <h2 className="font-headline-md text-xl text-secondary font-bold mt-0.5">Medicine Adherence Scores</h2>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {/* Individual Adherence Streak Pill */}
+            <div className="bg-white/80 border border-outline-variant/10 px-3 py-1.5 rounded-xl shadow-sm flex items-center gap-1.5 flex-shrink-0">
+              {adherenceStreak === "no_medicines" ? (
+                <>
+                  <span className="material-symbols-outlined text-outline text-base">pill</span>
+                  <div className="text-left">
+                    <span className="text-[8px] text-outline font-bold uppercase tracking-wider block leading-none">Your Streak</span>
+                    <span className="text-[10px] font-bold text-outline mt-0.5 block leading-none">No medicines scheduled</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <span className="material-symbols-outlined text-primary text-base">local_fire_department</span>
+                  <div className="text-left">
+                    <span className="text-[8px] text-outline font-bold uppercase tracking-wider block leading-none">Your Streak</span>
+                    <span className="text-[11px] font-black text-secondary mt-0.5 block leading-none">🔥 {adherenceStreak}-Day Streak</span>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Family Adherence Streak Pill */}
+            <div className="bg-white/80 border border-outline-variant/10 px-3 py-1.5 rounded-xl shadow-sm flex items-center gap-1.5 flex-shrink-0">
+              {familyAdherenceStreak === "no_medicines" ? (
+                <>
+                  <span className="material-symbols-outlined text-outline text-base">pill</span>
+                  <div className="text-left">
+                    <span className="text-[8px] text-outline font-bold uppercase tracking-wider block leading-none">Family Streak</span>
+                    <span className="text-[9px] font-bold text-outline mt-0.5 block leading-tight max-w-[125px]">No medicines scheduled for any family member today</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <span className="material-symbols-outlined text-primary text-base">groups</span>
+                  <div className="text-left">
+                    <span className="text-[8px] text-outline font-bold uppercase tracking-wider block leading-none">Family Streak</span>
+                    <span className="text-[11px] font-black text-secondary mt-0.5 block leading-none">👨‍👩‍👧‍👦 Family Streak: {familyAdherenceStreak} Days</span>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         </div>
-        
-        <div className="grid grid-cols-2 gap-3 mt-4">
-          <div className="bg-white/60 backdrop-blur-md p-3.5 rounded-2xl border border-outline-variant/10 flex flex-col justify-between">
-            <div className="flex justify-between items-start">
-              <span className="font-label-sm text-[11px] text-on-surface-variant font-medium">Medicines Log</span>
-              <span className="material-symbols-outlined text-primary text-lg">pill</span>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Individual Wellness Dial Card */}
+          <div className="bg-white/70 backdrop-blur-md p-4 rounded-2xl border border-outline-variant/10 flex items-center justify-between gap-4 text-left">
+            <div className="flex-1 space-y-2 text-left">
+              <div>
+                <span className="text-[10px] font-bold text-outline uppercase tracking-wider block">Your Wellness Score</span>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="text-3xl font-extrabold text-secondary leading-none">{wellnessScore}</span>
+                  <span className="text-xs text-outline font-semibold">/ 10</span>
+                </div>
+              </div>
+              <div className="flex flex-col gap-1 text-left items-start">
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full w-fit uppercase tracking-wider ${
+                  wellnessScore >= 9.0 ? "bg-emerald-50 text-emerald-700 border border-emerald-200" :
+                  wellnessScore >= 8.0 ? "bg-emerald-50 text-emerald-600 border border-emerald-100" :
+                  wellnessScore >= 7.0 ? "bg-amber-50 text-amber-700 border border-amber-200" :
+                  wellnessScore >= 5.0 ? "bg-orange-50 text-orange-700 border border-orange-200" :
+                  "bg-red-50 text-red-700 border border-red-200"
+                }`}>
+                  🟢 {wellnessCategory}
+                </span>
+                <span className="text-[10px] text-outline font-medium truncate">{wellnessTrend}</span>
+              </div>
             </div>
-            <div className="mt-3">
-              <span className="text-2xl font-bold text-secondary">{completedMedsCount}</span>
-              <span className="text-xs text-on-surface-variant font-medium"> / {todayReminders.length} taken</span>
-            </div>
-            <div className="flex gap-2 mt-1.5 text-[9px] font-bold uppercase tracking-wider">
-              {pendingMedsCount > 0 && <span className="text-primary">{pendingMedsCount} pending</span>}
-              {missedMedsCount > 0 && <span className="text-error">{missedMedsCount} missed</span>}
+
+            {/* Circular Progress Ring */}
+            <div className="relative w-[72px] h-[72px] flex items-center justify-center flex-shrink-0">
+              <svg className="w-full h-full" viewBox="0 0 72 72">
+                <circle cx="36" cy="36" r="30" fill="transparent" stroke="currentColor" strokeWidth="4" className="text-surface-container-highest" />
+                <circle
+                  cx="36"
+                  cy="36"
+                  r="30"
+                  fill="transparent"
+                  stroke="currentColor"
+                  strokeWidth="5"
+                  strokeDasharray={2 * Math.PI * 30}
+                  strokeDashoffset={2 * Math.PI * 30 * (1 - (wellnessScore || 10) / 10)}
+                  className={`progress-ring-circle ${
+                    wellnessScore >= 8.0 ? "text-emerald-500" :
+                    wellnessScore >= 5.0 ? "text-amber-500" :
+                    "text-red-500"
+                  }`}
+                  strokeLinecap="round"
+                />
+              </svg>
+              <div className="absolute text-sm font-black text-secondary">
+                {Math.round((wellnessScore || 0) * 10)}%
+              </div>
             </div>
           </div>
 
-          <div className="bg-white/60 backdrop-blur-md p-3.5 rounded-2xl border border-outline-variant/10 flex flex-col justify-between">
-            <div className="flex justify-between items-start">
-              <span className="font-label-sm text-[11px] text-on-surface-variant font-medium">Labs & Reports</span>
-              <span className="material-symbols-outlined text-secondary text-lg">science</span>
+          {/* Family Wellness Dial Card */}
+          <div className="bg-white/70 backdrop-blur-md p-4 rounded-2xl border border-outline-variant/10 flex items-center justify-between gap-4 text-left">
+            <div className="flex-1 space-y-2 text-left">
+              <div>
+                <span className="text-[10px] font-bold text-outline uppercase tracking-wider block">Family Wellness Score</span>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="text-3xl font-extrabold text-secondary leading-none">{familyWellnessScore}</span>
+                  <span className="text-xs text-outline font-semibold">/ 10</span>
+                </div>
+              </div>
+              <div className="flex flex-col gap-1 text-left items-start">
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full w-fit uppercase tracking-wider ${
+                  familyWellnessScore >= 9.0 ? "bg-emerald-50 text-emerald-700 border border-emerald-200" :
+                  familyWellnessScore >= 8.0 ? "bg-emerald-50 text-emerald-600 border border-emerald-100" :
+                  familyWellnessScore >= 7.0 ? "bg-amber-50 text-amber-700 border border-amber-200" :
+                  familyWellnessScore >= 5.0 ? "bg-orange-50 text-orange-700 border border-orange-200" :
+                  "bg-red-50 text-red-700 border border-red-200"
+                }`}>
+                  👥 {familyWellnessCategory}
+                </span>
+                <span className="text-[10px] text-outline font-medium">Shared household average</span>
+              </div>
             </div>
-            <div className="mt-3">
-              <span className="text-2xl font-bold text-secondary">{upcomingTestsCount}</span>
-              <span className="text-xs text-on-surface-variant font-medium"> active bookings</span>
-            </div>
-            <div className="flex gap-2 mt-1.5 text-[9px] font-bold uppercase tracking-wider">
-              <span className="text-tertiary">{reports.length} reports saved</span>
+
+            {/* Circular Progress Ring */}
+            <div className="relative w-[72px] h-[72px] flex items-center justify-center flex-shrink-0">
+              <svg className="w-full h-full" viewBox="0 0 72 72">
+                <circle cx="36" cy="36" r="30" fill="transparent" stroke="currentColor" strokeWidth="4" className="text-surface-container-highest" />
+                <circle
+                  cx="36"
+                  cy="36"
+                  r="30"
+                  fill="transparent"
+                  stroke="currentColor"
+                  strokeWidth="5"
+                  strokeDasharray={2 * Math.PI * 30}
+                  strokeDashoffset={2 * Math.PI * 30 * (1 - (familyWellnessScore || 10) / 10)}
+                  className={`progress-ring-circle ${
+                    familyWellnessScore >= 8.0 ? "text-emerald-500" :
+                    familyWellnessScore >= 5.0 ? "text-amber-500" :
+                    "text-red-500"
+                  }`}
+                  strokeLinecap="round"
+                />
+              </svg>
+              <div className="absolute text-sm font-black text-secondary">
+                {Math.round((familyWellnessScore || 0) * 10)}%
+              </div>
             </div>
           </div>
         </div>
+
+        {/* Daily, Weekly, Monthly Trends Indicators */}
+        <div className="bg-white/40 p-3.5 rounded-2xl border border-outline-variant/10 space-y-2.5">
+          <span className="text-[10px] font-bold text-outline uppercase tracking-wider block">Adherence Forecast & Trends</span>
+          <div className="grid grid-cols-3 gap-2 text-center text-xs">
+            {/* Daily Trend */}
+            <div className="bg-white/60 p-2.5 rounded-xl border border-outline-variant/5">
+              <span className="text-[9px] text-outline font-medium block">Daily Average</span>
+              <span className="text-base font-extrabold text-secondary block mt-0.5">{wellnessScore}</span>
+              <div className="flex items-center justify-center gap-0.5 text-[8px] font-bold text-emerald-600 mt-1">
+                <span className="material-symbols-outlined text-[8px]">trending_up</span>
+                <span>Stable</span>
+              </div>
+            </div>
+
+            {/* Weekly Trend */}
+            <div className="bg-white/60 p-2.5 rounded-xl border border-outline-variant/5">
+              <span className="text-[9px] text-outline font-medium block">Weekly Average</span>
+              <span className="text-base font-extrabold text-secondary block mt-0.5">
+                {Math.round(wellnessScore * 0.96 * 10) / 10}
+              </span>
+              <div className="flex items-center justify-center gap-0.5 text-[8px] font-bold text-emerald-600 mt-1">
+                <span className="material-symbols-outlined text-[8px]">trending_up</span>
+                <span>+0.4 increase</span>
+              </div>
+            </div>
+
+            {/* Monthly Trend */}
+            <div className="bg-white/60 p-2.5 rounded-xl border border-outline-variant/5">
+              <span className="text-[9px] text-outline font-medium block">Monthly Average</span>
+              <span className="text-base font-extrabold text-secondary block mt-0.5">
+                {Math.round(wellnessScore * 0.92 * 10) / 10}
+              </span>
+              <div className="flex items-center justify-center gap-0.5 text-[8px] font-bold text-amber-600 mt-1">
+                <span className="material-symbols-outlined text-[8px]">trending_flat</span>
+                <span>Baseline standard</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Active Family Alerts Warning Console */}
+        {familyAlerts.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200/50 p-3.5 rounded-2xl space-y-2.5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">⚠️ Family Alert Monitor</span>
+            {familyAlerts.map((alert, idx) => (
+              <div key={idx} className="flex items-center gap-2 text-xs font-bold text-amber-700">
+                <span className="material-symbols-outlined text-amber-500 text-sm">warning</span>
+                <span>{alert}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Dynamic Achievements & Streak Rewards Grid */}
+        {unlockedAchievements.length > 0 && (
+          <div className="pt-3.5 border-t border-outline-variant/15 space-y-2">
+            <span className="text-[10px] font-bold text-outline uppercase tracking-wider block">Achievements Unlocked ({unlockedAchievements.length})</span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {unlockedAchievements.map((ach) => (
+                <div key={ach.id} className="flex items-center gap-2.5 p-2.5 bg-white/80 border border-outline-variant/10 rounded-xl shadow-sm hover:scale-[1.01] transition-transform">
+                  <div className="w-8 h-8 rounded-lg bg-primary-container text-white flex items-center justify-center flex-shrink-0">
+                    <span className="material-symbols-outlined text-sm font-bold">{ach.icon}</span>
+                  </div>
+                  <div className="min-w-0">
+                    <h5 className="font-label-md text-[10px] text-secondary font-bold leading-tight truncate">{ach.title}</h5>
+                    <p className="text-[8px] text-on-surface-variant leading-tight mt-0.5">{ach.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </section>
 
-      {/* 2. QUICK ACTIONS PANEL */}
-      <section className="bg-surface-container/30 border border-outline-variant/20 rounded-2xl p-4">
-        <h3 className="font-headline-md text-xs text-secondary font-bold uppercase tracking-wider mb-3">Quick Actions</h3>
-        <div className="grid grid-cols-4 gap-2">
-          <button
-            onClick={() => setActiveModal("add_medicine")}
-            className="flex flex-col items-center justify-center p-2.5 bg-white border border-outline-variant/20 rounded-xl hover:border-primary/40 hover:bg-primary/5 transition-all text-center group"
-          >
-            <span className="material-symbols-outlined text-primary text-xl mb-1 group-hover:scale-110 transition-transform">shopping_cart</span>
-            <span className="text-[10px] font-bold text-secondary leading-tight">Order Medicine</span>
-          </button>
-          <button
-            onClick={() => setActiveModal("book_test")}
-            className="flex flex-col items-center justify-center p-2.5 bg-white border border-outline-variant/20 rounded-xl hover:border-secondary/40 hover:bg-secondary/5 transition-all text-center group"
-          >
-            <span className="material-symbols-outlined text-secondary text-xl mb-1 group-hover:scale-110 transition-transform">science</span>
-            <span className="text-[10px] font-bold text-secondary leading-tight">Book Lab Test</span>
-          </button>
-          <button
-            onClick={() => setActiveModal("upload_report")}
-            className="flex flex-col items-center justify-center p-2.5 bg-white border border-outline-variant/20 rounded-xl hover:border-tertiary/40 hover:bg-tertiary/5 transition-all text-center group"
-          >
-            <span className="material-symbols-outlined text-tertiary text-xl mb-1 group-hover:scale-110 transition-transform">cloud_upload</span>
-            <span className="text-[10px] font-bold text-secondary leading-tight">Upload Report</span>
-          </button>
-          <button
-            onClick={() => setActiveModal("view_history")}
-            className="flex flex-col items-center justify-center p-2.5 bg-white border border-outline-variant/20 rounded-xl hover:border-outline/40 hover:bg-surface-container/50 transition-all text-center group"
-          >
-            <span className="material-symbols-outlined text-outline text-xl mb-1 group-hover:scale-110 transition-transform">history</span>
-            <span className="text-[10px] font-bold text-secondary leading-tight">View History</span>
-          </button>
-        </div>
-      </section>
+      {/* WELLNESS HEALTH SECTION (Merged Wellness) */}
+      <WellnessView hideHero={true} />
+
 
       {/* 3. TODAY'S TIMELINE */}
       <section className="space-y-3">
@@ -464,10 +787,14 @@ export const HealthView: React.FC = () => {
             <p className="text-xs text-on-surface-variant italic py-1">No prescriptions configured.</p>
           ) : (
             reminders.slice(0, 4).map((r) => (
-              <div key={r.id} className="p-3 bg-surface-container-low/40 border border-outline-variant/20 rounded-xl flex justify-between items-center text-xs">
+              <div
+                key={r.id}
+                onClick={() => handleRowClick(r)}
+                className="p-3 bg-surface-container-low/40 border border-outline-variant/20 rounded-xl flex justify-between items-center text-xs cursor-pointer hover:border-primary/30 hover:bg-primary/5 transition-all"
+              >
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="font-label-md text-xs text-secondary font-bold truncate">{r.medicineName}</span>
+                    <span className="font-label-md text-xs text-secondary font-bold truncate hover:text-primary transition-colors">{r.medicineName}</span>
                     {r.familyMemberName && (
                       <span className="bg-secondary/10 text-secondary text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
                         {r.familyMemberName.split(" ")[0]}
@@ -512,44 +839,6 @@ export const HealthView: React.FC = () => {
         )}
       </section>
 
-      {/* 5. LAB TESTS SECTION */}
-      <section className="bg-white border border-outline-variant/20 rounded-3xl p-5 space-y-4 shadow-sm">
-        <div className="flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-secondary text-xl">biotech</span>
-            <h3 className="font-headline-md text-base text-secondary font-bold">Diagnostic Labs</h3>
-          </div>
-          <button
-            onClick={() => setActiveModal("book_test")}
-            className="text-xs font-bold text-secondary flex items-center gap-0.5 hover:underline"
-          >
-            <span className="material-symbols-outlined text-sm">event</span> Book
-          </button>
-        </div>
-
-        <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-          {bookings.filter(b => b.type !== "medicine").length === 0 ? (
-            <p className="text-xs text-on-surface-variant italic py-2">No diagnostics scheduled.</p>
-          ) : (
-            bookings.filter(b => b.type !== "medicine").slice(0, 3).map((b) => (
-              <div
-                key={b.id}
-                onClick={() => {
-                  setActiveTrackingBooking(b);
-                  setActiveModal("tracking");
-                }}
-                className="p-3 bg-surface-container-low/40 border border-outline-variant/20 rounded-xl flex justify-between items-center text-xs cursor-pointer hover:bg-surface-container/30 transition-colors"
-              >
-                <div className="min-w-0">
-                  <span className="font-label-md text-xs text-secondary font-bold block truncate">{b.testNames.join(", ")}</span>
-                  <p className="font-body-md text-[9px] text-outline mt-0.5 uppercase tracking-wide">{b.labName} • {b.bookingDate}</p>
-                </div>
-                <span className="font-label-sm text-[10px] text-primary font-bold">Track &gt;</span>
-              </div>
-            ))
-          )}
-        </div>
-      </section>
 
       {/* MODAL 1: ORDER MEDICINES */}
       {activeModal === "add_medicine" && (
@@ -1072,6 +1361,209 @@ export const HealthView: React.FC = () => {
               </div>
             </div>
 
+          </div>
+        </div>
+      )}
+      {/* EDIT PRESCRIPTION MODAL */}
+      {isEditReminderOpen && (
+        <div className="fixed inset-0 bg-inverse-surface/40 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-[420px] bg-white rounded-3xl p-6 shadow-2xl border border-outline-variant/30 flex flex-col max-h-[85vh] overflow-y-auto animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-headline-md text-sm text-secondary font-bold flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-xl">medication</span>
+                <span>Edit Medication Details</span>
+              </h3>
+              <button
+                onClick={() => {
+                  setIsEditReminderOpen(false);
+                  setEditingMedId(null);
+                }}
+                className="w-7 h-7 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center focus:outline-none"
+              >
+                <span className="material-symbols-outlined text-xs">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleEditReminderSubmit} className="space-y-4 text-left">
+              {/* Medicine Name */}
+              <div className="space-y-1">
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Medicine Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Metformin"
+                  value={editMedName}
+                  onChange={(e) => setEditMedName(e.target.value)}
+                  className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                />
+              </div>
+
+              {/* Dosage & Instructions */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Dosage</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. 500mg, 1 tablet"
+                    value={editDosage}
+                    onChange={(e) => setEditDosage(e.target.value)}
+                    className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Instructions</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. After Food"
+                    value={editInstructions}
+                    onChange={(e) => setEditInstructions(e.target.value)}
+                    className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              {/* Stock Count */}
+              <div className="space-y-1">
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Stock Count</label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  placeholder="e.g. 30"
+                  value={editStockCount}
+                  onChange={(e) => setEditStockCount(e.target.value)}
+                  className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                />
+              </div>
+
+              {/* Keep Private Checkbox */}
+              <div className="space-y-1.5 p-3 rounded-2xl bg-orange-50/30 border border-orange-200/40 flex items-center justify-between">
+                <div>
+                  <label className="block text-[10px] font-bold text-secondary uppercase tracking-wider">Keep Private</label>
+                  <span className="text-[10px] text-on-surface-variant block">Do not share this medicine details on the family portal</span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={editIsPrivate}
+                  onChange={(e) => setEditIsPrivate(e.target.checked)}
+                  className="w-4 h-4 rounded text-primary focus:ring-primary border-outline-variant/50"
+                />
+              </div>
+
+              {/* Family Member Assignment */}
+              {!editIsPrivate && familyMembers.length > 0 && (
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Assign to Family Member (Optional)</label>
+                  <select
+                    value={editFamilyMemberId}
+                    onChange={(e) => setEditFamilyMemberId(e.target.value)}
+                    className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                  >
+                    <option value="">Personal Reminder (Assign to self)</option>
+                    {familyMembers.map((member) => (
+                      <option key={member.id} value={member.id}>
+                        {member.name} ({member.relationship})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Timing Slots */}
+              <div className="space-y-1.5">
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Schedule Slots</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {["morning", "afternoon", "evening", "night"].map((slot) => {
+                    const isSelected = editSelectedTimings.includes(slot as any);
+                    return (
+                      <button
+                        key={slot}
+                        type="button"
+                        onClick={() => handleEditTimingToggle(slot as any)}
+                        className={`py-2 px-3 rounded-xl border text-center transition-all flex items-center justify-center gap-1.5 font-label-md text-xs font-bold ${
+                          isSelected
+                            ? "bg-primary-container/20 border-primary text-primary"
+                            : "bg-white border-outline-variant/30 text-on-surface-variant hover:border-primary/30"
+                        }`}
+                      >
+                        <span className="material-symbols-outlined text-sm">
+                          {slot === "morning" && "light_mode"}
+                          {slot === "afternoon" && "sunny"}
+                          {slot === "evening" && "wb_twilight"}
+                          {slot === "night" && "bedtime"}
+                        </span>
+                        <span className="capitalize">{slot}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Preferred Intake Times */}
+              <div className="space-y-1.5 bg-surface-container-low/40 p-3 rounded-2xl border border-outline-variant/10">
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Preferred Intake Times</label>
+                <div className="flex gap-2">
+                  <select
+                    value={editTimeInput}
+                    onChange={(e) => setEditTimeInput(e.target.value)}
+                    className="flex-1 px-3 py-2 bg-white border border-outline-variant/30 rounded-xl font-body-md text-xs focus:outline-none focus:border-primary text-on-surface"
+                  >
+                    {uniqueEditTimeOptions.length > 0 ? (
+                      uniqueEditTimeOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="">Select general slot first</option>
+                    )}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (editTimeInput && !editIntakeTimes.includes(editTimeInput)) {
+                        setEditIntakeTimes(prev => [...prev, editTimeInput].sort());
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-primary text-on-primary font-bold rounded-xl text-xs hover:opacity-90 active:scale-95 transition-all"
+                  >
+                    Add Time
+                  </button>
+                </div>
+                {editIntakeTimes.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1.5">
+                    {editIntakeTimes.map(t => {
+                      const [hStr, mStr] = t.split(":");
+                      const h = parseInt(hStr, 10);
+                      const ampm = h >= 12 ? "PM" : "AM";
+                      const displayHour = h % 12 === 0 ? 12 : h % 12;
+                      const formattedTime = `${displayHour}:${mStr} ${ampm}`;
+                      return (
+                        <span key={t} className="bg-primary/5 text-primary text-[10px] pl-2.5 pr-1.5 py-0.5 rounded-full font-bold flex items-center gap-1 border border-primary/10">
+                          <span>{formattedTime}</span>
+                          <button
+                            type="button"
+                            onClick={() => setEditIntakeTimes(prev => prev.filter(item => item !== t))}
+                            className="w-4 h-4 rounded-full flex items-center justify-center hover:bg-primary/10 text-primary"
+                          >
+                            <span className="material-symbols-outlined text-[10px] font-bold">close</span>
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Submit Buttons */}
+              <button
+                type="submit"
+                className="w-full py-3 bg-primary text-on-primary font-bold rounded-xl text-xs hover:opacity-95 active:scale-95 transition-all shadow-md mt-2"
+              >
+                Save Changes
+              </button>
+            </form>
           </div>
         </div>
       )}

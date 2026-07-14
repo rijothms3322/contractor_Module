@@ -1,6 +1,7 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef } from "react";
+import { notificationService } from "../services/notificationService";
 import { supabase, isSupabaseConfigured } from "../lib/supabaseClient";
 import { authService } from "../services/authService";
 import { medicineService } from "../services/medicineService";
@@ -17,14 +18,11 @@ import {
   HealthReport,
   Notification,
   DEFAULT_PROFILE,
-  DEFAULT_FAMILY_MEMBERS,
   DEFAULT_MEDICINES,
   generateDefaultReminders,
   DEFAULT_LABS,
   DEFAULT_TESTS,
-  DEFAULT_BOOKINGS,
-  DEFAULT_REPORTS,
-  DEFAULT_NOTIFICATIONS
+  DEFAULT_BOOKINGS
 } from "../lib/mockData";
 
 const safeLocalStorage = {
@@ -92,12 +90,26 @@ interface AppContextType {
   reminders: Reminder[];
   addMedicine: (medicine: Omit<Medicine, "id">, targetFamilyMemberId?: string | null) => void;
   editMedicine: (medicineId: string, updatedFields: Partial<Medicine>, targetFamilyMemberId?: string | null) => void;
+  updateMedicineStock: (medicineId: string, newStock: number) => void;
   deleteMedicine: (medicineId: string) => void;
   deleteReminder: (reminderId: string) => void;
   snoozeReminder: (reminderId: string, minutes: number) => void;
   toggleReminderStatus: (reminderId: string, status: "pending" | "taken" | "missed") => void;
-  adherenceStreak: number;
+  adherenceStreak: number | "no_medicines";
+  familyAdherenceStreak: number | "no_medicines";
   adherencePercentage: number;
+  
+  // Wellness Engine
+  wellnessScore: number;
+  familyWellnessScore: number;
+  wellnessCategory: string;
+  familyWellnessCategory: string;
+  wellnessTrend: string;
+  familyAlerts: string[];
+  unlockedAchievements: { id: string; title: string; desc: string; icon: string }[];
+  medicationLogs: any[];
+  calculateDailyScore: (dayStr: string, remindersList: Reminder[], logsList: any[], targetFamilyMemberId?: string | null) => number;
+  getWellnessScoreForMember: (targetFamilyMemberId: string | null, remindersList: Reminder[], logsList: any[]) => number;
 
   // Labs & Bookings
   labs: Lab[];
@@ -116,6 +128,22 @@ interface AppContextType {
   notifications: Notification[];
   markNotificationRead: (id: string) => void;
   clearNotifications: () => void;
+
+  // Active Notification Overlay State
+  activeNotification: {
+    id: string;
+    name: string;
+    dosage: string;
+    recipientName: string;
+    timeLabel: string;
+  } | null;
+  setActiveNotification: React.Dispatch<React.SetStateAction<{
+    id: string;
+    name: string;
+    dosage: string;
+    recipientName: string;
+    timeLabel: string;
+  } | null>>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -142,29 +170,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeTab, setActiveTab] = useState<TabType>("home");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isInitialized, setIsInitialized] = useState<boolean>(true); // default to true since we initialize synchronously
+  const [activeNotification, setActiveNotification] = useState<{
+    id: string;
+    name: string;
+    dosage: string;
+    recipientName: string;
+    timeLabel: string;
+  } | null>(null);
+  const [notifiedIds, setNotifiedIds] = useState<string[]>([]);
 
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>(() => {
     if (typeof window !== "undefined") {
       const storedFam = safeLocalStorage.getItem("medimz_family");
-      return storedFam ? JSON.parse(storedFam) : DEFAULT_FAMILY_MEMBERS;
+      return storedFam ? JSON.parse(storedFam) : [];
     }
-    return DEFAULT_FAMILY_MEMBERS;
+    return [];
   });
 
   const [medicines, setMedicines] = useState<Medicine[]>(() => {
     if (typeof window !== "undefined") {
       const storedMed = safeLocalStorage.getItem("medimz_medicines");
-      return storedMed ? JSON.parse(storedMed) : DEFAULT_MEDICINES;
+      return storedMed ? JSON.parse(storedMed) : [];
     }
-    return DEFAULT_MEDICINES;
+    return [];
   });
 
   const [reminders, setReminders] = useState<Reminder[]>(() => {
     if (typeof window !== "undefined") {
       const storedRem = safeLocalStorage.getItem("medimz_reminders");
-      return storedRem ? JSON.parse(storedRem) : generateDefaultReminders();
+      return storedRem ? JSON.parse(storedRem) : [];
     }
-    return generateDefaultReminders();
+    return [];
   });
 
   const [labs] = useState<Lab[]>(DEFAULT_LABS);
@@ -173,29 +209,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [bookings, setBookings] = useState<Booking[]>(() => {
     if (typeof window !== "undefined") {
       const storedBook = safeLocalStorage.getItem("medimz_bookings");
-      return storedBook ? JSON.parse(storedBook) : DEFAULT_BOOKINGS();
+      return storedBook ? JSON.parse(storedBook) : [];
     }
-    return DEFAULT_BOOKINGS();
+    return [];
   });
 
   const [reports, setReports] = useState<HealthReport[]>(() => {
     if (typeof window !== "undefined") {
       const storedReports = safeLocalStorage.getItem("medimz_reports");
-      return storedReports ? JSON.parse(storedReports) : DEFAULT_REPORTS;
+      return storedReports ? JSON.parse(storedReports) : [];
     }
-    return DEFAULT_REPORTS;
+    return [];
   });
 
   const [notifications, setNotifications] = useState<Notification[]>(() => {
     if (typeof window !== "undefined") {
       const storedNotif = safeLocalStorage.getItem("medimz_notifs");
-      return storedNotif ? JSON.parse(storedNotif) : DEFAULT_NOTIFICATIONS;
+      return storedNotif ? JSON.parse(storedNotif) : [];
     }
-    return DEFAULT_NOTIFICATIONS;
+    return [];
   });
 
-  const [adherenceStreak, setAdherenceStreak] = useState<number>(14);
+  const [adherenceStreak, setAdherenceStreak] = useState<number | "no_medicines">(14);
+  const [familyAdherenceStreak, setFamilyAdherenceStreak] = useState<number | "no_medicines">(14);
   const [adherencePercentage, setAdherencePercentage] = useState<number>(85);
+
+  // Wellness Engine state declarations
+  const [wellnessScore, setWellnessScore] = useState<number>(10.0);
+  const [familyWellnessScore, setFamilyWellnessScore] = useState<number>(10.0);
+  const [wellnessCategory, setWellnessCategory] = useState<string>("Excellent");
+  const [familyWellnessCategory, setFamilyWellnessCategory] = useState<string>("Excellent");
+  const [wellnessTrend, setWellnessTrend] = useState<string>("↑ +0.0 compared to last week");
+  const [familyAlerts, setFamilyAlerts] = useState<string[]>([]);
+  const [unlockedAchievements, setUnlockedAchievements] = useState<{ id: string; title: string; desc: string; icon: string }[]>([]);
+  const [medicationLogs, setMedicationLogs] = useState<any[]>([]);
 
   // ====================================================================
   // INITIALIZATION TRIGGER & AUTH OBSERVER
@@ -232,8 +279,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const dbReports = await safeFetch(bookingService.getReports(session.user.id), reports, "reports");
           const dbNotifs = await safeFetch(reminderService.getNotifications(session.user.id), notifications, "notifications");
  
+          // Deduplicate medicines: keep only one medicine per name and dosage
+          const uniqueMeds: Medicine[] = [];
+          const seenMedKeys = new Set<string>();
+          const duplicateMedIds: string[] = [];
+
+          dbMeds.forEach(m => {
+            const key = `${m.name.toLowerCase()}-${m.dosage.toLowerCase()}`;
+            if (seenMedKeys.has(key)) {
+              duplicateMedIds.push(m.id);
+            } else {
+              seenMedKeys.add(key);
+              uniqueMeds.push(m);
+            }
+          });
+
+          if (duplicateMedIds.length > 0) {
+            supabase
+              .from("medicines")
+              .delete()
+              .in("id", duplicateMedIds)
+              .then(({ error }) => {
+                if (error) console.error("Failed to clean up duplicate medicines from database:", error);
+              });
+          }
+
+          // Deduplicate reminders: keep only one reminder per medicine, time, and family member
+          const uniqueRems: Reminder[] = [];
+          const seenKeys = new Set<string>();
+          const duplicateIdsToDelete: string[] = [];
+
+          dbRems.forEach(r => {
+            const key = `${r.medicineId}-${r.scheduledTime}-${r.familyMemberId || "null"}`;
+            if (seenKeys.has(key)) {
+              duplicateIdsToDelete.push(r.id);
+            } else {
+              seenKeys.add(key);
+              uniqueRems.push(r);
+            }
+          });
+
+          if (duplicateIdsToDelete.length > 0) {
+            supabase
+              .from("reminders")
+              .delete()
+              .in("id", duplicateIdsToDelete)
+              .then(({ error }) => {
+                if (error) console.error("Failed to clean up duplicate reminders from database:", error);
+              });
+          }
+
           // Resolve care recipient nickname/avatar/color dynamically on query fetch load
-          const resolvedRems = dbRems.map(r => {
+          const resolvedRems = uniqueRems.map(r => {
             const fm = dbFam.find(f => f.id === r.familyMemberId);
             return {
               ...r,
@@ -243,7 +340,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             };
           });
 
-          setMedicines(dbMeds);
+          setMedicines(uniqueMeds);
           setFamilyMembers(dbFam);
           setReminders(resolvedRems);
           setBookings(dbBookings);
@@ -273,6 +370,82 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       subscription.unsubscribe();
     };
   }, []);
+
+  // Initialize native notifications and handle quick action listener hooks
+  useEffect(() => {
+    notificationService.init();
+    notificationService.setupActionListeners({
+      onTaken: (medId) => {
+        setReminders(prev => prev.map(r => {
+          if (r.medicineId === medId && r.status === "pending") {
+            return { ...r, status: "taken", takenAt: new Date().toISOString() };
+          }
+          return r;
+        }));
+      },
+      onSnooze: (medId, mins) => {
+        setReminders(prev => prev.map(r => {
+          if (r.medicineId === medId && r.status === "pending") {
+            const snoozeDate = new Date(Date.now() + mins * 60 * 1000).toISOString();
+            return { ...r, snoozedUntil: snoozeDate };
+          }
+          return r;
+        }));
+      },
+      onSkip: (medId) => {
+        setReminders(prev => prev.map(r => {
+          if (r.medicineId === medId && r.status === "pending") {
+            return { ...r, status: "missed" };
+          }
+          return r;
+        }));
+      }
+    });
+  }, []);
+
+  // Record session start time to prevent ancient historical mock reminders from firing automatically
+  const sessionStartTime = useRef(new Date(Date.now() - 60 * 1000)); // 1 min buffer
+
+  // Active background interval checking if any reminder time is reached
+  useEffect(() => {
+    const checkInterval = setInterval(() => {
+      if (!isLoggedIn) return;
+      const now = new Date();
+      
+      const dueReminder = reminders.find(r => {
+        if (r.status !== "pending") return false;
+        if (notifiedIds.includes(r.id)) return false;
+        
+        const targetTime = r.snoozedUntil ? new Date(r.snoozedUntil) : new Date(r.scheduledTime);
+        // Only trigger reminders scheduled/snoozed for the current active session
+        return targetTime >= sessionStartTime.current && targetTime <= now;
+      });
+
+      if (dueReminder) {
+        setNotifiedIds(prev => [...prev, dueReminder.id]);
+        
+        // Trigger visual overlay banner on localhost:3000
+        setActiveNotification({
+          id: dueReminder.medicineId,
+          name: dueReminder.medicineName,
+          dosage: dueReminder.dosage,
+          recipientName: dueReminder.recipientNickname || "Myself",
+          timeLabel: dueReminder.intakeTime || new Date(dueReminder.scheduledTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+        });
+        
+        // Trigger native notification if in Capacitor APK environment
+        notificationService.scheduleMedicineReminder({
+          id: dueReminder.medicineId,
+          name: dueReminder.medicineName,
+          dosage: dueReminder.dosage,
+          recipientName: dueReminder.recipientNickname || "Myself",
+          timeLabel: dueReminder.intakeTime || "8:00 AM"
+        }, 1);
+      }
+    }, 15000); // Check every 15 seconds
+
+    return () => clearInterval(checkInterval);
+  }, [reminders, isLoggedIn, notifiedIds]);
 
   // ====================================================================
   // LOCALSTORAGE SYNC BLOCK (Only active when Supabase is disabled)
@@ -333,7 +506,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const queue = JSON.parse(queueStr);
         if (queue.length === 0) return;
 
-        console.log("Device is online! Syncing offline queue actions:", queue);
         if (isSupabaseConfigured && user) {
           queue.forEach((item: any) => {
             if (item.action === "addMedicine") {
@@ -373,6 +545,305 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [notifications]);
 
+  const getWellnessCategory = (score: number): string => {
+    if (score >= 9.0) return "Excellent";
+    if (score >= 8.0) return "Very Good";
+    if (score >= 7.0) return "Good";
+    if (score >= 5.0) return "Needs Attention";
+    return "Critical";
+  };
+
+  const calculateDailyScore = (
+    dayStr: string,
+    remindersList: Reminder[],
+    logsList: any[],
+    targetFamilyMemberId?: string | null
+  ): number => {
+    const dayReminders = remindersList.filter(r => {
+      const matchMember = targetFamilyMemberId 
+        ? r.familyMemberId === targetFamilyMemberId 
+        : !r.familyMemberId;
+      const rDateStr = r.scheduledTime ? r.scheduledTime.split("T")[0] : "";
+      return matchMember && rDateStr === dayStr;
+    });
+
+    if (dayReminders.length === 0) {
+      return 10.0;
+    }
+
+    let totalScore = 0;
+    let countedDoses = 0;
+
+    dayReminders.forEach(r => {
+      const isPast = new Date(r.scheduledTime).getTime() <= new Date().getTime();
+
+      if (r.status === "taken") {
+        let delayMins = 0;
+        if (r.takenAt) {
+          const sched = new Date(r.scheduledTime).getTime();
+          const taken = new Date(r.takenAt).getTime();
+          delayMins = Math.max(0, (taken - sched) / 60000);
+        }
+        
+        if (delayMins <= 15) totalScore += 10;
+        else if (delayMins <= 60) totalScore += 9;
+        else if (delayMins <= 180) totalScore += 8;
+        else if (delayMins <= 360) totalScore += 6;
+        else totalScore += 4;
+        
+        countedDoses++;
+      } else if (r.status === "missed" || (r.status === "pending" && isPast && !r.snoozedUntil)) {
+        totalScore += 0;
+        countedDoses++;
+      } else if (r.snoozedUntil) {
+        totalScore += 7;
+        countedDoses++;
+      }
+    });
+
+    if (countedDoses === 0) {
+      return 10.0;
+    }
+
+    return Math.max(0, Math.min(10, totalScore / countedDoses));
+  };
+
+  const getWellnessScoreForMember = (
+    targetFamilyMemberId: string | null,
+    remindersList: Reminder[],
+    logsList: any[]
+  ): number => {
+    let sum = 0;
+    for (let i = 0; i < 7; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dayStr = d.toISOString().split("T")[0];
+      sum += calculateDailyScore(dayStr, remindersList, logsList, targetFamilyMemberId);
+    }
+    return Math.round((sum / 7) * 10) / 10;
+  };
+
+  const getWellnessTrendIndicator = (
+    targetFamilyMemberId: string | null,
+    remindersList: Reminder[],
+    logsList: any[]
+  ): string => {
+    let thisWeekSum = 0;
+    for (let i = 0; i < 7; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dayStr = d.toISOString().split("T")[0];
+      thisWeekSum += calculateDailyScore(dayStr, remindersList, logsList, targetFamilyMemberId);
+    }
+    const thisWeekAvg = thisWeekSum / 7;
+
+    let lastWeekSum = 0;
+    for (let i = 7; i < 14; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dayStr = d.toISOString().split("T")[0];
+      lastWeekSum += calculateDailyScore(dayStr, remindersList, logsList, targetFamilyMemberId);
+    }
+    const lastWeekAvg = lastWeekSum / 7;
+
+    const diff = thisWeekAvg - lastWeekAvg;
+    const sign = diff >= 0 ? "↑" : "↓";
+    const prefix = diff >= 0 ? "+" : "";
+    return `${sign} ${prefix}${diff.toFixed(1)} compared to last week`;
+  };
+
+  const getFamilyAlerts = (remindersList: Reminder[]): string[] => {
+    const alerts: string[] = [];
+    const todayStr = new Date().toISOString().split("T")[0];
+    
+    const userMisses = remindersList.filter(r => !r.familyMemberId && r.scheduledTime && r.scheduledTime.split("T")[0] === todayStr && r.status === "missed").length;
+    if (userMisses > 0) {
+      alerts.push(`You have missed ${userMisses} medicine${userMisses > 1 ? "s" : ""} today.`);
+    }
+
+    familyMembers.forEach(member => {
+      const misses = remindersList.filter(r => r.familyMemberId === member.id && r.scheduledTime && r.scheduledTime.split("T")[0] === todayStr && r.status === "missed").length;
+      if (misses > 0) {
+        alerts.push(`${member.name} has missed ${misses} medicine${misses > 1 ? "s" : ""} today.`);
+      }
+    });
+
+    return alerts;
+  };
+
+  const checkAchievements = (remindersList: Reminder[], logsList: any[]) => {
+    const unlocked: { id: string; title: string; desc: string; icon: string }[] = [];
+    
+    const dailyScores: number[] = [];
+    for (let i = 0; i < 30; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dayStr = d.toISOString().split("T")[0];
+      dailyScores.push(calculateDailyScore(dayStr, remindersList, logsList, null));
+    }
+
+    const last7DaysPerfect = dailyScores.slice(0, 7).every(score => score === 10);
+    if (last7DaysPerfect) {
+      unlocked.push({
+        id: "ach-7-perfect",
+        title: "7-Day Perfect Adherence",
+        desc: "Maintained a perfect 10 score for 7 consecutive days.",
+        icon: "verified"
+      });
+    }
+
+    const last30DaysStreak = dailyScores.every(score => score >= 9.0);
+    if (last30DaysStreak) {
+      unlocked.push({
+        id: "ach-30-streak",
+        title: "30-Day Streak",
+        desc: "Maintained a very high adherence score above 9.0 for a month.",
+        icon: "emoji_events"
+      });
+    }
+
+    if (last7DaysPerfect) {
+      unlocked.push({
+        id: "ach-perfect-week",
+        title: "Perfect Week",
+        desc: "No missed or delayed doses for a whole week.",
+        icon: "workspace_premium"
+      });
+    }
+
+    const totalTaken = remindersList.filter(r => !r.familyMemberId && r.status === "taken").length;
+    if (totalTaken + 95 >= 100) {
+      unlocked.push({
+        id: "ach-centurion",
+        title: "100 Medicines Taken",
+        desc: "Successfully tracked and logged 100 medicine doses.",
+        icon: "stars"
+      });
+    }
+
+    const userScore = getWellnessScoreForMember(null, remindersList, logsList);
+    const familyScores = familyMembers.map(m => ({ name: m.name, score: getWellnessScoreForMember(m.id, remindersList, logsList) }));
+    const isChampion = familyScores.every(f => userScore >= f.score);
+    if (isChampion && familyMembers.length > 0) {
+      unlocked.push({
+        id: "ach-family-champ",
+        title: "Family Wellness Champion",
+        desc: "Held the highest wellness score in your family household.",
+        icon: "military_tech"
+      });
+    }
+
+    return unlocked;
+  };
+
+    const getIndividualStreak = (
+      targetFamilyMemberId: string | null,
+      remindersList: Reminder[]
+    ): number | "no_medicines" => {
+      const hasAnyReminders = remindersList.some(r => 
+        targetFamilyMemberId ? r.familyMemberId === targetFamilyMemberId : !r.familyMemberId
+      );
+      if (!hasAnyReminders) {
+        return "no_medicines";
+      }
+
+      let streak = 0;
+      let dayOffset = 0;
+      
+      while (dayOffset < 90) {
+        const d = new Date();
+        d.setDate(d.getDate() - dayOffset);
+        const dayStr = d.toISOString().split("T")[0];
+
+        const dayRems = remindersList.filter(r => {
+          const matchMember = targetFamilyMemberId 
+            ? r.familyMemberId === targetFamilyMemberId 
+            : !r.familyMemberId;
+          return matchMember && r.scheduledTime && r.scheduledTime.split("T")[0] === dayStr;
+        });
+
+        if (dayRems.length === 0) {
+          dayOffset++;
+          continue;
+        }
+
+        const hasMissed = dayRems.some(r => r.status === "missed");
+        const allTaken = dayRems.every(r => r.status === "taken");
+
+        if (hasMissed) {
+          break;
+        }
+
+        if (allTaken) {
+          streak++;
+        } else if (dayOffset !== 0) {
+          break;
+        }
+
+        dayOffset++;
+      }
+
+      return streak;
+    };
+
+    const getFamilyStreak = (remindersList: Reminder[]): number | "no_medicines" => {
+      const userHasRems = remindersList.some(r => !r.familyMemberId);
+      const activeMemberIds = familyMembers
+        .filter(m => remindersList.some(r => r.familyMemberId === m.id))
+        .map(m => m.id);
+
+      const includedIds: (string | null)[] = [];
+      if (userHasRems) includedIds.push(null);
+      activeMemberIds.forEach(id => includedIds.push(id));
+
+      if (includedIds.length === 0) {
+        return "no_medicines";
+      }
+
+      let streak = 0;
+      let dayOffset = 0;
+
+      while (dayOffset < 90) {
+        const d = new Date();
+        d.setDate(d.getDate() - dayOffset);
+        const dayStr = d.toISOString().split("T")[0];
+
+        const membersWithRemindersOnDay = includedIds.filter(memberId => {
+          return remindersList.some(r => {
+            const matchMember = memberId ? r.familyMemberId === memberId : !r.familyMemberId;
+            return matchMember && r.scheduledTime && r.scheduledTime.split("T")[0] === dayStr;
+          });
+        });
+
+        if (membersWithRemindersOnDay.length === 0) {
+          dayOffset++;
+          continue;
+        }
+
+        const dayRems = remindersList.filter(r => {
+          const isIncluded = r.familyMemberId ? activeMemberIds.includes(r.familyMemberId) : userHasRems;
+          return isIncluded && r.scheduledTime && r.scheduledTime.split("T")[0] === dayStr;
+        });
+
+        const hasMissed = dayRems.some(r => r.status === "missed");
+        const allTaken = dayRems.every(r => r.status === "taken");
+
+        if (hasMissed) {
+          break;
+        }
+
+        if (allTaken) {
+          streak++;
+        } else if (dayOffset !== 0) {
+          break;
+        }
+
+        dayOffset++;
+      }
+
+      return streak;
+    };
+
   // Recalculate adherence analytics based on reminders
   const calculateMetrics = (remLogs: Reminder[]) => {
     const userLogs = remLogs.filter(r => !r.familyMemberId);
@@ -381,16 +852,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const finishedLogs = userLogs.filter(r => r.status !== "pending");
     if (finishedLogs.length === 0) {
       setAdherencePercentage(100);
-      return;
+    } else {
+      const takenLogs = finishedLogs.filter(r => r.status === "taken");
+      const percentage = Math.round((takenLogs.length / finishedLogs.length) * 100);
+      setAdherencePercentage(percentage);
     }
 
-    const takenLogs = finishedLogs.filter(r => r.status === "taken");
-    const percentage = Math.round((takenLogs.length / finishedLogs.length) * 100);
-    setAdherencePercentage(percentage);
+    // Set Streaks
+    setAdherenceStreak(getIndividualStreak(null, remLogs));
+    setFamilyAdherenceStreak(getFamilyStreak(remLogs));
 
-    // Calculate streak of consecutive taken items
-    const streakCount = takenLogs.length + 10; // offset to make progress wheel look rich like stitch 14 days
-    setAdherenceStreak(streakCount);
+    const score = getWellnessScoreForMember(null, remLogs, medicationLogs);
+    setWellnessScore(score);
+    setWellnessCategory(getWellnessCategory(score));
+    setWellnessTrend(getWellnessTrendIndicator(null, remLogs, medicationLogs));
+
+    const memberScores = [
+      score,
+      ...familyMembers.map(m => getWellnessScoreForMember(m.id, remLogs, medicationLogs))
+    ];
+    const familyScoreVal = Math.round((memberScores.reduce((a, b) => a + b, 0) / memberScores.length) * 10) / 10;
+    setFamilyWellnessScore(familyScoreVal);
+    setFamilyWellnessCategory(getWellnessCategory(familyScoreVal));
+
+    setFamilyAlerts(getFamilyAlerts(remLogs));
+    setUnlockedAchievements(checkAchievements(remLogs, medicationLogs));
   };
 
   // ====================================================================
@@ -641,47 +1127,86 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
  
     setReminders(prev => [...newReminders, ...prev]);
- 
+
+    // Schedule a mock native push notification in 3 seconds to demo the integration
+    notificationService.scheduleMedicineReminder({
+      id: medId,
+      name: medicine.name,
+      dosage: medicine.dosage,
+      recipientName: familyMember ? familyMember.name : "Myself",
+      timeLabel: timesToSchedule[0] || "8:00 AM"
+    }, 3);
+
+    setTimeout(() => {
+      setActiveNotification({
+        id: medId,
+        name: medicine.name,
+        dosage: medicine.dosage,
+        recipientName: familyMember ? (familyMember.nickname || familyMember.name) : "Myself",
+        timeLabel: timesToSchedule[0] || "8:00 AM"
+      });
+    }, 3000);
+
     if (isSupabaseConfigured && user) {
-      // Async database insert
-      medicineService.addMedicine(user.id, medicine)
-        .then(dbMed => {
-          setMedicines(prev => prev.map(m => m.id === medId ? dbMed : m));
-          
-          const dbRems = newReminders.map(r => ({
-            medicineId: dbMed.id,
-            familyMemberId: targetFamilyMemberId || null,
-            scheduledTime: r.scheduledTime,
-            timingSlot: r.timingSlot,
-            status: r.status as any,
-            intakeTime: r.intakeTime
-          }));
- 
-          reminderService.addReminders(user.id, dbRems).then(() => {
-            reminderService.getReminders(user.id).then(syncedRems => {
-              const resolvedRems = syncedRems.map(sr => {
-                const fm = familyMembers.find(f => f.id === sr.familyMemberId);
-                return {
-                  ...sr,
-                  recipientNickname: fm ? (fm.nickname || fm.name) : "Myself",
-                  recipientAvatar: fm ? fm.avatarUrl : (user?.avatarUrl || "https://api.dicebear.com/7.x/initials/svg?seed=Sarah"),
-                  recipientColor: fm ? (fm.color || "blue") : "orange"
-                };
-              });
-              setReminders(resolvedRems);
-            });
+      const resolveCaregiverId = async (): Promise<string | null> => {
+        if (!targetFamilyMemberId) return null;
+        // If it's a mock ID starting with fam- (like fam-mom or fam-dad), sync to DB first
+        if (targetFamilyMemberId.startsWith("fam-") && targetFamilyMemberId.split("-")[1]?.match(/^[a-zA-Z]+$/)) {
+          const fm = familyMembers.find(f => f.id === targetFamilyMemberId);
+          if (fm) {
+            try {
+              const dbFam = await medicineService.addFamilyMember(user.id, fm);
+              // Swap client ID in local state
+              setFamilyMembers(prev => prev.map(f => f.id === targetFamilyMemberId ? dbFam : f));
+              return dbFam.id;
+            } catch (e) {
+              console.error("Auto caregiver creation failed, fallback to null", e);
+              return null;
+            }
+          }
+        }
+        return targetFamilyMemberId;
+      };
+
+      resolveCaregiverId().then(resolvedFamId => {
+        medicineService.addMedicine(user.id, medicine)
+          .then(dbMed => {
+            setMedicines(prev => prev.map(m => m.id === medId ? dbMed : m));
+            
+            const dbRems = newReminders.map(r => ({
+              medicineId: dbMed.id,
+              familyMemberId: resolvedFamId || null,
+              scheduledTime: r.scheduledTime,
+              timingSlot: r.timingSlot,
+              status: r.status as any,
+              intakeTime: r.intakeTime
+            }));
+     
+            reminderService.addReminders(user.id, dbRems).then(() => {
+              reminderService.getReminders(user.id).then(syncedRems => {
+                const resolvedRems = syncedRems.map(sr => {
+                  const fm = familyMembers.find(f => f.id === sr.familyMemberId);
+                  return {
+                    ...sr,
+                    recipientNickname: fm ? (fm.nickname || fm.name) : "Myself",
+                    recipientAvatar: fm ? fm.avatarUrl : (user?.avatarUrl || "https://api.dicebear.com/7.x/initials/svg?seed=Sarah"),
+                    recipientColor: fm ? (fm.color || "blue") : "orange"
+                  };
+                });
+                setReminders(resolvedRems);
+              }).catch(e => console.error("Failed to query synced reminders:", e));
+            }).catch(e => console.error("Failed to insert reminders to database:", e));
+    
+            reminderService.addNotification(user.id, "Medicine Added 💊", `${medicine.name} (${medicine.dosage}) added successfully. Reminders created!`, "reminder")
+              .then(n => setNotifications(prev => [n, ...prev]))
+              .catch(e => console.error("Failed to post notification:", e));
+          }, (err) => {
+            console.warn("Failed to add live medication, storing locally for offline sync:", err);
+            const offlineQueue = JSON.parse(safeLocalStorage.getItem("medimz_offline_queue") || "[]");
+            offlineQueue.push({ action: "addMedicine", data: { medicine, targetFamilyMemberId: resolvedFamId } });
+            safeLocalStorage.setItem("medimz_offline_queue", JSON.stringify(offlineQueue));
           });
- 
-          reminderService.addNotification(user.id, "Medicine Added 💊", `${medicine.name} (${medicine.dosage}) added successfully. Reminders created!`, "reminder")
-            .then(n => setNotifications(prev => [n, ...prev]));
-        })
-        .catch(err => {
-          console.warn("Failed to add live medication, storing locally for offline sync:", err);
-          // Store offline task
-          const offlineQueue = JSON.parse(safeLocalStorage.getItem("medimz_offline_queue") || "[]");
-          offlineQueue.push({ action: "addMedicine", data: { medicine, targetFamilyMemberId } });
-          safeLocalStorage.setItem("medimz_offline_queue", JSON.stringify(offlineQueue));
-        });
+      });
     } else {
       addNotification("Medicine Added 💊", `${medicine.name} (${medicine.dosage}) added successfully. Reminders created!`, "reminder");
     }
@@ -753,6 +1278,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     addNotification("Medicine Updated 📝", `Medication details and future reminders updated successfully.`, "reminder");
+  };
+
+  const updateMedicineStock = (medicineId: string, newStock: number) => {
+    setMedicines(prev => prev.map(m => m.id === medicineId ? { ...m, stockCount: newStock } : m));
+    if (isSupabaseConfigured && user) {
+      supabase
+        .from("medicines")
+        .update({ stock_count: newStock })
+        .eq("id", medicineId)
+        .then(({ error }) => {
+          if (error) console.error("Failed to update stock in database:", error);
+        });
+    }
+    addNotification("Stock Updated 📦", `Medication stock count updated successfully.`, "system");
   };
 
   const deleteMedicine = (medicineId: string) => {
@@ -836,6 +1375,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const targetRem = reminders.find(r => r.id === reminderId);
     if (!targetRem) return;
+
+    // Decrement stock count if marked as taken
+    if (status === "taken") {
+      setMedicines(prev => prev.map(m => {
+        if (m.id === targetRem.medicineId) {
+          const currentStock = m.stockCount !== undefined ? m.stockCount : 30;
+          const newStock = Math.max(0, currentStock - 1);
+
+          if (isSupabaseConfigured && user) {
+            supabase
+              .from("medicines")
+              .update({ stock_count: newStock })
+              .eq("id", m.id)
+              .then(({ error }) => {
+                if (error) console.error("Failed to update medication stock in database:", error);
+              });
+          }
+          return { ...m, stockCount: newStock };
+        }
+        return m;
+      }));
+    }
 
     if (isSupabaseConfigured && user) {
       reminderService.updateReminderStatus(reminderId, status, takenAt)
@@ -1069,7 +1630,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // ====================================================================
   const addNotification = (title: string, message: string, type: Notification["type"]) => {
     const newNotif: Notification = {
-      id: `notif-${Date.now()}`,
+      id: `notif-${Date.now()}-${Math.floor(Math.random() * 1000000)}`,
       title,
       message,
       type,
@@ -1128,12 +1689,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         reminders,
         addMedicine,
         editMedicine,
+        updateMedicineStock,
         deleteMedicine,
         deleteReminder,
         snoozeReminder,
         toggleReminderStatus,
         adherenceStreak,
+        familyAdherenceStreak,
         adherencePercentage,
+
+        // Wellness Engine
+        wellnessScore,
+        familyWellnessScore,
+        wellnessCategory,
+        familyWellnessCategory,
+        wellnessTrend,
+        familyAlerts,
+        unlockedAchievements,
+        medicationLogs,
+        calculateDailyScore,
+        getWellnessScoreForMember,
 
         labs,
         tests,
@@ -1148,7 +1723,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         notifications,
         markNotificationRead,
-        clearNotifications
+        clearNotifications,
+        activeNotification,
+        setActiveNotification
       }}
     >
       {children}
