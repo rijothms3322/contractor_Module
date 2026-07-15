@@ -267,6 +267,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
 
+    let profilesSyncChannel: any = null;
+
     // 2. LIVE SUPABASE REAL-TIME SESSION OBSERVER
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: any, session: any) => {
       if (session?.user) {
@@ -443,6 +445,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setBookings(dbBookings);
           setReports(dbReports);
           setNotifications(dbNotifs);
+
+          // Real-time listener for profiles changes (like names, avatars, age) across family group
+          if (profilesSyncChannel) {
+            profilesSyncChannel.unsubscribe();
+          }
+
+          profilesSyncChannel = supabase
+            .channel(`profiles-sync-${profile.familyId || 'public'}`)
+            .on(
+              "postgres_changes",
+              {
+                event: "UPDATE",
+                schema: "public",
+                table: "profiles"
+              },
+              (payload: any) => {
+                const updatedProfile = payload.new;
+                console.log("Real-time profiles sync update:", updatedProfile);
+                
+                // If it is the active user's own profile, update local user state
+                if (updatedProfile.id === session.user.id) {
+                  setUser(prev => prev ? {
+                    ...prev,
+                    fullName: updatedProfile.full_name,
+                    avatarUrl: updatedProfile.avatar_url || prev.avatarUrl,
+                    age: updatedProfile.age || prev.age,
+                    gender: updatedProfile.gender || prev.gender,
+                    medicalConditions: updatedProfile.medical_conditions || prev.medicalConditions
+                  } : null);
+                }
+
+                // Update roster listings for family members sharing the same family ID immediately
+                setFamilyMembers(prev =>
+                  prev.map(fm =>
+                    fm.id === updatedProfile.id
+                      ? {
+                          ...fm,
+                          name: updatedProfile.full_name,
+                          avatarUrl: updatedProfile.avatar_url || fm.avatarUrl,
+                          age: updatedProfile.age || fm.age,
+                          gender: updatedProfile.gender || fm.gender,
+                          medicalConditions: updatedProfile.medical_conditions || fm.medicalConditions
+                        }
+                      : fm
+                  )
+                );
+              }
+            )
+            .subscribe();
+
         } catch (e) {
           console.error("[Medimz Sync Error] Failed to load data from live Supabase:", e);
         } finally {
@@ -466,6 +518,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
  
     return () => {
       subscription.unsubscribe();
+      if (profilesSyncChannel) {
+        profilesSyncChannel.unsubscribe();
+      }
     };
   }, []);
 

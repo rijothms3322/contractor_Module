@@ -106,7 +106,7 @@ export const authService = {
         .from("profiles")
         .select("*")
         .eq("id", userId)
-        .single();
+        .maybeSingle();
 
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("Profiles query timed out.")), 6000)
@@ -115,7 +115,53 @@ export const authService = {
       const { data, error } = await Promise.race([selectPromise, timeoutPromise]) as any;
 
       if (error) throw error;
-      if (!data) throw new Error("Profile not found.");
+
+      // Auto-create profile row if it doesn't exist yet
+      if (!data) {
+        console.log("No profile row found for user, auto-creating profile in database...");
+        
+        let metaName = "Health Champion";
+        let metaRole = "user";
+        try {
+          const { data: userData } = await supabase.auth.getUser();
+          if (userData?.user?.user_metadata) {
+            metaName = userData.user.user_metadata.full_name || metaName;
+            metaRole = userData.user.user_metadata.role || metaRole;
+          }
+        } catch (authErr) {
+          console.warn("Could not retrieve user metadata for auto-profile creation:", authErr);
+        }
+
+        const { data: newProfile, error: insErr } = await supabase
+          .from("profiles")
+          .insert({
+            id: userId,
+            full_name: metaName,
+            role: metaRole,
+            avatar_url: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(metaName)}`,
+            age: 35,
+            gender: "Male"
+          })
+          .select()
+          .single();
+
+        if (insErr) {
+          console.error("Failed to auto-create profile row:", insErr);
+          throw insErr;
+        }
+
+        return {
+          id: newProfile.id,
+          fullName: newProfile.full_name,
+          avatarUrl: newProfile.avatar_url,
+          age: newProfile.age || 35,
+          gender: newProfile.gender || "Male",
+          medicalConditions: newProfile.medical_conditions || [],
+          addresses: newProfile.addresses || [],
+          role: newProfile.role || "user",
+          familyId: newProfile.family_id || null
+        };
+      }
 
       return {
         id: data.id,
@@ -166,7 +212,8 @@ export const authService = {
 
     const { data, error } = await supabase
       .from("profiles")
-      .upsert(dbPayload)
+      .update(dbPayload)
+      .eq("id", userId)
       .select()
       .single();
 
