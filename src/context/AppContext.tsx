@@ -1725,21 +1725,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const ownerId = targetRem.familyMemberId || user.id;
           const operatorId = operatorUserId || user.id;
 
+          const isOwnerRealUser = ownerId && !ownerId.startsWith("fam-");
+          const isOperatorRealUser = operatorId && !operatorId.startsWith("fam-");
+
           if (status === "taken") {
             const msg = operatorId !== ownerId 
               ? `Family member marked your dose of ${targetRem.medicineName} as taken.` 
               : `You marked ${targetRem.medicineName} as taken. Great job!`;
 
-            reminderService.addNotification(ownerId, "Dose Tracked! 🌟", msg, "reminder")
-              .then(n => {
-                if (ownerId === user.id) {
-                  setNotifications(prev => [n, ...prev]);
-                }
-              });
+            if (isOwnerRealUser) {
+              reminderService.addNotification(ownerId, "Dose Tracked! 🌟", msg, "reminder")
+                .then(n => {
+                  if (ownerId === user.id) {
+                    setNotifications(prev => [n, ...prev]);
+                  }
+                })
+                .catch(err => console.error("Failed to add dose notification:", err));
+            }
 
-            // Write audit trail log if a family member marked it
-            if (operatorId !== ownerId) {
-              reminderService.logComplianceAudit(ownerId, operatorId, targetRem.medicineName, reminderId, status, "Family Member");
+            // Write audit trail log if a family member marked it and both are real users
+            if (operatorId !== ownerId && isOwnerRealUser && isOperatorRealUser) {
+              reminderService.logComplianceAudit(ownerId, operatorId, targetRem.medicineName, reminderId, status, "Family Member")
+                .catch(err => console.error("Failed to write compliance audit log:", err));
             }
           }
         })
