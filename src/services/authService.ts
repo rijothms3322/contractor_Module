@@ -46,20 +46,41 @@ export const authService = {
       throw new Error("Supabase is not configured. Running in demo mode.");
     }
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    const response = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+      method: "POST",
+      headers: {
+        "apikey": supabaseAnonKey || "",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ email, password })
     });
 
-    if (error) throw error;
-    if (!data.user || !data.session) throw new Error("Login failed: Authentication session is empty.");
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData?.error_description || errData?.message || "Invalid email or password.");
+    }
 
-    // Retrieve corresponding profile from profiles table
+    const data = await response.json();
+    if (!data.user || !data.access_token) {
+      throw new Error("Login failed: Authentication session is empty.");
+    }
+
+    // Set auth session state in Supabase client context
+    if (supabase) {
+      await supabase.auth.setSession({
+        access_token: data.access_token,
+        refresh_token: data.refresh_token || ""
+      });
+    }
+
     const profile = await this.getProfile(data.user.id);
 
     return {
       user: profile,
-      token: data.session.access_token
+      token: data.access_token
     };
   },
 
