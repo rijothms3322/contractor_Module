@@ -182,6 +182,35 @@ export const reminderService = {
   },
 
   /**
+   * Records an audit log whenever a caregiver/family member marks a medicine as Taken for another user
+   */
+  async logComplianceAudit(
+    ownerId: string,
+    operatorId: string,
+    medName: string,
+    reminderId: string,
+    status: string,
+    sourceDevice = "Family Member"
+  ): Promise<void> {
+    if (!isSupabaseConfigured) return;
+
+    const { error } = await supabase
+      .from("compliance_audit_logs")
+      .insert({
+        medicine_owner_id: ownerId,
+        marked_by_id: operatorId,
+        medicine_name: medName,
+        reminder_id: reminderId,
+        status: status,
+        source_device: sourceDevice
+      });
+
+    if (error) {
+      console.error("Failed to write compliance audit log:", error);
+    }
+  },
+
+  /**
    * Deletes a specific reminder by ID
    */
   async deleteReminder(reminderId: string): Promise<void> {

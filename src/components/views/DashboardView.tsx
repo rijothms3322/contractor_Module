@@ -123,6 +123,7 @@ export const DashboardView: React.FC = () => {
   const [customSnoozeMins, setCustomSnoozeMins] = useState(10);
 
   const [isAddingNewPerson, setIsAddingNewPerson] = useState(false);
+  const [confirmTakenReminder, setConfirmTakenReminder] = useState<Reminder | null>(null);
   const [newPersonName, setNewPersonName] = useState("");
   const [newPersonNickname, setNewPersonNickname] = useState("");
   const [newPersonRelationship, setNewPersonRelationship] = useState("Mother");
@@ -592,7 +593,13 @@ export const DashboardView: React.FC = () => {
             </span>
           ) : (
             <button
-              onClick={() => toggleReminderStatus(r.id, "taken")}
+              onClick={() => {
+                if (r.familyMemberId && r.familyMemberId !== user?.id) {
+                  setConfirmTakenReminder(r);
+                } else {
+                  toggleReminderStatus(r.id, "taken");
+                }
+              }}
               className="bg-primary text-on-primary font-label-md text-[10px] font-bold px-3 py-1.5 rounded-full hover:opacity-90 active:scale-95 transition-all shadow-sm"
             >
               Mark Taken
@@ -2340,6 +2347,43 @@ export const DashboardView: React.FC = () => {
                 className="w-full py-3 bg-primary text-on-primary font-bold rounded-xl text-xs hover:opacity-90 active:scale-95 transition-all shadow-md mt-2"
               >
                 Snooze Dosing Alert
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmTakenReminder && (
+        <div className="fixed inset-0 bg-inverse-surface/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-[360px] bg-white rounded-3xl p-6 shadow-2xl border border-outline-variant/30 flex flex-col animate-in zoom-in-95 duration-200 text-left">
+            <h3 className="font-headline-md text-sm text-secondary font-bold flex items-center gap-2 mb-3">
+              <span className="material-symbols-outlined text-primary text-xl">help</span>
+              <span>Confirm Tracking Action</span>
+            </h3>
+            
+            <p className="font-body-md text-xs text-on-surface-variant leading-relaxed mb-4">
+              You are about to mark medicine <strong className="text-secondary">{confirmTakenReminder.medicineName}</strong> as taken for <strong className="text-secondary">{confirmTakenReminder.recipientNickname}</strong>.
+              <br /><br />
+              Please confirm that the medicine has actually been taken. This action will update their adherence history and wellness score.
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmTakenReminder(null)}
+                className="flex-grow py-2.5 bg-surface-container hover:bg-surface-container-high text-secondary font-bold rounded-xl text-xs transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  toggleReminderStatus(confirmTakenReminder.id, "taken", user?.id);
+                  setConfirmTakenReminder(null);
+                }}
+                className="flex-grow py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors shadow-sm"
+              >
+                Confirm & Mark Taken
               </button>
             </div>
           </div>

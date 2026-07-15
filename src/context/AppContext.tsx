@@ -95,7 +95,7 @@ interface AppContextType {
   deleteMedicine: (medicineId: string) => void;
   deleteReminder: (reminderId: string) => void;
   snoozeReminder: (reminderId: string, minutes: number) => void;
-  toggleReminderStatus: (reminderId: string, status: "pending" | "taken" | "missed") => void;
+  toggleReminderStatus: (reminderId: string, status: "pending" | "taken" | "missed", operatorUserId?: string) => void;
   adherenceStreak: number | "no_medicines";
   familyAdherenceStreak: number | "no_medicines";
   adherencePercentage: number;
@@ -1682,7 +1682,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const toggleReminderStatus = (reminderId: string, status: "pending" | "taken" | "missed") => {
+  const toggleReminderStatus = (reminderId: string, status: "pending" | "taken" | "missed", operatorUserId?: string) => {
     const takenAt = status === "taken" ? new Date().toISOString() : undefined;
 
     setReminders(prev =>
@@ -1722,9 +1722,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isSupabaseConfigured && user) {
       reminderService.updateReminderStatus(reminderId, status, takenAt)
         .then(() => {
+          const ownerId = targetRem.familyMemberId || user.id;
+          const operatorId = operatorUserId || user.id;
+
           if (status === "taken") {
-            reminderService.addNotification(user.id, "Dose Tracked! 🌟", `You marked ${targetRem.medicineName} as taken. Great job!`, "reminder")
-              .then(n => setNotifications(prev => [n, ...prev]));
+            const msg = operatorId !== ownerId 
+              ? `Family member marked your dose of ${targetRem.medicineName} as taken.` 
+              : `You marked ${targetRem.medicineName} as taken. Great job!`;
+
+            reminderService.addNotification(ownerId, "Dose Tracked! 🌟", msg, "reminder")
+              .then(n => {
+                if (ownerId === user.id) {
+                  setNotifications(prev => [n, ...prev]);
+                }
+              });
+
+            // Write audit trail log if a family member marked it
+            if (operatorId !== ownerId) {
+              reminderService.logComplianceAudit(ownerId, operatorId, targetRem.medicineName, reminderId, status, "Family Member");
+            }
           }
         })
         .catch(err => console.error("Failed to sync compliance reminder status:", err));
