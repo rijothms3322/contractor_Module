@@ -268,6 +268,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     let profilesSyncChannel: any = null;
+    let medicinesSyncChannel: any = null;
+    let remindersSyncChannel: any = null;
 
     // 2. LIVE SUPABASE REAL-TIME SESSION OBSERVER
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: any, session: any) => {
@@ -495,6 +497,127 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             )
             .subscribe();
 
+          // Real-time listener for medicines changes (syncs updates instantly across family)
+          if (medicinesSyncChannel) {
+            medicinesSyncChannel.unsubscribe();
+          }
+
+          medicinesSyncChannel = supabase
+            .channel(`medicines-sync-${profile.familyId || 'public'}`)
+            .on(
+              "postgres_changes",
+              {
+                event: "*",
+                schema: "public",
+                table: "medicines"
+              },
+              (payload: any) => {
+                const { eventType, new: newMed, old: oldMed } = payload;
+                console.log(`Real-time medicines sync event: ${eventType}`, payload);
+
+                if (eventType === "DELETE") {
+                  setMedicines(prev => prev.filter(m => m.id !== oldMed.id));
+                } else {
+                  // Verify if the medicine belongs to us or a family member
+                  const isFamMed = newMed.user_id === session.user.id || 
+                    sharedFam.some(f => f.id === newMed.user_id);
+                  
+                  if (!isFamMed) return;
+
+                  // Filter out private medicines if it belongs to someone else
+                  if (newMed.user_id !== session.user.id && newMed.is_private) {
+                    setMedicines(prev => prev.filter(m => m.id !== newMed.id));
+                    return;
+                  }
+
+                  const mappedMed: Medicine = {
+                    id: newMed.id,
+                    name: newMed.generic_name,
+                    dosage: newMed.strength || "",
+                    instructions: newMed.dosage_form || "",
+                    frequency: (newMed.schedule_type === "weekly" ? "weekly" : "daily") as any,
+                    timings: [],
+                    startDate: newMed.created_at ? newMed.created_at.split("T")[0] : new Date().toISOString().split("T")[0],
+                    isPrivate: newMed.is_private || false,
+                    stockCount: 0
+                  };
+
+                  if (eventType === "INSERT") {
+                    setMedicines(prev => {
+                      if (prev.some(m => m.id === mappedMed.id)) return prev;
+                      return [...prev, mappedMed];
+                    });
+                  } else if (eventType === "UPDATE") {
+                    setMedicines(prev => prev.map(m => m.id === mappedMed.id ? mappedMed : m));
+                  }
+                }
+              }
+            )
+            .subscribe();
+
+          // Real-time listener for reminders changes (taken/snoozed/scheduled status sync)
+          if (remindersSyncChannel) {
+            remindersSyncChannel.unsubscribe();
+          }
+
+          remindersSyncChannel = supabase
+            .channel(`reminders-sync-${profile.familyId || 'public'}`)
+            .on(
+              "postgres_changes",
+              {
+                event: "*",
+                schema: "public",
+                table: "reminders"
+              },
+              (payload: any) => {
+                const { eventType, new: newRem, old: oldRem } = payload;
+                console.log(`Real-time reminders sync event: ${eventType}`, payload);
+
+                if (eventType === "DELETE") {
+                  setReminders(prev => prev.filter(r => r.id !== oldRem.id));
+                } else {
+                  const isFamRem = newRem.user_id === session.user.id || 
+                    sharedFam.some(f => f.id === newRem.user_id);
+                  
+                  if (!isFamRem) return;
+
+                  if (newRem.user_id !== session.user.id && newRem.is_private) {
+                    setReminders(prev => prev.filter(r => r.id !== newRem.id));
+                    return;
+                  }
+
+                  const fm = sharedFam.find(f => f.id === newRem.user_id);
+                  const mappedRem: Reminder = {
+                    id: newRem.id,
+                    medicineId: newRem.medicine_id,
+                    medicineName: newRem.medicine_name,
+                    dosage: newRem.dosage || "",
+                    instructions: newRem.instructions || "",
+                    scheduledTime: newRem.scheduled_time,
+                    timingSlot: (newRem.timing_slot || "morning") as any,
+                    status: newRem.status as any,
+                    isPrivate: newRem.is_private || false,
+                    familyMemberId: newRem.user_id,
+                    recipientNickname: fm ? fm.name : "Myself",
+                    recipientAvatar: fm ? fm.avatarUrl : (profile?.avatarUrl || "https://api.dicebear.com/7.x/initials/svg?seed=User"),
+                    recipientColor: fm ? (fm.color || "purple") : "orange",
+                    takenAt: newRem.taken_at || undefined,
+                    snoozedUntil: newRem.snoozed_until || undefined
+                  };
+
+                  if (eventType === "INSERT") {
+                    setReminders(prev => {
+                      if (prev.some(r => r.id === mappedRem.id)) return prev;
+                      return [...prev, mappedRem];
+                    });
+                  } else if (eventType === "UPDATE") {
+                    setReminders(prev => prev.map(r => r.id === mappedRem.id ? mappedRem : r));
+                  }
+                }
+              }
+            )
+            .subscribe();
+
         } catch (e) {
           console.error("[Medimz Sync Error] Failed to load data from live Supabase:", e);
         } finally {
@@ -520,6 +643,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       subscription.unsubscribe();
       if (profilesSyncChannel) {
         profilesSyncChannel.unsubscribe();
+      }
+      if (medicinesSyncChannel) {
+        medicinesSyncChannel.unsubscribe();
+      }
+      if (remindersSyncChannel) {
+        remindersSyncChannel.unsubscribe();
       }
     };
   }, []);

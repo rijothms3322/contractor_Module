@@ -109,7 +109,7 @@ export const authService = {
         .maybeSingle();
 
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Profiles query timed out.")), 6000)
+        setTimeout(() => reject(new Error("Profiles query timed out.")), 12000)
       );
 
       const { data, error } = await Promise.race([selectPromise, timeoutPromise]) as any;
@@ -175,8 +175,23 @@ export const authService = {
         familyId: data.family_id || null
       };
     } catch (error) {
-      console.warn("Failed to fetch profiles table row, returning safe UI fallback:", error);
-      // Return safe fallback mapped to credentials
+      console.warn("Failed to fetch profiles table row, attempting local cache recovery:", error);
+      if (typeof window !== "undefined") {
+        try {
+          const cachedUser = localStorage.getItem("medimz_user");
+          if (cachedUser) {
+            const parsed = JSON.parse(cachedUser);
+            // Ensure the cached profile belongs to the requesting user before recovering
+            if (parsed && parsed.id === userId) {
+              console.log("Medimz Cache Recovery: Successfully recovered active session profile from cache!");
+              return parsed;
+            }
+          }
+        } catch (e) {
+          console.warn("Failed to parse cached local user profile:", e);
+        }
+      }
+
       return {
         id: userId,
         fullName: "Health Champion",
