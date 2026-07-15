@@ -101,13 +101,34 @@ export const authService = {
       throw new Error("Supabase is not configured.");
     }
 
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", userId)
-      .single();
+    try {
+      const selectPromise = supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", userId)
+        .single();
 
-    if (error) {
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Profiles query timed out.")), 6000)
+      );
+
+      const { data, error } = await Promise.race([selectPromise, timeoutPromise]) as any;
+
+      if (error) throw error;
+      if (!data) throw new Error("Profile not found.");
+
+      return {
+        id: data.id,
+        fullName: data.full_name || "Health Champion",
+        avatarUrl: data.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(data.full_name || "User")}`,
+        age: data.age || 35,
+        gender: data.gender || "Male",
+        medicalConditions: data.medical_conditions || [],
+        addresses: data.addresses || [],
+        role: data.role || "user",
+        familyId: data.family_id || null
+      };
+    } catch (error) {
       console.warn("Failed to fetch profiles table row, returning safe UI fallback:", error);
       // Return safe fallback mapped to credentials
       return {
@@ -122,19 +143,6 @@ export const authService = {
         familyId: null
       };
     }
-
-    // Map database snake_case fields directly to existing TypeScript CamelCase interfaces
-    return {
-      id: data.id,
-      fullName: data.full_name || "Health Champion",
-      avatarUrl: data.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(data.full_name || "User")}`,
-      age: data.age || 35,
-      gender: data.gender || "Male",
-      medicalConditions: data.medical_conditions || [],
-      addresses: data.addresses || [],
-      role: (data.role as "user" | "admin") || "user",
-      familyId: data.family_id || null
-    };
   },
 
   /**
