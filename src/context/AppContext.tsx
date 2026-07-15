@@ -1842,9 +1842,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const n = await reminderService.addNotification(user.id, "Family Portal Created! 🏠", `Successfully created family '${name}' with code ${code}.`, "system");
       setNotifications(prev => [n, ...prev]);
 
-      const updatedUser = await authService.getProfile(user.id);
+      const updatedUser = { ...user, familyId: newFam.id };
       setUser(updatedUser);
-      window.location.reload();
+      if (typeof window !== "undefined") {
+        safeLocalStorage.setItem("medimz_user", JSON.stringify(updatedUser));
+      }
+
+      setActiveFamily({
+        id: newFam.id,
+        name: newFam.name,
+        familyCode: newFam.family_code,
+        adminId: newFam.admin_id
+      });
+      setIsLinkedToFamily(true);
+
       return true;
     } catch (e: any) {
       alert("Failed to create family: " + e.message);
@@ -1873,9 +1884,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const n = await reminderService.addNotification(user.id, "Joined Family Portal! 🤝", "You have joined the family group successfully.", "system");
       setNotifications(prev => [n, ...prev]);
 
-      const updatedUser = await authService.getProfile(user.id);
+      // Query new family info from Supabase to load into context locally
+      const { data: famData } = await supabase
+        .from("families")
+        .select("*")
+        .eq("id", familyId)
+        .maybeSingle();
+
+      const updatedUser = { ...user, familyId };
       setUser(updatedUser);
-      window.location.reload();
+      if (typeof window !== "undefined") {
+        safeLocalStorage.setItem("medimz_user", JSON.stringify(updatedUser));
+      }
+
+      if (famData) {
+        setActiveFamily({
+          id: famData.id,
+          name: famData.name,
+          familyCode: famData.family_code,
+          adminId: famData.admin_id
+        });
+      }
+      setIsLinkedToFamily(true);
+
       return true;
     } catch (e: any) {
       alert("Failed to join family: " + e.message);
@@ -1906,11 +1937,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const n = await reminderService.addNotification(user.id, "Left Family Portal 🚪", "You have left your family group.", "system");
       setNotifications(prev => [n, ...prev]);
 
+      const updatedUser = { ...user, familyId: null };
+      setUser(updatedUser);
+      if (typeof window !== "undefined") {
+        safeLocalStorage.setItem("medimz_user", JSON.stringify(updatedUser));
+      }
+
       setActiveFamily(null);
       setIsLinkedToFamily(false);
-      const updatedUser = await authService.getProfile(user.id);
-      setUser(updatedUser);
-      window.location.reload();
       return true;
     } catch (e: any) {
       alert("Failed to leave family: " + e.message);
@@ -1948,11 +1982,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const n = await reminderService.addNotification(user.id, "Family Disbanded 💥", `The family portal '${activeFamily.name}' was disbanded by the Admin.`, "system");
       setNotifications(prev => [n, ...prev]);
 
+      const updatedUser = { ...user, familyId: null };
+      setUser(updatedUser);
+      if (typeof window !== "undefined") {
+        safeLocalStorage.setItem("medimz_user", JSON.stringify(updatedUser));
+      }
+
       setActiveFamily(null);
       setIsLinkedToFamily(false);
-      const updatedUser = await authService.getProfile(user.id);
-      setUser(updatedUser);
-      window.location.reload();
       return true;
     } catch (e: any) {
       alert("Failed to disband family: " + e.message);
