@@ -227,5 +227,13 @@ export const medicineService = {
       .from("family_members")
       .update(payload)
       .eq("id", memberId);
+  },
+  async deleteFamilyMember(memberId: string): Promise<void> {
+    if (!isSupabaseConfigured) throw new Error("Supabase is not configured.");
+    const { error } = await supabase
+      .from("family_members")
+      .delete()
+      .eq("id", memberId);
+    if (error) throw error;
   }
 };

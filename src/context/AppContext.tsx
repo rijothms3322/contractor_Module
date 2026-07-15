@@ -84,6 +84,7 @@ interface AppContextType {
   familyMembers: FamilyMember[];
   addFamilyMember: (member: Omit<FamilyMember, "id" | "adherenceRate">) => void;
   updateFamilyMember: (memberId: string, memberData: Partial<FamilyMember>) => void;
+  deleteFamilyMember: (memberId: string) => void;
 
   // Medicines & Reminders
   medicines: Medicine[];
@@ -1180,6 +1181,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const deleteFamilyMember = (memberId: string) => {
+    setFamilyMembers(prev => prev.filter(f => f.id !== memberId));
+
+    if (isSupabaseConfigured && user) {
+      medicineService.deleteFamilyMember(memberId)
+        .catch(err => console.error("Failed to sync family member deletion:", err));
+    }
+    addNotification("Member Removed 🗑️", "Family member profile card was deleted successfully.", "system");
+  };
+
   // ====================================================================
   // MEDICINES & TIMELINE REMINDERS CRUD
   // ====================================================================
@@ -1418,6 +1429,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteMedicine = (medicineId: string) => {
     setMedicines(prev => prev.filter(m => m.id !== medicineId));
     setReminders(prev => prev.filter(r => r.medicineId !== medicineId || r.status !== "pending"));
+    
+    if (isSupabaseConfigured && user) {
+      medicineService.deleteMedicine(medicineId)
+        .catch(err => console.error("Failed to delete medicine from database:", err));
+    }
+    
     addNotification("Medicine Deleted 🗑️", `Medication and its scheduled reminders have been removed.`, "reminder");
   };
 
@@ -2072,6 +2089,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         familyMembers,
         addFamilyMember,
         updateFamilyMember,
+        deleteFamilyMember,
 
         medicines,
         reminders,

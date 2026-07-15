@@ -45,6 +45,7 @@ export const DashboardView: React.FC = () => {
     snoozeReminder,
     familyMembers,
     addFamilyMember,
+    deleteFamilyMember,
     medicines,
     activeFamily,
     createFamily,
@@ -1364,38 +1365,55 @@ export const DashboardView: React.FC = () => {
                             <div>
                               <span className="font-bold text-xs text-on-surface block">{member.name}</span>
                               <span className="text-[9px] text-outline">
-                                {member.id === activeFamily.adminId ? "Group Admin" : "Group Member"}
+                                {member.color === "purple" 
+                                  ? (member.id === activeFamily.adminId ? "Group Admin" : "Group Member")
+                                  : `Local Profile (${member.relationship})`
+                                }
                               </span>
                             </div>
                           </div>
                           <div className="flex gap-1">
-                            {/* Admin Controls Board */}
-                            {user?.id === activeFamily.adminId ? (
-                              <>
-                                <button
-                                  onClick={async () => {
-                                    if (confirm(`Transfer admin ownership rights to ${member.name}?`)) {
-                                      await transferAdminRights(member.id);
-                                    }
-                                  }}
-                                  className="px-2 py-1 bg-surface-container-high hover:bg-opacity-80 text-secondary font-bold text-[9px] rounded-lg transition-all"
-                                  title="Transfer Admin Rights"
-                                >
-                                  Make Admin
-                                </button>
-                                <button
-                                  onClick={async () => {
-                                    if (confirm(`Are you sure you want to remove ${member.name} from the family portal?`)) {
-                                      await removeFamilyMember(member.id);
-                                    }
-                                  }}
-                                  className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 font-bold text-[9px] rounded-lg transition-all border border-red-200/20"
-                                >
-                                  Remove
-                                </button>
-                              </>
+                            {member.color === "purple" ? (
+                              /* Linked Account: requires Admin permissions to manage */
+                              user?.id === activeFamily.adminId ? (
+                                <>
+                                  <button
+                                    onClick={async () => {
+                                      if (confirm(`Transfer admin ownership rights to ${member.name}?`)) {
+                                        await transferAdminRights(member.id);
+                                      }
+                                    }}
+                                    className="px-2 py-1 bg-surface-container-high hover:bg-opacity-80 text-secondary font-bold text-[9px] rounded-lg transition-all"
+                                    title="Transfer Admin Rights"
+                                  >
+                                    Make Admin
+                                  </button>
+                                  <button
+                                    onClick={async () => {
+                                      if (confirm(`Are you sure you want to remove ${member.name} from the family portal?`)) {
+                                        await removeFamilyMember(member.id);
+                                      }
+                                    }}
+                                    className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 font-bold text-[9px] rounded-lg transition-all border border-red-200/20"
+                                  >
+                                    Remove
+                                  </button>
+                                </>
+                              ) : (
+                                <span className="text-[9px] text-outline/80 italic pr-1">Joined</span>
+                              )
                             ) : (
-                              <span className="text-[9px] text-outline/80 italic pr-1">Joined</span>
+                              /* Local Family Member Profile: anyone can delete their local cards */
+                              <button
+                                onClick={async () => {
+                                  if (confirm(`Are you sure you want to delete the local profile card for ${member.name}?`)) {
+                                    await deleteFamilyMember(member.id);
+                                  }
+                                }}
+                                className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 font-bold text-[9px] rounded-lg transition-all border border-red-200/20"
+                              >
+                                Delete
+                              </button>
                             )}
                           </div>
                         </div>
