@@ -276,7 +276,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         try {
           // Fetch authenticated profile details
           const profile = await authService.getProfile(session.user.id);
-          setUser(profile);
+          setUser({ ...profile, email: session.user.email });
           setIsLoggedIn(true);
  
           const safeFetch = async <T,>(promise: Promise<T>, fallback: T, label: string): Promise<T> => {
@@ -1068,7 +1068,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const { user: dbProfile } = await authService.signIn(email, cleanPassword);
         
         // Override profile role with targetRole selected on form to grant appropriate permissions
-        const updatedProfile = { ...dbProfile, role: targetRole };
+        const updatedProfile = { ...dbProfile, role: targetRole, email };
         setUser(updatedProfile);
         setIsLoggedIn(true);
 
@@ -1111,8 +1111,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const cleanName = fullName || email.split("@")[0];
         const dbProfile = await authService.signUp(email, cleanPassword, cleanName, targetRole);
         
-        // Override profile role with targetRole selected on form to grant appropriate permissions
-        const updatedProfile = { ...dbProfile, role: targetRole };
+        const updatedProfile = { ...dbProfile, role: targetRole, email };
         setUser(updatedProfile);
         setIsLoggedIn(true);
       } else {

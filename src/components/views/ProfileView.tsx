@@ -176,6 +176,12 @@ export const ProfileView: React.FC = () => {
               <p className="font-body-md text-xs text-on-surface-variant mt-0.5">
                 Age: {user?.age} • {user?.gender} • Blood Type: <span className="font-bold text-secondary">{user?.bloodGroup || "O+"}</span>
               </p>
+              {user?.email && (
+                <p className="font-body-md text-[11px] text-primary mt-1 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[13px]">mail</span>
+                  <span>{user.email}</span>
+                </p>
+              )}
               <div className="flex gap-1.5 flex-wrap mt-2">
                 {user?.medicalConditions.map((cond, idx) => (
                   <span key={idx} className="bg-primary/10 text-primary text-[8px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">

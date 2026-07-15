@@ -23,6 +23,7 @@ export interface Profile {
   }[];
   role: "user" | "admin";
   familyId?: string | null;
+  email?: string;
 }
 
 export interface FamilyMember {
