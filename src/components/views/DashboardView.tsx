@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useApp } from "../../context/AppContext";
 import { Reminder } from "../../lib/mockData";
+import { supabase, isSupabaseConfigured } from "../../lib/supabaseClient";
 import { MedicineBox } from "./MedicineBox";
 import { PredictiveSearch } from "@/components/search/PredictiveSearch";
 import { SymptomAssessment } from "./SymptomAssessment";
@@ -743,6 +744,33 @@ export const DashboardView: React.FC = () => {
         </section>
       </div>
 
+      {/* Family Sync Portal Card */}
+      <section className="glass-card rounded-2xl p-5 shadow-sm border border-outline-variant/20 bg-gradient-to-br from-primary-container/10 to-white flex flex-col sm:flex-row justify-between items-center gap-4">
+        <div className="flex gap-4 items-start text-left">
+          <div className="w-10 h-10 rounded-xl bg-primary-container text-white flex items-center justify-center flex-shrink-0 shadow-sm animate-pulse">
+            <span className="material-symbols-outlined text-xl">diversity_1</span>
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="font-headline-md text-sm text-secondary font-bold">Family Synchronization Hub</h3>
+              <span className="bg-primary/10 text-primary text-[8px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                Sync Portal
+              </span>
+            </div>
+            <p className="font-body-md text-xs text-on-surface-variant mt-1 leading-relaxed">
+              Link portals with your family members to monitor compliance, share real-time reminders, and sync medical updates.
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => setShowSyncModal(true)}
+          className="w-full sm:w-auto px-4 py-2.5 bg-secondary hover:bg-opacity-95 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-sm flex-shrink-0"
+        >
+          <span className="material-symbols-outlined text-sm">settings</span>
+          <span>Manage Sync</span>
+        </button>
+      </section>
+
       {/* Adherence Bento Grid Section */}
       <section className="grid grid-cols-1 md:grid-cols-2 gap-stack-md">
         <div className="glass-card p-6 rounded-2xl shadow-sm bg-gradient-to-br from-secondary-container/20 to-white border border-outline-variant/20 flex flex-col justify-between">
@@ -1116,10 +1144,56 @@ export const DashboardView: React.FC = () => {
                     className="flex-1 px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary uppercase"
                   />
                   <button
-                    onClick={() => {
-                      if (joinFamilyId.trim()) {
+                    onClick={async () => {
+                      if (!joinFamilyId.trim()) return;
+                      const searchId = joinFamilyId.trim().toUpperCase().replace("FAM-", "");
+                      
+                      if (isSupabaseConfigured && user) {
+                        try {
+                          // Search profiles where the ID starts with the short Family ID slice
+                          const { data: matchedProfiles, error: searchErr } = await supabase
+                            .from("profiles")
+                            .select("id, full_name")
+                            .like("id", `${searchId.toLowerCase()}%`);
+
+                          if (searchErr || !matchedProfiles || matchedProfiles.length === 0) {
+                            alert("No profile found with that Family ID. Please check and try again.");
+                            return;
+                          }
+
+                          const targetUser = matchedProfiles[0];
+                          if (targetUser.id === user.id) {
+                            alert("You cannot join your own Family ID!");
+                            return;
+                          }
+
+                          // Establish connection: sort IDs to prevent duplicates and satisfy UNIQUE constraint
+                          const [u1, u2] = [user.id, targetUser.id].sort();
+                          const { error: insertErr } = await supabase
+                            .from("family_links")
+                            .upsert({
+                              user_id_1: u1,
+                              user_id_2: u2,
+                              status: "accepted"
+                            });
+
+                          if (insertErr) {
+                            alert("Failed to connect: " + insertErr.message);
+                            return;
+                          }
+
+                          alert(`Successfully connected to Family Portal of ${targetUser.full_name}!`);
+                          setJoinFamilyId("");
+                          setShowSyncModal(false);
+                          window.location.reload();
+                        } catch (err: any) {
+                          console.error("Link failure:", err);
+                          alert("Link failed: " + (err.message || err));
+                        }
+                      } else {
+                        // Demo mode fallback
                         setFamilyPortalActive(true);
-                        alert(`Successfully connected to Family Portal: ${joinFamilyId.toUpperCase()}`);
+                        alert(`[DEMO MODE] Connected to simulated Family Portal: ${joinFamilyId.toUpperCase()}`);
                         setJoinFamilyId("");
                         setShowSyncModal(false);
                       }

@@ -264,8 +264,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setIsLoggedIn(true);
  
           const safeFetch = async <T,>(promise: Promise<T>, fallback: T, label: string): Promise<T> => {
+            const timeout = new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error(`Timeout fetching ${label}`)), 6000)
+            );
             try {
-              return await promise;
+              return await Promise.race([promise, timeout]);
             } catch (err) {
               console.warn(`[Supabase Fetch Warning] Failed to load ${label}, using fallback:`, err);
               return fallback;
@@ -329,6 +332,66 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               });
           }
 
+          // Fetch active linked family connections
+          const connections = await safeFetch(
+            supabase
+              .from("family_links")
+              .select("*")
+              .eq("status", "accepted")
+              .or(`user_id_1.eq.${session.user.id},user_id_2.eq.${session.user.id}`)
+              .then((res: any) => {
+                if (res.error) throw res.error;
+                return res.data || [];
+              }),
+            [],
+            "family connections"
+          );
+
+          const linkedUserIds = (connections || []).map((conn: any) => 
+            conn.user_id_1 === session.user.id ? conn.user_id_2 : conn.user_id_1
+          );
+
+          let sharedMeds: Medicine[] = [];
+          let sharedRems: Reminder[] = [];
+          let sharedFam: FamilyMember[] = [];
+
+          if (linkedUserIds.length > 0) {
+            await Promise.all(linkedUserIds.map(async (lUserId: string) => {
+              try {
+                const linkedProfile = await authService.getProfile(lUserId);
+                sharedFam.push({
+                  id: linkedProfile.id,
+                  name: linkedProfile.fullName,
+                  avatarUrl: linkedProfile.avatarUrl,
+                  relationship: "Family Member",
+                  age: linkedProfile.age,
+                  gender: linkedProfile.gender,
+                  medicalConditions: linkedProfile.medicalConditions,
+                  color: "purple"
+                });
+
+                const lMeds = await medicineService.getMedicines(lUserId);
+                const lRems = await reminderService.getReminders(lUserId);
+
+                const publicMeds = lMeds.filter(m => !m.isPrivate);
+                const publicRems = lRems.filter(r => !r.isPrivate);
+
+                const mappedRems = publicRems.map(r => ({
+                  ...r,
+                  familyMemberId: r.familyMemberId || linkedProfile.id,
+                  recipientNickname: r.recipientNickname && r.recipientNickname !== "Myself" ? r.recipientNickname : linkedProfile.fullName,
+                  recipientAvatar: r.recipientAvatar || linkedProfile.avatarUrl,
+                  recipientColor: r.recipientColor || "purple"
+                }));
+
+                sharedMeds.push(...publicMeds);
+                sharedRems.push(...mappedRems);
+              } catch (err) {
+                console.error(`Failed to load linked family data for user ${lUserId}:`, err);
+              }
+            }));
+          }
+
           // Resolve care recipient nickname/avatar/color dynamically on query fetch load
           const resolvedRems = uniqueRems.map(r => {
             const fm = dbFam.find(f => f.id === r.familyMemberId);
@@ -340,9 +403,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             };
           });
 
-          setMedicines(uniqueMeds);
-          setFamilyMembers(dbFam);
-          setReminders(resolvedRems);
+          const allMeds = [...uniqueMeds, ...sharedMeds];
+          const allFam = [...dbFam, ...sharedFam];
+          const allRems = [...resolvedRems, ...sharedRems];
+
+          setMedicines(Array.from(new Map(allMeds.map(m => [m.id, m])).values()));
+          setFamilyMembers(Array.from(new Map(allFam.map(f => [f.id, f])).values()));
+          setReminders(Array.from(new Map(allRems.map(r => [r.id, r])).values()));
           setBookings(dbBookings);
           setReports(dbReports);
           setNotifications(dbNotifs);
