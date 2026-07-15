@@ -18,6 +18,7 @@ ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS family_id UUID REFERENCES p
 ALTER TABLE public.families ENABLE ROW LEVEL SECURITY;
 
 -- Admins and members can read/write their own family details
+DROP POLICY IF EXISTS "Allow members access own family details" ON public.families;
 CREATE POLICY "Allow members access own family details" ON public.families
     FOR ALL USING (
         auth.uid() = admin_id 

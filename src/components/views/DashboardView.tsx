@@ -1207,14 +1207,31 @@ export const DashboardView: React.FC = () => {
                           const searchId = joinFamilyId.trim().toUpperCase();
                           setIsVerifying(true);
                           try {
-                            const rpcPromise = supabase.rpc("verify_family_code", { input_code: searchId });
+                            const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+                            const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+                            const rpcPromise = fetch(`${supabaseUrl}/rest/v1/rpc/verify_family_code`, {
+                              method: "POST",
+                              headers: {
+                                "apikey": supabaseAnonKey || "",
+                                "Content-Type": "application/json"
+                              },
+                              body: JSON.stringify({ input_code: searchId })
+                            }).then(async (res) => {
+                              if (!res.ok) {
+                                const errText = await res.text();
+                                throw new Error(errText || "Failed to fetch verification details.");
+                              }
+                              return res.json();
+                            });
+
                             const timeoutPromise = new Promise<never>((_, reject) =>
                               setTimeout(() => reject(new Error("Request timed out. Please check if your Supabase database is awake and that you ran the SQL migration.")), 8000)
                             );
 
-                            const { data, error } = await Promise.race([rpcPromise, timeoutPromise]) as any;
+                            const data = await Promise.race([rpcPromise, timeoutPromise]) as any;
 
-                            if (error || !data || data.length === 0) {
+                            if (!data || data.length === 0) {
                               alert("No active family found matching code: " + searchId);
                               setVerificationFamily(null);
                             } else {
