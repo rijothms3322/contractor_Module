@@ -1176,9 +1176,15 @@ export const DashboardView: React.FC = () => {
                     className="flex-1 px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary uppercase"
                   />
                   <button
+                    type="button"
                     onClick={async () => {
-                      if (!joinFamilyId.trim()) return;
+                      console.log("Join button clicked! ID entered:", joinFamilyId);
+                      if (!joinFamilyId.trim()) {
+                        alert("Please enter a Family ID.");
+                        return;
+                      }
                       const searchId = joinFamilyId.trim().toUpperCase().replace("FAM-", "");
+                      console.log("Search ID parsed:", searchId);
                       
                       if (isSupabaseConfigured && user) {
                         try {
@@ -1200,18 +1206,25 @@ export const DashboardView: React.FC = () => {
                             }
                           }
 
-                          // Fetch all profiles to filter by short prefix client-side (bypasses Postgres UUID type LIKE limitations)
+                          console.log("Querying profiles list from Supabase...");
                           const { data: allProfiles, error: searchErr } = await supabase
                             .from("profiles")
                             .select("id, full_name");
 
-                          if (searchErr || !allProfiles) {
-                            alert("Failed to query profiles from database: " + (searchErr?.message || "Unknown error"));
+                          if (searchErr) {
+                            console.error("Profiles query error:", searchErr);
+                            alert("Failed to query profiles from database: " + searchErr.message);
                             return;
                           }
 
+                          if (!allProfiles) {
+                            alert("Failed to query profiles: No data returned from database.");
+                            return;
+                          }
+
+                          console.log("Found profiles count:", allProfiles.length);
                           const matchedProfiles = allProfiles.filter((p: any) => 
-                            p.id.toLowerCase().startsWith(searchId.toLowerCase())
+                            p.id && p.id.toLowerCase().startsWith(searchId.toLowerCase())
                           );
 
                           if (matchedProfiles.length === 0) {
@@ -1227,6 +1240,7 @@ export const DashboardView: React.FC = () => {
 
                           // Establish connection: sort IDs to prevent duplicates and satisfy UNIQUE constraint
                           const [u1, u2] = [user.id, targetUser.id].sort();
+                          console.log("Linking users:", u1, "and", u2);
                           const { error: insertErr } = await supabase
                             .from("family_links")
                             .upsert({
@@ -1236,6 +1250,7 @@ export const DashboardView: React.FC = () => {
                             });
 
                           if (insertErr) {
+                            console.error("Upsert connection error:", insertErr);
                             alert("Failed to connect: " + insertErr.message);
                             return;
                           }
@@ -1245,11 +1260,12 @@ export const DashboardView: React.FC = () => {
                           setShowSyncModal(false);
                           window.location.reload();
                         } catch (err: any) {
-                          console.error("Link failure:", err);
+                          console.error("Unhandled link failure:", err);
                           alert("Link failed: " + (err.message || err));
                         }
                       } else {
                         // Demo mode fallback
+                        console.log("Supabase not configured or user not logged in. Falling back to Demo Mode.");
                         setFamilyPortalActive(true);
                         alert(`[DEMO MODE] Connected to simulated Family Portal: ${joinFamilyId.toUpperCase()}`);
                         setJoinFamilyId("");
