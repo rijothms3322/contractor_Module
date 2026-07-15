@@ -1200,10 +1200,20 @@ export const DashboardView: React.FC = () => {
                             alert("Please enter an invitation code.");
                             return;
                           }
+                          if (!isSupabaseConfigured) {
+                            alert("Database is not configured. Please set your Supabase environment variables.");
+                            return;
+                          }
                           const searchId = joinFamilyId.trim().toUpperCase();
                           setIsVerifying(true);
                           try {
-                            const { data, error } = await supabase.rpc("verify_family_code", { input_code: searchId });
+                            const rpcPromise = supabase.rpc("verify_family_code", { input_code: searchId });
+                            const timeoutPromise = new Promise<never>((_, reject) =>
+                              setTimeout(() => reject(new Error("Request timed out. Please check if your Supabase database is awake and that you ran the SQL migration.")), 8000)
+                            );
+
+                            const { data, error } = await Promise.race([rpcPromise, timeoutPromise]) as any;
+
                             if (error || !data || data.length === 0) {
                               alert("No active family found matching code: " + searchId);
                               setVerificationFamily(null);
@@ -1217,7 +1227,8 @@ export const DashboardView: React.FC = () => {
                               });
                             }
                           } catch (e: any) {
-                            alert("Verification error: " + e.message);
+                            alert("Verification failed: " + e.message);
+                            setVerificationFamily(null);
                           } finally {
                             setIsVerifying(false);
                           }
