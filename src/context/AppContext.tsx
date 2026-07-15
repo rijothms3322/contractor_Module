@@ -1853,7 +1853,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const joinFamily = async (familyId: string): Promise<boolean> => {
-    if (!user) return false;
+    if (!user) {
+      alert("Failed to join family: No active user session was found.");
+      return false;
+    }
     if (!isSupabaseConfigured) {
       alert("Database connection is not configured. Please set your Supabase environment variables.");
       return false;
