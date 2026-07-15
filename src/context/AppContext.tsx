@@ -359,9 +359,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           let sharedFam: FamilyMember[] = [];
 
           if (linkedUserIds.length > 0) {
+            console.log("Medimz Link System: Found linked family user IDs:", linkedUserIds);
             await Promise.all(linkedUserIds.map(async (lUserId: string) => {
               try {
                 const linkedProfile = await authService.getProfile(lUserId);
+                console.log("Medimz Link System: Fetched profile details for", linkedProfile.fullName);
                 sharedFam.push({
                   id: linkedProfile.id,
                   name: linkedProfile.fullName,
@@ -375,6 +377,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
                 const lMeds = await medicineService.getMedicines(lUserId);
                 const lRems = await reminderService.getReminders(lUserId);
+                console.log(`Medimz Link System: Fetched ${lMeds.length} medicines and ${lRems.length} reminders for user ${linkedProfile.fullName}`);
 
                 const publicMeds = lMeds.filter(m => !m.isPrivate);
                 const publicRems = lRems.filter(r => !r.isPrivate);
