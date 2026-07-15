@@ -98,6 +98,8 @@ interface AppContextType {
   adherenceStreak: number | "no_medicines";
   familyAdherenceStreak: number | "no_medicines";
   adherencePercentage: number;
+  isLinkedToFamily: boolean;
+  setIsLinkedToFamily: React.Dispatch<React.SetStateAction<boolean>>;
   
   // Wellness Engine
   wellnessScore: number;
@@ -204,6 +206,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [labs] = useState<Lab[]>(DEFAULT_LABS);
+  const [isLinkedToFamily, setIsLinkedToFamily] = useState<boolean>(false);
   const [tests] = useState<DiagnosticTest[]>(DEFAULT_TESTS);
 
   const [bookings, setBookings] = useState<Booking[]>(() => {
@@ -230,16 +233,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return [];
   });
 
-  const [adherenceStreak, setAdherenceStreak] = useState<number | "no_medicines">(14);
-  const [familyAdherenceStreak, setFamilyAdherenceStreak] = useState<number | "no_medicines">(14);
-  const [adherencePercentage, setAdherencePercentage] = useState<number>(85);
+  const [adherenceStreak, setAdherenceStreak] = useState<number | "no_medicines">("no_medicines");
+  const [familyAdherenceStreak, setFamilyAdherenceStreak] = useState<number | "no_medicines">("no_medicines");
+  const [adherencePercentage, setAdherencePercentage] = useState<number>(0);
 
   // Wellness Engine state declarations
-  const [wellnessScore, setWellnessScore] = useState<number>(10.0);
-  const [familyWellnessScore, setFamilyWellnessScore] = useState<number>(10.0);
-  const [wellnessCategory, setWellnessCategory] = useState<string>("Excellent");
-  const [familyWellnessCategory, setFamilyWellnessCategory] = useState<string>("Excellent");
-  const [wellnessTrend, setWellnessTrend] = useState<string>("↑ +0.0 compared to last week");
+  const [wellnessScore, setWellnessScore] = useState<number>(0);
+  const [familyWellnessScore, setFamilyWellnessScore] = useState<number>(0);
+  const [wellnessCategory, setWellnessCategory] = useState<string>("No Data");
+  const [familyWellnessCategory, setFamilyWellnessCategory] = useState<string>("No Data");
+  const [wellnessTrend, setWellnessTrend] = useState<string>("No Trend");
   const [familyAlerts, setFamilyAlerts] = useState<string[]>([]);
   const [unlockedAchievements, setUnlockedAchievements] = useState<{ id: string; title: string; desc: string; icon: string }[]>([]);
   const [medicationLogs, setMedicationLogs] = useState<any[]>([]);
@@ -407,6 +410,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const allFam = [...dbFam, ...sharedFam];
           const allRems = [...resolvedRems, ...sharedRems];
 
+          setIsLinkedToFamily(connections.length > 0);
           setMedicines(Array.from(new Map(allMeds.map(m => [m.id, m])).values()));
           setFamilyMembers(Array.from(new Map(allFam.map(f => [f.id, f])).values()));
           setReminders(Array.from(new Map(allRems.map(r => [r.id, r])).values()));
@@ -429,6 +433,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setBookings([]);
         setReports([]);
         setNotifications([]);
+        setIsLinkedToFamily(false);
         setIsInitialized(true);
       }
     });
@@ -914,7 +919,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Recalculate adherence analytics based on reminders
   const calculateMetrics = (remLogs: Reminder[]) => {
     const userLogs = remLogs.filter(r => !r.familyMemberId);
-    if (userLogs.length === 0) return;
+    if (userLogs.length === 0) {
+      setAdherencePercentage(0);
+      setAdherenceStreak("no_medicines");
+      setFamilyAdherenceStreak("no_medicines");
+      setWellnessScore(0);
+      setWellnessCategory("No Data");
+      setWellnessTrend("No Trend");
+      setFamilyWellnessScore(0);
+      setFamilyWellnessCategory("No Data");
+      setFamilyAlerts([]);
+      setUnlockedAchievements([]);
+      return;
+    }
 
     const finishedLogs = userLogs.filter(r => r.status !== "pending");
     if (finishedLogs.length === 0) {
@@ -1764,6 +1781,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         adherenceStreak,
         familyAdherenceStreak,
         adherencePercentage,
+        isLinkedToFamily,
+        setIsLinkedToFamily,
 
         // Wellness Engine
         wellnessScore,

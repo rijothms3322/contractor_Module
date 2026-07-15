@@ -31,6 +31,9 @@ export const DashboardView: React.FC = () => {
     toggleReminderStatus,
     adherenceStreak,
     adherencePercentage,
+    isLinkedToFamily,
+    wellnessScore,
+    familyWellnessScore,
     setActiveTab,
     uploadReportPlaceholder,
     bookings,
@@ -84,19 +87,7 @@ export const DashboardView: React.FC = () => {
     patientName: string;
     date: string;
     fields: Record<string, string>;
-  }>>([
-    {
-      id: "rep-1",
-      category: "Lipid Profile",
-      patientName: "Sarah (Myself)",
-      date: "Apr 2026",
-      fields: {
-        "Total Cholesterol": "198",
-        "HDL (Good)": "48",
-        "LDL (Bad)": "120"
-      }
-    }
-  ]);
+  }>>([]);
 
   const [reportFields, setReportFields] = useState<Record<string, string>>({
     "Total Cholesterol": "198",
@@ -398,6 +389,36 @@ export const DashboardView: React.FC = () => {
   const activeBooking = bookings.find(
     (b) => b.status === "out_for_collection" || b.status === "assigned"
   );
+
+  // Helper to dynamically calculate adherence for a past day offset (0 = today, 1 = yesterday, etc.)
+  const getDailyAdherence = (dayOffset: number): { dayLabel: string; value: number } => {
+    const d = new Date();
+    d.setDate(d.getDate() - dayOffset);
+    const dayStr = d.toISOString().split("T")[0];
+    const dayLabel = d.toLocaleDateString("en-US", { weekday: "narrow" });
+    
+    // Filter active reminders for the logged user on this date
+    const dayRems = reminders.filter(r => {
+      const rDateStr = r.scheduledTime ? r.scheduledTime.split("T")[0] : "";
+      return !r.familyMemberId && rDateStr === dayStr;
+    });
+    
+    if (dayRems.length === 0) {
+      return { dayLabel, value: -1 };
+    }
+    
+    const finishedRems = dayRems.filter(r => r.status !== "pending");
+    if (finishedRems.length === 0) {
+      return { dayLabel, value: 100 };
+    }
+    
+    const takenRems = finishedRems.filter(r => r.status === "taken");
+    const pct = Math.round((takenRems.length / finishedRems.length) * 100);
+    return { dayLabel, value: pct };
+  };
+
+  const past7DaysData = Array.from({ length: 7 }, (_, i) => getDailyAdherence(6 - i));
+  const hasAnyWeeklyData = past7DaysData.some(d => d.value !== -1);
 
   const todayFormatted = new Date().toLocaleDateString("en-US", {
     weekday: "long",
@@ -753,9 +774,16 @@ export const DashboardView: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <h3 className="font-headline-md text-sm text-secondary font-bold">Family Synchronization Hub</h3>
-              <span className="bg-primary/10 text-primary text-[8px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
-                Sync Portal
-              </span>
+              {isLinkedToFamily ? (
+                <span className="bg-emerald-500 text-white text-[9px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider flex items-center gap-1 shadow-sm border border-emerald-400/20">
+                  <span className="material-symbols-outlined text-[10px] font-bold">verified</span>
+                  Connected
+                </span>
+              ) : (
+                <span className="bg-primary/10 text-primary text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                  Sync Portal
+                </span>
+              )}
             </div>
             <p className="font-body-md text-xs text-on-surface-variant mt-1 leading-relaxed">
               Link portals with your family members to monitor compliance, share real-time reminders, and sync medical updates.
@@ -776,18 +804,40 @@ export const DashboardView: React.FC = () => {
         <div className="glass-card p-6 rounded-2xl shadow-sm bg-gradient-to-br from-secondary-container/20 to-white border border-outline-variant/20 flex flex-col justify-between">
           <div>
             <h4 className="font-label-md text-xs text-secondary font-bold mb-3">Weekly Adherence Progress</h4>
-            <div className="flex items-end gap-2.5 h-20 mb-3 pt-1">
-              <div className="flex-1 bg-tertiary/20 rounded-t-lg h-full"></div>
-              <div className="flex-1 bg-tertiary/40 rounded-t-lg h-[75%]"></div>
-              <div className="flex-1 bg-tertiary/60 rounded-t-lg h-[83%]"></div>
-              <div className="flex-1 bg-tertiary rounded-t-lg h-full"></div>
-              <div className="flex-1 bg-tertiary/30 rounded-t-lg h-[66%]"></div>
-              <div className="flex-1 bg-primary/40 rounded-t-lg h-[50%]"></div>
-              <div className="flex-1 bg-surface-container-highest rounded-t-lg h-[33%]"></div>
-            </div>
+            {!hasAnyWeeklyData ? (
+              <div className="flex flex-col items-center justify-center h-20 text-center">
+                <span className="material-symbols-outlined text-outline-variant text-xl mb-1 animate-pulse">add_chart</span>
+                <p className="font-label-sm text-[10px] text-outline font-bold">No tracking data yet. Log details to see insights.</p>
+              </div>
+            ) : (
+              <div className="flex items-end gap-2.5 h-20 mb-3 pt-1">
+                {past7DaysData.map((d, idx) => {
+                  const val = d.value === -1 ? 0 : d.value;
+                  const barHeight = `${Math.max(8, val)}%`;
+                  return (
+                    <div key={idx} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
+                      <div 
+                        className={`w-full rounded-t-md transition-all duration-300 ${
+                          d.value === -1 
+                            ? "bg-outline-variant/10 h-[8px]" 
+                            : "bg-tertiary"
+                        }`}
+                        style={{ height: d.value === -1 ? "8px" : barHeight }}
+                        title={d.value === -1 ? "No doses scheduled" : `${d.value}% adherence`}
+                      />
+                      <span className="text-[9px] text-outline font-bold uppercase mt-1">{d.dayLabel}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
           <p className="font-label-sm text-[11px] text-on-surface-variant leading-relaxed">
-            You've taken <span className="text-tertiary font-bold">{adherencePercentage}%</span> of your doses this week. Keep it up!
+            {hasAnyWeeklyData ? (
+              <>You've taken <span className="text-tertiary font-bold">{adherencePercentage}%</span> of your doses this week. Keep it up!</>
+            ) : (
+              <>No medicine reminders found. Create medication reminders to view compliance tracking.</>
+            )}
           </p>
         </div>
 
@@ -803,32 +853,6 @@ export const DashboardView: React.FC = () => {
             <span>Add Prescription</span>
             <span className="material-symbols-outlined text-sm">arrow_forward</span>
           </button>
-        </div>
-      </section>
-
-
-
-
-
-      {/* AI Compliance banner */}
-      <section className="animate-in fade-in duration-300">
-        <div className="glass-card rounded-2xl p-5 shadow-sm border-l-4 border-primary flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="flex gap-4 items-start">
-            <div className="w-10 h-10 rounded-xl bg-primary-container text-white flex items-center justify-center flex-shrink-0 shadow-sm">
-              <span className="material-symbols-outlined text-xl">psychology</span>
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="font-headline-md text-xs text-secondary font-bold">Medimz AI Pulse</h2>
-                <span className="bg-primary/10 text-primary text-[8px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
-                  Compliance Check
-                </span>
-              </div>
-              <p className="font-body-md text-xs text-on-surface-variant mt-1 leading-relaxed">
-                "{user?.fullName ? user.fullName.split(" ")[0] : "Sarah"}, your cholesterol consistency is stabilized at <span className="text-tertiary font-bold">12%</span> improvement due to your {adherenceStreak}-day medication compliance streak."
-              </p>
-            </div>
-          </div>
         </div>
       </section>
 
@@ -902,9 +926,16 @@ export const DashboardView: React.FC = () => {
           </button>
         </div>
 
-        {loggedReports.map((report) => (
-          <section key={report.id} className="glass-card rounded-2xl p-5 shadow-sm border border-outline-variant/20 space-y-3 animate-in fade-in duration-300">
-            <div className="flex justify-between items-center pb-1.5 border-b border-outline-variant/15">
+        {loggedReports.length === 0 ? (
+          <div className="glass-card rounded-2xl p-6 text-center border border-outline-variant/20 space-y-2 animate-in fade-in duration-300">
+            <span className="material-symbols-outlined text-outline-variant text-2xl animate-pulse">biotech</span>
+            <p className="font-label-sm text-xs text-outline font-bold">No tracking data yet. Log details to see insights.</p>
+            <p className="font-body-sm text-[10px] text-on-surface-variant">Log your latest blood tests or vitals to track metrics.</p>
+          </div>
+        ) : (
+          loggedReports.map((report) => (
+            <section key={report.id} className="glass-card rounded-2xl p-5 shadow-sm border border-outline-variant/20 space-y-3 animate-in fade-in duration-300">
+              <div className="flex justify-between items-center pb-1.5 border-b border-outline-variant/15">
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-secondary text-base">description</span>
                 <div>
@@ -973,8 +1004,9 @@ export const DashboardView: React.FC = () => {
                 );
               })}
             </div>
-          </section>
-        ))}
+            </section>
+          ))
+        )}
       </div>
 
       <MedicineBox
@@ -1150,6 +1182,24 @@ export const DashboardView: React.FC = () => {
                       
                       if (isSupabaseConfigured && user) {
                         try {
+                          if (isLinkedToFamily) {
+                            const confirmSwitch = window.confirm(
+                              "You are already connected to a family. Joining a new family will disconnect you from your current family. Do you want to proceed?"
+                            );
+                            if (!confirmSwitch) return;
+
+                            // Delete existing links for this user
+                            const { error: deleteErr } = await supabase
+                              .from("family_links")
+                              .delete()
+                              .or(`user_id_1.eq.${user.id},user_id_2.eq.${user.id}`);
+
+                            if (deleteErr) {
+                              alert("Failed to disconnect from previous family: " + deleteErr.message);
+                              return;
+                            }
+                          }
+
                           // Search profiles where the ID starts with the short Family ID slice
                           const { data: matchedProfiles, error: searchErr } = await supabase
                             .from("profiles")
@@ -1206,11 +1256,47 @@ export const DashboardView: React.FC = () => {
               </div>
 
               {/* Active / Pending Invitations List */}
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <h4 className="text-[10px] font-bold text-outline uppercase tracking-wider">Connections & Invitations</h4>
-                {invitations.length === 0 ? (
-                  <p className="text-[10px] text-on-surface-variant italic py-2">No active invitations. Invite a member above.</p>
-                ) : (
+                
+                {/* User's Adherence & Family Progress */}
+                {isLinkedToFamily && (
+                  <div className="p-3 bg-primary/5 rounded-xl border border-primary/10 space-y-2 text-xs">
+                    <div className="flex justify-between items-center text-on-surface">
+                      <span className="font-semibold text-outline text-[11px]">Your Personal Adherence Score:</span>
+                      <span className="font-extrabold text-tertiary text-xs">{adherencePercentage}%</span>
+                    </div>
+                    <div className="flex justify-between items-center text-on-surface">
+                      <span className="font-semibold text-outline text-[11px]">Family's Wellness Score:</span>
+                      <span className="font-extrabold text-primary text-xs">{familyWellnessScore}/10</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Linked Accounts Roster */}
+                {familyMembers.filter(fm => fm.color === "purple").length > 0 ? (
+                  <div className="space-y-1.5">
+                    <span className="text-[9px] font-bold text-secondary uppercase block">Linked Family Members</span>
+                    <div className="divide-y divide-outline-variant/10 border border-outline-variant/10 rounded-xl overflow-hidden bg-surface-container-low/20">
+                      {familyMembers.filter(fm => fm.color === "purple").map((member) => (
+                        <div key={member.id} className="p-3 flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <img src={member.avatarUrl} alt={member.name} className="w-8 h-8 rounded-full border border-purple-200" />
+                            <div>
+                              <span className="font-bold text-xs text-on-surface block">{member.name}</span>
+                              <span className="text-[9px] text-outline">Relationship: {member.relationship}</span>
+                            </div>
+                          </div>
+                          <span className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/15 text-[8px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                            Active
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {invitations.length > 0 && (
                   <div className="divide-y divide-outline-variant/10 border border-outline-variant/10 rounded-xl overflow-hidden">
                     {invitations.map((inv, idx) => (
                       <div key={idx} className="p-3 bg-surface-container-low/20 flex items-center justify-between gap-3">
@@ -1241,6 +1327,10 @@ export const DashboardView: React.FC = () => {
                       </div>
                     ))}
                   </div>
+                )}
+
+                {!isLinkedToFamily && invitations.length === 0 && (
+                  <p className="text-[10px] text-on-surface-variant italic py-2">No active connections. Join a family group above.</p>
                 )}
               </div>
             </div>
