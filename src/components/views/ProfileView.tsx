@@ -6,7 +6,7 @@ import { AVATAR_CATEGORIES, AVATAR_ITEMS } from "../../lib/avatarLibrary";
 import { MemberDashboardView } from "./MemberDashboardView";
 
 export const ProfileView: React.FC = () => {
-  const { user, familyMembers, addFamilyMember, updateUserProfile, logout } = useApp();
+  const { user, familyMembers, addFamilyMember, deleteFamilyMember, updateUserProfile, logout } = useApp();
   const [showAddMember, setShowAddMember] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   
@@ -232,8 +232,23 @@ export const ProfileView: React.FC = () => {
               <div
                 key={fam.id}
                 onClick={() => setSelectedMemberId(fam.id)}
-                className={`p-5 glass-card rounded-2xl border border-outline-variant/20 border-l-4 ${BORDER_COLORS[fam.color || "blue"] || "border-l-blue-500"} flex flex-col justify-between gap-4 hover:border-secondary/35 cursor-pointer hover:scale-[1.01] transition-all shadow-sm`}
+                className={`p-5 glass-card rounded-2xl border border-outline-variant/20 border-l-4 ${BORDER_COLORS[fam.color || "blue"] || "border-l-blue-500"} flex flex-col justify-between gap-4 hover:border-secondary/35 cursor-pointer hover:scale-[1.01] transition-all shadow-sm relative group`}
               >
+                {/* Delete Local Profile Card option */}
+                {fam.color !== "purple" && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (confirm(`Are you sure you want to delete ${fam.name}?`)) {
+                        deleteFamilyMember(fam.id);
+                      }
+                    }}
+                    className="absolute top-4 right-4 w-7 h-7 rounded-full bg-white/80 hover:bg-red-50 hover:text-red-600 border border-outline-variant/20 flex items-center justify-center text-outline transition-colors z-20"
+                    title="Delete Family Member"
+                  >
+                    <span className="material-symbols-outlined text-xs">delete</span>
+                  </button>
+                )}
                 <div className="flex gap-3 items-start">
                   <img
                     alt={fam.name}
