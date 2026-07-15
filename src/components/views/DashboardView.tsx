@@ -1268,9 +1268,7 @@ export const DashboardView: React.FC = () => {
                         </div>
                         <button
                           onClick={async () => {
-                            if (confirm(`Are you sure you want to join '${verificationFamily.name}'?`)) {
-                              await joinFamily(verificationFamily.id);
-                            }
+                            await joinFamily(verificationFamily.id);
                           }}
                           className="w-full py-2 bg-emerald-600 text-white font-bold rounded-xl text-[11px] hover:bg-emerald-700 active:scale-95 transition-all"
                         >
