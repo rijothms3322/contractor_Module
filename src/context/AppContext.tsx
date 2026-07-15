@@ -1789,14 +1789,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const createFamily = async (name: string): Promise<boolean> => {
-    if (!isSupabaseConfigured || !user) return false;
-    try {
-      const codeChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-      let code = "FAM-";
-      for (let i = 0; i < 6; i++) {
-        code += codeChars.charAt(Math.floor(Math.random() * codeChars.length));
-      }
+    if (!user) return false;
+    if (!isSupabaseConfigured) {
+      alert("Database connection is not configured. Please set your Supabase environment variables.");
+      return false;
+    }
+    
+    // 1. Generate invitation code
+    const codeChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let code = "FAM-";
+    for (let i = 0; i < 6; i++) {
+      code += codeChars.charAt(Math.floor(Math.random() * codeChars.length));
+    }
 
+    try {
       const { data: newFam, error: insErr } = await supabase
         .from("families")
         .insert({
@@ -1830,7 +1836,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const joinFamily = async (familyId: string): Promise<boolean> => {
-    if (!isSupabaseConfigured || !user) return false;
+    if (!user) return false;
+    if (!isSupabaseConfigured) {
+      alert("Database connection is not configured. Please set your Supabase environment variables.");
+      return false;
+    }
+
     try {
       const { error: updErr } = await supabase
         .from("profiles")
@@ -1853,13 +1864,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const leaveFamily = async (): Promise<boolean> => {
-    if (!isSupabaseConfigured || !user) return false;
-    try {
-      if (activeFamily && activeFamily.adminId === user.id) {
-        alert("As Admin, you cannot leave the family without transferring ownership or disbanding the family.");
-        return false;
-      }
+    if (!user) return false;
+    if (!isSupabaseConfigured) {
+      alert("Database connection is not configured. Please set your Supabase environment variables.");
+      return false;
+    }
 
+    if (activeFamily && activeFamily.adminId === user.id) {
+      alert("As Admin, you cannot leave the family without transferring ownership or disbanding the family.");
+      return false;
+    }
+
+    try {
       const { error: updErr } = await supabase
         .from("profiles")
         .update({ family_id: null })
@@ -1883,13 +1899,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const disbandFamily = async (): Promise<boolean> => {
-    if (!isSupabaseConfigured || !user || !activeFamily) return false;
-    try {
-      if (activeFamily.adminId !== user.id) {
-        alert("Only the family Admin can disband the family portal.");
-        return false;
-      }
+    if (!user || !activeFamily) return false;
+    if (!isSupabaseConfigured) {
+      alert("Database connection is not configured. Please set your Supabase environment variables.");
+      return false;
+    }
 
+    if (activeFamily.adminId !== user.id) {
+      alert("Only the family Admin can disband the family portal.");
+      return false;
+    }
+
+    try {
       const { error: updErr } = await supabase
         .from("profiles")
         .update({ family_id: null })
@@ -1920,13 +1941,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const removeFamilyMember = async (memberId: string): Promise<boolean> => {
-    if (!isSupabaseConfigured || !user || !activeFamily) return false;
-    try {
-      if (activeFamily.adminId !== user.id) {
-        alert("Only the family Admin can remove members.");
-        return false;
-      }
+    if (!user || !activeFamily) return false;
+    if (!isSupabaseConfigured) {
+      alert("Database connection is not configured. Please set your Supabase environment variables.");
+      return false;
+    }
 
+    if (activeFamily.adminId !== user.id) {
+      alert("Only the family Admin can remove members.");
+      return false;
+    }
+
+    try {
       const { error: updErr } = await supabase
         .from("profiles")
         .update({ family_id: null })
