@@ -1200,13 +1200,21 @@ export const DashboardView: React.FC = () => {
                             }
                           }
 
-                          // Search profiles where the ID starts with the short Family ID slice
-                          const { data: matchedProfiles, error: searchErr } = await supabase
+                          // Fetch all profiles to filter by short prefix client-side (bypasses Postgres UUID type LIKE limitations)
+                          const { data: allProfiles, error: searchErr } = await supabase
                             .from("profiles")
-                            .select("id, full_name")
-                            .like("id", `${searchId.toLowerCase()}%`);
+                            .select("id, full_name");
 
-                          if (searchErr || !matchedProfiles || matchedProfiles.length === 0) {
+                          if (searchErr || !allProfiles) {
+                            alert("Failed to query profiles from database: " + (searchErr?.message || "Unknown error"));
+                            return;
+                          }
+
+                          const matchedProfiles = allProfiles.filter((p: any) => 
+                            p.id.toLowerCase().startsWith(searchId.toLowerCase())
+                          );
+
+                          if (matchedProfiles.length === 0) {
                             alert("No profile found with that Family ID. Please check and try again.");
                             return;
                           }
