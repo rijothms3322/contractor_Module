@@ -33,7 +33,8 @@ export const authService = {
       gender: "Male",
       medicalConditions: [],
       addresses: [],
-      role
+      role,
+      familyId: null
     };
   },
 
@@ -96,7 +97,8 @@ export const authService = {
         gender: "Male",
         medicalConditions: [],
         addresses: [],
-        role: "user"
+        role: "user",
+        familyId: null
       };
     }
 
@@ -109,7 +111,8 @@ export const authService = {
       gender: data.gender || "Male",
       medicalConditions: data.medical_conditions || [],
       addresses: data.addresses || [],
-      role: (data.role as "user" | "admin") || "user"
+      role: (data.role as "user" | "admin") || "user",
+      familyId: data.family_id || null
     };
   },
 
@@ -130,6 +133,7 @@ export const authService = {
     if (profileData.medicalConditions !== undefined) dbPayload.medical_conditions = profileData.medicalConditions;
     if (profileData.addresses !== undefined) dbPayload.addresses = profileData.addresses;
     if (profileData.role !== undefined) dbPayload.role = profileData.role;
+    if (profileData.familyId !== undefined) dbPayload.family_id = profileData.familyId;
 
     const { data, error } = await supabase
       .from("profiles")
@@ -149,7 +153,8 @@ export const authService = {
       gender: data.gender,
       medicalConditions: data.medical_conditions || [],
       addresses: data.addresses || [],
-      role: data.role as "user" | "admin"
+      role: data.role as "user" | "admin",
+      familyId: data.family_id || null
     };
   }
 };

@@ -45,7 +45,16 @@ export const DashboardView: React.FC = () => {
     snoozeReminder,
     familyMembers,
     addFamilyMember,
-    medicines
+    medicines,
+    activeFamily,
+    createFamily,
+    joinFamily,
+    leaveFamily,
+    disbandFamily,
+    removeFamilyMember,
+    transferAdminRights,
+    renameFamily,
+    regenerateFamilyCode
   } = useApp();
 
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -67,13 +76,17 @@ export const DashboardView: React.FC = () => {
   const [newStockCount, setNewStockCount] = useState<string>("");
 
   // Family Portal & Invite States
-  const [familyPortalActive, setFamilyPortalActive] = useState(false);
-  const familyId = user ? `FAM-${user.id.slice(0, 6).toUpperCase()}` : "FAM-871239";
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [invitations, setInvitations] = useState<{ email: string; status: "Pending" | "Joined" }[]>([]);
   const [isPrivate, setIsPrivate] = useState(false);
   const [joinFamilyId, setJoinFamilyId] = useState("");
+
+  const [newFamilyName, setNewFamilyName] = useState("");
+  const [verificationFamily, setVerificationFamily] = useState<{ id: string; name: string; memberCount: number; adminName: string } | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [isEditingFamilyName, setIsEditingFamilyName] = useState(false);
+  const [editedFamilyName, setEditedFamilyName] = useState("");
 
   // Lab Vitals & Report Logging States
   const [showLogReportModal, setShowLogReportModal] = useState(false);
@@ -773,7 +786,9 @@ export const DashboardView: React.FC = () => {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="font-headline-md text-sm text-secondary font-bold">Family Synchronization Hub</h3>
+              <h3 className="font-headline-md text-sm text-secondary font-bold">
+                {activeFamily ? activeFamily.name : "Family Synchronization Hub"}
+              </h3>
               {isLinkedToFamily ? (
                 <span className="bg-emerald-500 text-white text-[9px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider flex items-center gap-1 shadow-sm border border-emerald-400/20">
                   <span className="material-symbols-outlined text-[10px] font-bold">verified</span>
@@ -786,7 +801,10 @@ export const DashboardView: React.FC = () => {
               )}
             </div>
             <p className="font-body-md text-xs text-on-surface-variant mt-1 leading-relaxed">
-              Link portals with your family members to monitor compliance, share real-time reminders, and sync medical updates.
+              {activeFamily 
+                ? `Active family invitation code: ${activeFamily.familyCode}. Share this with members to sync schedules.` 
+                : "Link portals with your family members to monitor compliance, share real-time reminders, and sync medical updates."
+              }
             </p>
           </div>
         </div>
@@ -1132,231 +1150,289 @@ export const DashboardView: React.FC = () => {
             </div>
 
             <div className="flex-grow space-y-4 text-left">
-              {/* Unique Family ID Display */}
-              <div className="p-4 bg-primary/5 rounded-2xl border border-primary/20 text-center space-y-1">
-                <span className="text-[9px] text-outline font-bold uppercase tracking-wider block">Your Unique Family ID</span>
-                <span className="font-headline-md text-xl font-extrabold text-primary tracking-widest">{familyId}</span>
-                <span className="text-[9px] text-on-surface-variant block mt-0.5">Share this ID to link other member portals</span>
-              </div>
+              {/* Scenario 1: User does NOT belong to any family */}
+              {!activeFamily ? (
+                <div className="space-y-4">
+                  {/* Create Family Card */}
+                  <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10 space-y-3">
+                    <span className="text-[10px] font-bold text-primary uppercase tracking-wider block">Create New Family Group</span>
+                    <p className="text-[10px] text-on-surface-variant leading-relaxed">Become the Admin. Choose a custom name and generate your group's unique invitation code.</p>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Family Name (e.g. Thomas Nest)"
+                        value={newFamilyName}
+                        onChange={(e) => setNewFamilyName(e.target.value)}
+                        className="flex-1 px-3 py-2 bg-white border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                      />
+                      <button
+                        onClick={async () => {
+                          if (!newFamilyName.trim()) {
+                            alert("Please enter a custom Family Name.");
+                            return;
+                          }
+                          await createFamily(newFamilyName.trim());
+                        }}
+                        className="px-4 py-2 bg-primary text-on-primary font-bold rounded-xl text-xs hover:opacity-90 active:scale-95 transition-all shadow-sm"
+                      >
+                        Create
+                      </button>
+                    </div>
+                  </div>
 
-              {/* Send Invitation Form */}
-              <div className="space-y-2">
-                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Invite Family Member</label>
-                <div className="flex gap-2">
-                  <input
-                    type="email"
-                    placeholder="Enter email e.g. mom@family.com"
-                    value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)}
-                    className="flex-1 px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
-                  />
-                  <button
-                    onClick={() => {
-                      if (inviteEmail) {
-                        setInvitations(prev => [...prev, { email: inviteEmail, status: "Pending" }]);
-                        setInviteEmail("");
-                      }
-                    }}
-                    className="px-4 py-2 bg-primary text-on-primary font-bold rounded-xl text-xs hover:opacity-90 active:scale-95 transition-all shadow-sm"
-                  >
-                    Invite
-                  </button>
-                </div>
-              </div>
-
-              {/* Join Existing Family Portal Form */}
-              <div className="space-y-2 border-t border-outline-variant/15 pt-3">
-                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Join Existing Family Portal</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Enter Family ID (e.g. FAM-871239)"
-                    value={joinFamilyId}
-                    onChange={(e) => setJoinFamilyId(e.target.value)}
-                    className="flex-1 px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary uppercase"
-                  />
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      console.log("Join button clicked! ID entered:", joinFamilyId);
-                      if (!joinFamilyId.trim()) {
-                        alert("Please enter a Family ID.");
-                        return;
-                      }
-                      const searchId = joinFamilyId.trim().toUpperCase().replace("FAM-", "");
-                      console.log("Search ID parsed:", searchId);
-                      
-                      if (isSupabaseConfigured && user) {
-                        try {
-                          if (isLinkedToFamily) {
-                            const confirmSwitch = window.confirm(
-                              "You are already connected to a family. Joining a new family will disconnect you from your current family. Do you want to proceed?"
-                            );
-                            if (!confirmSwitch) return;
-
-                            // Delete existing links for this user
-                            const { error: deleteErr } = await supabase
-                              .from("family_links")
-                              .delete()
-                              .or(`user_id_1.eq.${user.id},user_id_2.eq.${user.id}`);
-
-                            if (deleteErr) {
-                              alert("Failed to disconnect from previous family: " + deleteErr.message);
-                              return;
+                  {/* Join Family Card */}
+                  <div className="p-4 bg-surface-container-low border border-outline-variant/20 rounded-2xl space-y-3">
+                    <span className="text-[10px] font-bold text-secondary uppercase tracking-wider block">Join Existing Family Group</span>
+                    <p className="text-[10px] text-on-surface-variant leading-relaxed">Enter a family invitation code to view synced adherence scoreboards.</p>
+                    
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Enter Code (e.g. FAM-X93A7Q)"
+                        value={joinFamilyId}
+                        onChange={(e) => setJoinFamilyId(e.target.value)}
+                        className="flex-1 px-3 py-2 bg-white border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary uppercase"
+                      />
+                      <button
+                        onClick={async () => {
+                          if (!joinFamilyId.trim()) {
+                            alert("Please enter an invitation code.");
+                            return;
+                          }
+                          const searchId = joinFamilyId.trim().toUpperCase();
+                          setIsVerifying(true);
+                          try {
+                            const { data, error } = await supabase.rpc("verify_family_code", { input_code: searchId });
+                            if (error || !data || data.length === 0) {
+                              alert("No active family found matching code: " + searchId);
+                              setVerificationFamily(null);
+                            } else {
+                              const match = data[0];
+                              setVerificationFamily({
+                                id: match.family_id,
+                                name: match.family_name,
+                                memberCount: match.member_count,
+                                adminName: match.admin_name
+                              });
                             }
+                          } catch (e: any) {
+                            alert("Verification error: " + e.message);
+                          } finally {
+                            setIsVerifying(false);
                           }
+                        }}
+                        className="px-3 py-2 bg-secondary text-white font-bold rounded-xl text-xs hover:opacity-90 active:scale-95 transition-all shadow-sm"
+                      >
+                        {isVerifying ? "Verifying..." : "Verify"}
+                      </button>
+                    </div>
 
-                          console.log("Querying profiles list from Supabase...");
-                          const { data: allProfiles, error: searchErr } = await supabase
-                            .from("profiles")
-                            .select("id, full_name");
-
-                          if (searchErr) {
-                            console.error("Profiles query error:", searchErr);
-                            alert("Failed to query profiles from database: " + searchErr.message);
-                            return;
-                          }
-
-                          if (!allProfiles) {
-                            alert("Failed to query profiles: No data returned from database.");
-                            return;
-                          }
-
-                          console.log("Found profiles count:", allProfiles.length);
-                          const matchedProfiles = allProfiles.filter((p: any) => 
-                            p.id && p.id.toLowerCase().startsWith(searchId.toLowerCase())
-                          );
-
-                          if (matchedProfiles.length === 0) {
-                            alert("No profile found with that Family ID. Please check and try again.");
-                            return;
-                          }
-
-                          const targetUser = matchedProfiles[0];
-                          if (targetUser.id === user.id) {
-                            alert("You cannot join your own Family ID!");
-                            return;
-                          }
-
-                          // Establish connection: sort IDs to prevent duplicates and satisfy UNIQUE constraint
-                          const [u1, u2] = [user.id, targetUser.id].sort();
-                          console.log("Linking users:", u1, "and", u2);
-                          const { error: insertErr } = await supabase
-                            .from("family_links")
-                            .upsert({
-                              user_id_1: u1,
-                              user_id_2: u2,
-                              status: "accepted"
-                            });
-
-                          if (insertErr) {
-                            console.error("Upsert connection error:", insertErr);
-                            alert("Failed to connect: " + insertErr.message);
-                            return;
-                          }
-
-                          alert(`Successfully connected to Family Portal of ${targetUser.full_name}!`);
-                          setJoinFamilyId("");
-                          setShowSyncModal(false);
-                          window.location.reload();
-                        } catch (err: any) {
-                          console.error("Unhandled link failure:", err);
-                          alert("Link failed: " + (err.message || err));
-                        }
-                      } else {
-                        // Demo mode fallback
-                        console.log("Supabase not configured or user not logged in. Falling back to Demo Mode.");
-                        setFamilyPortalActive(true);
-                        alert(`[DEMO MODE] Connected to simulated Family Portal: ${joinFamilyId.toUpperCase()}`);
-                        setJoinFamilyId("");
-                        setShowSyncModal(false);
-                      }
-                    }}
-                    className="px-4 py-2 bg-tertiary text-white font-bold rounded-xl text-xs hover:opacity-90 active:scale-95 transition-all shadow-sm"
-                  >
-                    Join
-                  </button>
+                    {/* Invitation Code Verification Result Card */}
+                    {verificationFamily && (
+                      <div className="p-3 bg-white rounded-xl border border-primary/20 space-y-3 animate-in zoom-in-95 duration-200">
+                        <div className="space-y-1">
+                          <h4 className="font-bold text-xs text-secondary">{verificationFamily.name}</h4>
+                          <div className="text-[10px] text-on-surface-variant space-y-0.5">
+                            <p>👑 Admin: <span className="font-bold text-on-surface">{verificationFamily.adminName}</span></p>
+                            <p>👥 Members: <span className="font-bold text-on-surface">{verificationFamily.memberCount} joined</span></p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={async () => {
+                            if (confirm(`Are you sure you want to join '${verificationFamily.name}'?`)) {
+                              await joinFamily(verificationFamily.id);
+                            }
+                          }}
+                          className="w-full py-2 bg-emerald-600 text-white font-bold rounded-xl text-[11px] hover:bg-emerald-700 active:scale-95 transition-all"
+                        >
+                          Confirm & Join Group
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                /* Scenario 2: User belongs to a family */
+                <div className="space-y-4">
+                  {/* Family Header Info */}
+                  <div className="p-4 bg-gradient-to-r from-primary-container/10 to-white border border-primary/15 rounded-2xl space-y-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        {isEditingFamilyName ? (
+                          <div className="flex gap-1.5 items-center">
+                            <input
+                              type="text"
+                              value={editedFamilyName}
+                              onChange={(e) => setEditedFamilyName(e.target.value)}
+                              className="px-2 py-1 bg-white border border-outline rounded-lg text-xs font-bold focus:outline-none focus:border-primary"
+                            />
+                            <button
+                              onClick={async () => {
+                                if (editedFamilyName.trim()) {
+                                  await renameFamily(editedFamilyName.trim());
+                                  setIsEditingFamilyName(false);
+                                }
+                              }}
+                              className="px-2 py-1 bg-primary text-on-primary text-[10px] font-bold rounded"
+                            >
+                              Save
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <h4 className="font-headline-md text-sm text-secondary font-bold">{activeFamily.name}</h4>
+                            {user?.id === activeFamily.adminId && (
+                              <button
+                                onClick={() => {
+                                  setEditedFamilyName(activeFamily.name);
+                                  setIsEditingFamilyName(true);
+                                }}
+                                className="text-outline hover:text-primary transition-colors"
+                              >
+                                <span className="material-symbols-outlined text-xs">edit</span>
+                              </button>
+                            )}
+                          </div>
+                        )}
+                        <p className="text-[9px] text-outline font-bold mt-1 uppercase tracking-wider">
+                          Code: <span className="font-mono text-secondary select-all">{activeFamily.familyCode}</span>
+                        </p>
+                      </div>
+                      <span className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 text-[8px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                        Active Group
+                      </span>
+                    </div>
 
-              {/* Active / Pending Invitations List */}
-              <div className="space-y-3">
-                <h4 className="text-[10px] font-bold text-outline uppercase tracking-wider">Connections & Invitations</h4>
-                
-                {/* User's Adherence & Family Progress */}
-                {isLinkedToFamily && (
-                  <div className="p-3 bg-primary/5 rounded-xl border border-primary/10 space-y-2 text-xs">
+                    {/* Code Regeneration Option for Admins with no other members */}
+                    {user?.id === activeFamily.adminId && familyMembers.length === 0 && (
+                      <button
+                        onClick={async () => {
+                          if (confirm("Regenerate invitation code? This will invalidate the previous code.")) {
+                            await regenerateFamilyCode();
+                          }
+                        }}
+                        className="text-[9px] text-primary hover:underline font-bold flex items-center gap-0.5"
+                      >
+                        <span className="material-symbols-outlined text-xs">refresh</span>
+                        Regenerate Code
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Adherence and Analytics Summary */}
+                  <div className="p-3 bg-secondary/5 rounded-xl border border-secondary/10 space-y-2 text-xs">
                     <div className="flex justify-between items-center text-on-surface">
-                      <span className="font-semibold text-outline text-[11px]">Your Personal Adherence Score:</span>
+                      <span className="font-semibold text-outline text-[11px]">Your Adherence:</span>
                       <span className="font-extrabold text-tertiary text-xs">{adherencePercentage}%</span>
                     </div>
                     <div className="flex justify-between items-center text-on-surface">
-                      <span className="font-semibold text-outline text-[11px]">Family's Wellness Score:</span>
+                      <span className="font-semibold text-outline text-[11px]">Family Wellness Score:</span>
                       <span className="font-extrabold text-primary text-xs">{familyWellnessScore}/10</span>
                     </div>
                   </div>
-                )}
 
-                {/* Linked Accounts Roster */}
-                {familyMembers.filter(fm => fm.color === "purple").length > 0 ? (
-                  <div className="space-y-1.5">
-                    <span className="text-[9px] font-bold text-secondary uppercase block">Linked Family Members</span>
-                    <div className="divide-y divide-outline-variant/10 border border-outline-variant/10 rounded-xl overflow-hidden bg-surface-container-low/20">
-                      {familyMembers.filter(fm => fm.color === "purple").map((member) => (
+                  {/* Family Roster list */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-bold text-outline uppercase tracking-wider block">Family Roster</span>
+                    <div className="divide-y divide-outline-variant/15 border border-outline-variant/15 rounded-xl overflow-hidden bg-white">
+                      
+                      {/* Active User (Admin or Member) */}
+                      <div className="p-3 flex items-center justify-between gap-3 bg-surface-container-low/20">
+                        <div className="flex items-center gap-2">
+                          <img 
+                            src={user?.avatarUrl} 
+                            alt={user?.fullName} 
+                            className="w-8 h-8 rounded-full border border-primary/20" 
+                          />
+                          <div>
+                            <span className="font-bold text-xs text-on-surface block">{user?.fullName} (You)</span>
+                            <span className="text-[9px] text-outline">
+                              {user?.id === activeFamily.adminId ? "Group Admin" : "Group Member"}
+                            </span>
+                          </div>
+                        </div>
+                        <span className="text-[8px] px-2 py-0.5 rounded font-bold uppercase bg-primary-container text-white border border-primary/20">
+                          {user?.id === activeFamily.adminId ? "Admin" : "Member"}
+                        </span>
+                      </div>
+
+                      {/* Linked Members */}
+                      {familyMembers.map((member) => (
                         <div key={member.id} className="p-3 flex items-center justify-between gap-3">
                           <div className="flex items-center gap-2">
-                            <img src={member.avatarUrl} alt={member.name} className="w-8 h-8 rounded-full border border-purple-200" />
+                            <img src={member.avatarUrl} alt={member.name} className="w-8 h-8 rounded-full border border-outline-variant/30" />
                             <div>
                               <span className="font-bold text-xs text-on-surface block">{member.name}</span>
-                              <span className="text-[9px] text-outline">Relationship: {member.relationship}</span>
+                              <span className="text-[9px] text-outline">
+                                {member.id === activeFamily.adminId ? "Group Admin" : "Group Member"}
+                              </span>
                             </div>
                           </div>
-                          <span className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/15 text-[8px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
-                            Active
-                          </span>
+                          <div className="flex gap-1">
+                            {/* Admin Controls Board */}
+                            {user?.id === activeFamily.adminId ? (
+                              <>
+                                <button
+                                  onClick={async () => {
+                                    if (confirm(`Transfer admin ownership rights to ${member.name}?`)) {
+                                      await transferAdminRights(member.id);
+                                    }
+                                  }}
+                                  className="px-2 py-1 bg-surface-container-high hover:bg-opacity-80 text-secondary font-bold text-[9px] rounded-lg transition-all"
+                                  title="Transfer Admin Rights"
+                                >
+                                  Make Admin
+                                </button>
+                                <button
+                                  onClick={async () => {
+                                    if (confirm(`Are you sure you want to remove ${member.name} from the family portal?`)) {
+                                      await removeFamilyMember(member.id);
+                                    }
+                                  }}
+                                  className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 font-bold text-[9px] rounded-lg transition-all border border-red-200/20"
+                                >
+                                  Remove
+                                </button>
+                              </>
+                            ) : (
+                              <span className="text-[9px] text-outline/80 italic pr-1">Joined</span>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>
                   </div>
-                ) : null}
 
-                {invitations.length > 0 && (
-                  <div className="divide-y divide-outline-variant/10 border border-outline-variant/10 rounded-xl overflow-hidden">
-                    {invitations.map((inv, idx) => (
-                      <div key={idx} className="p-3 bg-surface-container-low/20 flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <span className="font-bold text-xs text-secondary truncate block">{inv.email}</span>
-                          <span className="text-[9px] text-outline mt-0.5 block">Role: Care Recipient / Viewer</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-[8px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${
-                            inv.status === "Joined" 
-                              ? "bg-tertiary/10 text-tertiary border border-tertiary/10" 
-                              : "bg-orange-50 text-orange-700 border border-orange-200"
-                          }`}>
-                            {inv.status}
-                          </span>
-                          {inv.status === "Pending" && (
-                            <button
-                              onClick={() => {
-                                setInvitations(prev => prev.map((item, i) => i === idx ? { ...item, status: "Joined" } : item));
-                                setFamilyPortalActive(true);
-                              }}
-                              className="px-2 py-1 bg-tertiary text-white rounded font-bold text-[9px] hover:opacity-90 active:scale-95 transition-all"
-                            >
-                              Simulate Accept
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                  {/* Actions Section */}
+                  <div className="border-t border-outline-variant/15 pt-3 flex gap-2">
+                    {user?.id === activeFamily.adminId ? (
+                      <button
+                        onClick={async () => {
+                          if (confirm("Are you sure you want to DISBAND this family group? All other members will be disconnected instantly.")) {
+                            await disbandFamily();
+                          }
+                        }}
+                        className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1 active:scale-95 transition-all shadow-sm"
+                      >
+                        <span className="material-symbols-outlined text-sm">delete_forever</span>
+                        Disband Family Group
+                      </button>
+                    ) : (
+                      <button
+                        onClick={async () => {
+                          if (confirm("Are you sure you want to leave this family group? You will lose access to the shared scoreboard timeline.")) {
+                            await leaveFamily();
+                          }
+                        }}
+                        className="w-full py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1 active:scale-95 transition-all shadow-sm"
+                      >
+                        <span className="material-symbols-outlined text-sm">logout</span>
+                        Leave Family Group
+                      </button>
+                    )}
                   </div>
-                )}
-
-                {!isLinkedToFamily && invitations.length === 0 && (
-                  <p className="text-[10px] text-on-surface-variant italic py-2">No active connections. Join a family group above.</p>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

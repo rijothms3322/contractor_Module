@@ -100,6 +100,15 @@ interface AppContextType {
   adherencePercentage: number;
   isLinkedToFamily: boolean;
   setIsLinkedToFamily: React.Dispatch<React.SetStateAction<boolean>>;
+  activeFamily: { id: string; name: string; familyCode: string; adminId: string } | null;
+  createFamily: (name: string) => Promise<boolean>;
+  joinFamily: (familyId: string) => Promise<boolean>;
+  leaveFamily: () => Promise<boolean>;
+  disbandFamily: () => Promise<boolean>;
+  removeFamilyMember: (memberId: string) => Promise<boolean>;
+  transferAdminRights: (memberId: string) => Promise<boolean>;
+  renameFamily: (name: string) => Promise<boolean>;
+  regenerateFamilyCode: () => Promise<boolean>;
   
   // Wellness Engine
   wellnessScore: number;
@@ -246,6 +255,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [familyAlerts, setFamilyAlerts] = useState<string[]>([]);
   const [unlockedAchievements, setUnlockedAchievements] = useState<{ id: string; title: string; desc: string; icon: string }[]>([]);
   const [medicationLogs, setMedicationLogs] = useState<any[]>([]);
+  const [activeFamily, setActiveFamily] = useState<{ id: string; name: string; familyCode: string; adminId: string } | null>(null);
 
   // ====================================================================
   // INITIALIZATION TRIGGER & AUTH OBSERVER
@@ -335,67 +345,78 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               });
           }
 
-          // Fetch active linked family connections
-          const connections = await safeFetch(
-            supabase
-              .from("family_links")
-              .select("*")
-              .eq("status", "accepted")
-              .or(`user_id_1.eq.${session.user.id},user_id_2.eq.${session.user.id}`)
-              .then((res: any) => {
-                if (res.error) throw res.error;
-                return res.data || [];
-              }),
-            [],
-            "family connections"
-          );
-
-          const linkedUserIds = (connections || []).map((conn: any) => 
-            conn.user_id_1 === session.user.id ? conn.user_id_2 : conn.user_id_1
-          );
-
+          // Fetch active family and other member details
+          let familyObj: any = null;
           let sharedMeds: Medicine[] = [];
           let sharedRems: Reminder[] = [];
           let sharedFam: FamilyMember[] = [];
 
-          if (linkedUserIds.length > 0) {
-            console.log("Medimz Link System: Found linked family user IDs:", linkedUserIds);
-            await Promise.all(linkedUserIds.map(async (lUserId: string) => {
-              try {
-                const linkedProfile = await authService.getProfile(lUserId);
-                console.log("Medimz Link System: Fetched profile details for", linkedProfile.fullName);
-                sharedFam.push({
-                  id: linkedProfile.id,
-                  name: linkedProfile.fullName,
-                  avatarUrl: linkedProfile.avatarUrl,
-                  relationship: "Family Member",
-                  age: linkedProfile.age,
-                  gender: linkedProfile.gender,
-                  medicalConditions: linkedProfile.medicalConditions,
-                  color: "purple"
-                });
+          if (profile?.familyId) {
+            console.log("Medimz Link System: User belongs to family UUID:", profile.familyId);
+            const { data: famData, error: famErr } = await supabase
+              .from("families")
+              .select("*")
+              .eq("id", profile.familyId)
+              .maybeSingle();
 
-                const lMeds = await medicineService.getMedicines(lUserId);
-                const lRems = await reminderService.getReminders(lUserId);
-                console.log(`Medimz Link System: Fetched ${lMeds.length} medicines and ${lRems.length} reminders for user ${linkedProfile.fullName}`);
+            if (!famErr && famData) {
+              familyObj = {
+                id: famData.id,
+                name: famData.name,
+                familyCode: famData.family_code,
+                adminId: famData.admin_id
+              };
 
-                const publicMeds = lMeds.filter(m => !m.isPrivate);
-                const publicRems = lRems.filter(r => !r.isPrivate);
+              console.log("Medimz Link System: Found family data:", familyObj.name);
 
-                const mappedRems = publicRems.map(r => ({
-                  ...r,
-                  familyMemberId: r.familyMemberId || linkedProfile.id,
-                  recipientNickname: r.recipientNickname && r.recipientNickname !== "Myself" ? r.recipientNickname : linkedProfile.fullName,
-                  recipientAvatar: r.recipientAvatar || linkedProfile.avatarUrl,
-                  recipientColor: r.recipientColor || "purple"
+              // Query all profiles sharing the same family_id
+              const { data: familyProfiles, error: profsErr } = await supabase
+                .from("profiles")
+                .select("*")
+                .eq("family_id", profile.familyId);
+
+              if (!profsErr && familyProfiles) {
+                const otherProfiles = familyProfiles.filter((p: any) => p.id !== session.user.id);
+                console.log("Medimz Link System: Found other family members count:", otherProfiles.length);
+
+                await Promise.all(otherProfiles.map(async (mProfile: any) => {
+                  sharedFam.push({
+                    id: mProfile.id,
+                    name: mProfile.full_name,
+                    avatarUrl: mProfile.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(mProfile.full_name)}`,
+                    relationship: mProfile.id === familyObj.adminId ? "Family Admin" : "Family Member",
+                    age: mProfile.age || 35,
+                    gender: mProfile.gender || "Male",
+                    medicalConditions: mProfile.medical_conditions || [],
+                    color: "purple"
+                  });
+
+                  try {
+                    const lMeds = await medicineService.getMedicines(mProfile.id);
+                    const lRems = await reminderService.getReminders(mProfile.id);
+                    
+                    // Filter out private items
+                    const publicMeds = lMeds.filter(m => !m.isPrivate);
+                    const publicRems = lRems.filter(r => !r.isPrivate);
+
+                    console.log(`Medimz Link System: Loaded ${publicMeds.length} public meds and ${publicRems.length} public reminders for member ${mProfile.full_name}`);
+
+                    const mappedRems = publicRems.map(r => ({
+                      ...r,
+                      familyMemberId: r.familyMemberId || mProfile.id,
+                      recipientNickname: r.recipientNickname && r.recipientNickname !== "Myself" ? r.recipientNickname : mProfile.full_name,
+                      recipientAvatar: r.recipientAvatar || mProfile.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(mProfile.full_name)}`,
+                      recipientColor: r.recipientColor || "purple"
+                    }));
+
+                    sharedMeds.push(...publicMeds);
+                    sharedRems.push(...mappedRems);
+                  } catch (err) {
+                    console.error(`Failed to load medicines for member ${mProfile.full_name}:`, err);
+                  }
                 }));
-
-                sharedMeds.push(...publicMeds);
-                sharedRems.push(...mappedRems);
-              } catch (err) {
-                console.error(`Failed to load linked family data for user ${lUserId}:`, err);
               }
-            }));
+            }
           }
 
           // Resolve care recipient nickname/avatar/color dynamically on query fetch load
@@ -413,7 +434,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const allFam = [...dbFam, ...sharedFam];
           const allRems = [...resolvedRems, ...sharedRems];
 
-          setIsLinkedToFamily(connections.length > 0);
+          setActiveFamily(familyObj);
+          setIsLinkedToFamily(!!profile?.familyId);
           setMedicines(Array.from(new Map(allMeds.map(m => [m.id, m])).values()));
           setFamilyMembers(Array.from(new Map(allFam.map(f => [f.id, f])).values()));
           setReminders(Array.from(new Map(allRems.map(r => [r.id, r])).values()));
@@ -954,11 +976,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setWellnessCategory(getWellnessCategory(score));
     setWellnessTrend(getWellnessTrendIndicator(null, remLogs, medicationLogs));
 
-    const memberScores = [
-      score,
-      ...familyMembers.map(m => getWellnessScoreForMember(m.id, remLogs, medicationLogs))
-    ];
-    const familyScoreVal = Math.round((memberScores.reduce((a, b) => a + b, 0) / memberScores.length) * 10) / 10;
+    const activeScores: number[] = [];
+    const ownRems = remLogs.filter(r => !r.familyMemberId);
+    if (ownRems.length > 0) {
+      activeScores.push(score);
+    }
+    
+    familyMembers.forEach(m => {
+      const mRems = remLogs.filter(r => r.familyMemberId === m.id);
+      if (mRems.length > 0) {
+        activeScores.push(getWellnessScoreForMember(m.id, remLogs, medicationLogs));
+      }
+    });
+
+    const familyScoreVal = activeScores.length > 0
+      ? Math.round((activeScores.reduce((a, b) => a + b, 0) / activeScores.length) * 10) / 10
+      : 0;
+
     setFamilyWellnessScore(familyScoreVal);
     setFamilyWellnessCategory(getWellnessCategory(familyScoreVal));
 
@@ -1754,6 +1788,247 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const createFamily = async (name: string): Promise<boolean> => {
+    if (!isSupabaseConfigured || !user) return false;
+    try {
+      const codeChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+      let code = "FAM-";
+      for (let i = 0; i < 6; i++) {
+        code += codeChars.charAt(Math.floor(Math.random() * codeChars.length));
+      }
+
+      const { data: newFam, error: insErr } = await supabase
+        .from("families")
+        .insert({
+          family_code: code,
+          name,
+          admin_id: user.id
+        })
+        .select()
+        .single();
+
+      if (insErr) throw insErr;
+
+      const { error: updErr } = await supabase
+        .from("profiles")
+        .update({ family_id: newFam.id })
+        .eq("id", user.id);
+
+      if (updErr) throw updErr;
+
+      const n = await reminderService.addNotification(user.id, "Family Portal Created! 🏠", `Successfully created family '${name}' with code ${code}.`, "system");
+      setNotifications(prev => [n, ...prev]);
+
+      const updatedUser = await authService.getProfile(user.id);
+      setUser(updatedUser);
+      window.location.reload();
+      return true;
+    } catch (e: any) {
+      alert("Failed to create family: " + e.message);
+      return false;
+    }
+  };
+
+  const joinFamily = async (familyId: string): Promise<boolean> => {
+    if (!isSupabaseConfigured || !user) return false;
+    try {
+      const { error: updErr } = await supabase
+        .from("profiles")
+        .update({ family_id: familyId })
+        .eq("id", user.id);
+
+      if (updErr) throw updErr;
+
+      const n = await reminderService.addNotification(user.id, "Joined Family Portal! 🤝", "You have joined the family group successfully.", "system");
+      setNotifications(prev => [n, ...prev]);
+
+      const updatedUser = await authService.getProfile(user.id);
+      setUser(updatedUser);
+      window.location.reload();
+      return true;
+    } catch (e: any) {
+      alert("Failed to join family: " + e.message);
+      return false;
+    }
+  };
+
+  const leaveFamily = async (): Promise<boolean> => {
+    if (!isSupabaseConfigured || !user) return false;
+    try {
+      if (activeFamily && activeFamily.adminId === user.id) {
+        alert("As Admin, you cannot leave the family without transferring ownership or disbanding the family.");
+        return false;
+      }
+
+      const { error: updErr } = await supabase
+        .from("profiles")
+        .update({ family_id: null })
+        .eq("id", user.id);
+
+      if (updErr) throw updErr;
+
+      const n = await reminderService.addNotification(user.id, "Left Family Portal 🚪", "You have left your family group.", "system");
+      setNotifications(prev => [n, ...prev]);
+
+      setActiveFamily(null);
+      setIsLinkedToFamily(false);
+      const updatedUser = await authService.getProfile(user.id);
+      setUser(updatedUser);
+      window.location.reload();
+      return true;
+    } catch (e: any) {
+      alert("Failed to leave family: " + e.message);
+      return false;
+    }
+  };
+
+  const disbandFamily = async (): Promise<boolean> => {
+    if (!isSupabaseConfigured || !user || !activeFamily) return false;
+    try {
+      if (activeFamily.adminId !== user.id) {
+        alert("Only the family Admin can disband the family portal.");
+        return false;
+      }
+
+      const { error: updErr } = await supabase
+        .from("profiles")
+        .update({ family_id: null })
+        .eq("family_id", activeFamily.id);
+
+      if (updErr) throw updErr;
+
+      const { error: delErr } = await supabase
+        .from("families")
+        .delete()
+        .eq("id", activeFamily.id);
+
+      if (delErr) throw delErr;
+
+      const n = await reminderService.addNotification(user.id, "Family Disbanded 💥", `The family portal '${activeFamily.name}' was disbanded by the Admin.`, "system");
+      setNotifications(prev => [n, ...prev]);
+
+      setActiveFamily(null);
+      setIsLinkedToFamily(false);
+      const updatedUser = await authService.getProfile(user.id);
+      setUser(updatedUser);
+      window.location.reload();
+      return true;
+    } catch (e: any) {
+      alert("Failed to disband family: " + e.message);
+      return false;
+    }
+  };
+
+  const removeFamilyMember = async (memberId: string): Promise<boolean> => {
+    if (!isSupabaseConfigured || !user || !activeFamily) return false;
+    try {
+      if (activeFamily.adminId !== user.id) {
+        alert("Only the family Admin can remove members.");
+        return false;
+      }
+
+      const { error: updErr } = await supabase
+        .from("profiles")
+        .update({ family_id: null })
+        .eq("id", memberId);
+
+      if (updErr) throw updErr;
+
+      const n = await reminderService.addNotification(user.id, "Member Removed 🧑‍⚕️", "A member has been removed from the family group.", "system");
+      setNotifications(prev => [n, ...prev]);
+
+      window.location.reload();
+      return true;
+    } catch (e: any) {
+      alert("Failed to remove member: " + e.message);
+      return false;
+    }
+  };
+
+  const transferAdminRights = async (memberId: string): Promise<boolean> => {
+    if (!isSupabaseConfigured || !user || !activeFamily) return false;
+    try {
+      if (activeFamily.adminId !== user.id) {
+        alert("Only the current Admin can transfer administration rights.");
+        return false;
+      }
+
+      const { error: updErr } = await supabase
+        .from("families")
+        .update({ admin_id: memberId })
+        .eq("id", activeFamily.id);
+
+      if (updErr) throw updErr;
+
+      const n = await reminderService.addNotification(user.id, "Admin Ownership Transferred 👑", "Family administration ownership has been successfully transferred.", "system");
+      setNotifications(prev => [n, ...prev]);
+
+      window.location.reload();
+      return true;
+    } catch (e: any) {
+      alert("Failed to transfer ownership: " + e.message);
+      return false;
+    }
+  };
+
+  const renameFamily = async (name: string): Promise<boolean> => {
+    if (!isSupabaseConfigured || !user || !activeFamily) return false;
+    try {
+      if (activeFamily.adminId !== user.id) {
+        alert("Only the family Admin can rename the family portal.");
+        return false;
+      }
+
+      const { error: updErr } = await supabase
+        .from("families")
+        .update({ name })
+        .eq("id", activeFamily.id);
+
+      if (updErr) throw updErr;
+
+      const n = await reminderService.addNotification(user.id, "Family Portal Renamed ✏️", `Family portal renamed to '${name}'.`, "system");
+      setNotifications(prev => [n, ...prev]);
+
+      window.location.reload();
+      return true;
+    } catch (e: any) {
+      alert("Failed to rename family: " + e.message);
+      return false;
+    }
+  };
+
+  const regenerateFamilyCode = async (): Promise<boolean> => {
+    if (!isSupabaseConfigured || !user || !activeFamily) return false;
+    try {
+      if (activeFamily.adminId !== user.id) {
+        alert("Only the family Admin can regenerate the invitation code.");
+        return false;
+      }
+
+      const codeChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+      let code = "FAM-";
+      for (let i = 0; i < 6; i++) {
+        code += codeChars.charAt(Math.floor(Math.random() * codeChars.length));
+      }
+
+      const { error: updErr } = await supabase
+        .from("families")
+        .update({ family_code: code })
+        .eq("id", activeFamily.id);
+
+      if (updErr) throw updErr;
+
+      const n = await reminderService.addNotification(user.id, "Invitation Code Changed 🔑", `Family code updated to ${code}.`, "system");
+      setNotifications(prev => [n, ...prev]);
+
+      window.location.reload();
+      return true;
+    } catch (e: any) {
+      alert("Failed to regenerate code: " + e.message);
+      return false;
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -1786,6 +2061,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         adherencePercentage,
         isLinkedToFamily,
         setIsLinkedToFamily,
+        activeFamily,
+        createFamily,
+        joinFamily,
+        leaveFamily,
+        disbandFamily,
+        removeFamilyMember,
+        transferAdminRights,
+        renameFamily,
+        regenerateFamilyCode,
 
         // Wellness Engine
         wellnessScore,

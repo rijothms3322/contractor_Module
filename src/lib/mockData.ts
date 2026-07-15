@@ -22,6 +22,7 @@ export interface Profile {
     pincode: string;
   }[];
   role: "user" | "admin";
+  familyId?: string | null;
 }
 
 export interface FamilyMember {
