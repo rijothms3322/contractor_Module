@@ -123,78 +123,50 @@ export const reminderService = {
   async addNotification(userId: string, title: string, message: string, type: "reminder" | "booking" | "system"): Promise<Notification> {
     if (!isSupabaseConfigured) throw new Error("Supabase is not configured.");
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-    // Get active session token with 5-second timeout
-    let token = undefined;
-    try {
-      const sessionPromise = supabase.auth.getSession();
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Database auth lookup timed out.")), 5000)
-      );
-      const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]);
-      token = session?.access_token;
-    } catch (e) {
-      console.warn("Auth token lookup failed/timed out in addNotification, executing unauthenticated/anon request.", e);
-    }
-
-    const controller = new AbortController();
-    const fetchTimeoutId = setTimeout(() => controller.abort(), 6000);
-
-    let res;
-    try {
-      res = await fetch(`${supabaseUrl}/rest/v1/notifications`, {
-        method: "POST",
-        headers: {
-          "apikey": supabaseAnonKey || "",
-          "Authorization": token ? `Bearer ${token}` : "",
-          "Content-Type": "application/json",
-          "Prefer": "return=representation"
-        },
-        body: JSON.stringify({
+    const insertPromise = (async () => {
+      const { data, error } = await supabase
+        .from("notifications")
+        .insert({
           id: crypto.randomUUID(),
           user_id: userId,
           title,
           message,
           type,
           is_read: false
-        }),
-        signal: controller.signal
-      });
-    } catch (err: any) {
-      if (err.name === "AbortError") {
-        throw new Error("Connection timed out writing notification to DB.");
+        })
+        .select();
+      if (error) throw error;
+      return data;
+    })();
+
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("Connection timed out writing notification to DB.")), 6000)
+    );
+
+    try {
+      const inserted = await Promise.race([insertPromise, timeoutPromise]) as any;
+
+      if (!inserted || inserted.length === 0) {
+        throw new Error("No data returned from notification save.");
       }
+      const data = inserted[0];
+
+      // Trigger local reminder placeholder push warning
+      if (typeof window !== "undefined" && "Notification" in window) {
+        console.log(`[Push Notification Dispatcher] ${title}: ${message}`);
+      }
+
+      return {
+        id: data.id,
+        title: data.title,
+        message: data.message,
+        type: data.type as "reminder" | "booking" | "system",
+        isRead: data.is_read,
+        createdAt: data.created_at
+      };
+    } catch (err: any) {
       throw err;
-    } finally {
-      clearTimeout(fetchTimeoutId);
     }
-
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(errText || "Failed to save notification.");
-    }
-
-    const inserted = await res.json();
-    if (!inserted || inserted.length === 0) {
-      throw new Error("No data returned from notification save.");
-    }
-    const data = inserted[0];
-
-    // Trigger local reminder placeholder push warning
-    if (typeof window !== "undefined" && "Notification" in window) {
-      console.log(`[Push Notification Dispatcher] ${title}: ${message}`);
-    }
-
-    return {
-      id: data.id,
-      title: data.title,
-      message: data.message,
-      type: data.type as "reminder" | "booking" | "system",
-      isRead: data.is_read,
-      createdAt: data.created_at
-    };
   },
 
   /**

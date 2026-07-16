@@ -2112,55 +2112,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     try {
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      // 1. Update user's profile family_id via supabase client with 8-second timeout
+      const updatePromise = supabase
+        .from("profiles")
+        .update({ family_id: familyId })
+        .eq("id", user.id);
 
-      // 1. Get active session token with 6-second timeout
-      let token = undefined;
-      try {
-        const sessionPromise = supabase.auth.getSession();
-        const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("Database authentication lookup timed out.")), 6000)
-        );
-        const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]);
-        token = session?.access_token;
-      } catch (e: any) {
-        console.warn("Session check failed/timed out in joinFamily, proceeding with standard request headers.", e);
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Request timed out writing profile update to the database. Please verify your connection.")), 8000)
+      );
+
+      const { error: updErr } = await Promise.race([updatePromise, timeoutPromise]) as any;
+
+      if (updErr) {
+        throw updErr;
       }
 
-      // 2. Update user's profile family_id via direct REST API with 8-second timeout
-      const controller = new AbortController();
-      const fetchTimeoutId = setTimeout(() => controller.abort(), 8000);
-
-      let updRes;
-      try {
-        updRes = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${user.id}`, {
-          method: "PATCH",
-          headers: {
-            "apikey": supabaseAnonKey || "",
-            "Authorization": token ? `Bearer ${token}` : "",
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            family_id: familyId
-          }),
-          signal: controller.signal
-        });
-      } catch (err: any) {
-        if (err.name === "AbortError") {
-          throw new Error("Request timed out writing profile update to the database. Please verify your connection.");
-        }
-        throw err;
-      } finally {
-        clearTimeout(fetchTimeoutId);
-      }
-
-      if (!updRes.ok) {
-        const errText = await updRes.text();
-        throw new Error(errText || "Failed to link profile to family.");
-      }
-
-      // Add a system notification using fetch REST API
+      // Add a system notification
       const n = await reminderService.addNotification(user.id, "Joined Family Portal! 🤝", `You have successfully joined family group '${name}'.`, "system");
       setNotifications(prev => [n, ...prev]);
 

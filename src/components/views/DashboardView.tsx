@@ -1237,27 +1237,22 @@ export const DashboardView: React.FC = () => {
                           }
                           setIsVerifying(true);
                           try {
-                            const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-                            const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-                            const { data: { session } } = await supabase.auth.getSession();
-                            const token = session?.access_token;
-
-                            // 1. Fetch family row and join the admin profile to get their name
-                            const famPromise = fetch(`${supabaseUrl}/rest/v1/families?family_code=eq.${searchId}&select=*,profiles:admin_id(full_name)`, {
-                              method: "GET",
-                              headers: {
-                                "apikey": supabaseAnonKey || "",
-                                "Authorization": token ? `Bearer ${token}` : "",
-                                "Content-Type": "application/json"
-                              }
-                            }).then(async (res) => {
-                              if (!res.ok) {
-                                const errText = await res.text();
-                                throw new Error(errText || "Failed to fetch family verification details.");
-                              }
-                              return res.json();
-                            });
+                            const famPromise = (async () => {
+                              const { data, error } = await supabase
+                                .from("families")
+                                .select(`
+                                  id,
+                                  name,
+                                  family_code,
+                                  admin_id,
+                                  profiles:admin_id (
+                                    full_name
+                                  )
+                                `)
+                                .eq("family_code", searchId);
+                              if (error) throw error;
+                              return data;
+                            })();
 
                             const timeoutPromise = new Promise<never>((_, reject) =>
                               setTimeout(() => reject(new Error("Request timed out. Please check if your Supabase database is awake and that you ran the SQL migration.")), 8000)
@@ -1272,21 +1267,14 @@ export const DashboardView: React.FC = () => {
                               const matchFam = fams[0];
                               
                               // 2. Fetch the number of profiles currently linked to this family_id
-                              const countRes = await fetch(`${supabaseUrl}/rest/v1/profiles?family_id=eq.${matchFam.id}&select=id`, {
-                                method: "GET",
-                                headers: {
-                                  "apikey": supabaseAnonKey || "",
-                                  "Authorization": token ? `Bearer ${token}` : "",
-                                  "Content-Type": "application/json"
-                                }
-                              });
+                              const { data: membersList, error: countErr } = await supabase
+                                .from("profiles")
+                                .select("id")
+                                .eq("family_id", matchFam.id);
                               
-                              let memberCount = 0;
-                              if (countRes.ok) {
-                                const membersList = await countRes.json();
-                                memberCount = membersList ? membersList.length : 0;
-                              }
-
+                              if (countErr) throw countErr;
+                              
+                              const memberCount = membersList ? membersList.length : 0;
                               const adminName = matchFam.profiles ? (matchFam.profiles.full_name || "Unknown") : "Unknown";
 
                               setVerificationFamily({
