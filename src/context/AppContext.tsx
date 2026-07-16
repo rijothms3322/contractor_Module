@@ -2026,56 +2026,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     try {
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const createActionPromise = (async () => {
+        // 1. Insert new family row via supabase client
+        const { data: insertedData, error: insErr } = await supabase
+          .from("families")
+          .insert({
+            family_code: code,
+            name,
+            admin_id: user.id
+          })
+          .select();
 
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
+        if (insErr) throw insErr;
+        if (!insertedData || insertedData.length === 0) {
+          throw new Error("No data returned from family creation.");
+        }
+        const newFam = insertedData[0];
 
-      // 1. Insert new family row via direct REST API
-      const insRes = await fetch(`${supabaseUrl}/rest/v1/families`, {
-        method: "POST",
-        headers: {
-          "apikey": supabaseAnonKey || "",
-          "Authorization": `Bearer ${token}`,
-          "Content-Type": "application/json",
-          "Prefer": "return=representation"
-        },
-        body: JSON.stringify({
-          family_code: code,
-          name,
-          admin_id: user.id
-        })
-      });
+        // 2. Update user's profile family_id via supabase client
+        const { error: updErr } = await supabase
+          .from("profiles")
+          .update({
+            family_id: newFam.id
+          })
+          .eq("id", user.id);
 
-      if (!insRes.ok) {
-        const errText = await insRes.text();
-        throw new Error(errText || "Failed to insert family row.");
-      }
+        if (updErr) throw updErr;
+        return newFam;
+      })();
 
-      const insertedData = await insRes.json();
-      if (!insertedData || insertedData.length === 0) {
-        throw new Error("No data returned from family creation.");
-      }
-      const newFam = insertedData[0];
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Request timed out creating family group in database. Please check your connection.")), 8000)
+      );
 
-      // 2. Update user's profile family_id via direct REST API
-      const updRes = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${user.id}`, {
-        method: "PATCH",
-        headers: {
-          "apikey": supabaseAnonKey || "",
-          "Authorization": `Bearer ${token}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          family_id: newFam.id
-        })
-      });
-
-      if (!updRes.ok) {
-        const errText = await updRes.text();
-        throw new Error(errText || "Failed to link user profile to family.");
-      }
+      const newFam = await Promise.race([createActionPromise, timeoutPromise]);
 
       const n = await reminderService.addNotification(user.id, "Family Portal Created! 🏠", `Successfully created family '${name}' with code ${code}.`, "system");
       setNotifications(prev => [n, ...prev]);

@@ -1237,8 +1237,9 @@ export const DashboardView: React.FC = () => {
                           }
                           setIsVerifying(true);
                           try {
-                            const famPromise = (async () => {
-                              const { data, error } = await supabase
+                            const verifyActionPromise = (async () => {
+                              // 1. Fetch family row and join the admin profile to get their name
+                              const { data: fams, error: famErr } = await supabase
                                 .from("families")
                                 .select(`
                                   id,
@@ -1250,20 +1251,12 @@ export const DashboardView: React.FC = () => {
                                   )
                                 `)
                                 .eq("family_code", searchId);
-                              if (error) throw error;
-                              return data;
-                            })();
+                              if (famErr) throw famErr;
 
-                            const timeoutPromise = new Promise<never>((_, reject) =>
-                              setTimeout(() => reject(new Error("Request timed out. Please check if your Supabase database is awake and that you ran the SQL migration.")), 8000)
-                            );
+                              if (!fams || fams.length === 0) {
+                                return null;
+                              }
 
-                            const fams = await Promise.race([famPromise, timeoutPromise]) as any;
-
-                            if (!fams || fams.length === 0) {
-                              alert("No active family found matching code: " + searchId);
-                              setVerificationFamily(null);
-                            } else {
                               const matchFam = fams[0];
                               
                               // 2. Fetch the number of profiles currently linked to this family_id
@@ -1277,14 +1270,27 @@ export const DashboardView: React.FC = () => {
                               const memberCount = membersList ? membersList.length : 0;
                               const adminName = matchFam.profiles ? (matchFam.profiles.full_name || "Unknown") : "Unknown";
 
-                              setVerificationFamily({
+                              return {
                                 id: matchFam.id,
                                 name: matchFam.name,
                                 memberCount: memberCount,
                                 adminName: adminName,
                                 familyCode: matchFam.family_code,
                                 adminId: matchFam.admin_id
-                              });
+                              };
+                            })();
+
+                            const timeoutPromise = new Promise<never>((_, reject) =>
+                              setTimeout(() => reject(new Error("Request timed out. Please check if your Supabase database is awake and that you ran the SQL migration.")), 8000)
+                            );
+
+                            const verified = await Promise.race([verifyActionPromise, timeoutPromise]);
+
+                            if (!verified) {
+                              alert("No active family found matching code: " + searchId);
+                              setVerificationFamily(null);
+                            } else {
+                              setVerificationFamily(verified);
                             }
                           } catch (e: any) {
                             alert("Verification failed: " + e.message);
