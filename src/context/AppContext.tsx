@@ -397,8 +397,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   });
 
                   try {
-                    const lMeds = await medicineService.getMedicines(mProfile.id);
-                    const lRems = await reminderService.getReminders(mProfile.id);
+                    const lMeds = await safeFetch(medicineService.getMedicines(mProfile.id), [], `medicines for ${mProfile.full_name}`);
+                    const lRems = await safeFetch(reminderService.getReminders(mProfile.id), [], `reminders for ${mProfile.full_name}`);
                     
                     // Filter out private items
                     const publicMeds = lMeds.filter(m => !m.isPrivate);
