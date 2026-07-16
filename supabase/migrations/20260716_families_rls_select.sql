@@ -11,3 +11,8 @@ CREATE POLICY "Allow authenticated select on families" ON public.families
 DROP POLICY IF EXISTS "Allow authenticated select on profiles" ON public.profiles;
 CREATE POLICY "Allow authenticated select on profiles" ON public.profiles
     FOR SELECT USING (auth.role() = 'authenticated');
+
+-- 3. Allow users to update their own profile details (needed for joining/leaving families)
+DROP POLICY IF EXISTS "Allow users to update own profile" ON public.profiles;
+CREATE POLICY "Allow users to update own profile" ON public.profiles
+    FOR UPDATE USING (auth.uid() = id) WITH CHECK (auth.uid() = id);

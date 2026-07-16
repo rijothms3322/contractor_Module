@@ -126,6 +126,12 @@ export const DashboardView: React.FC = () => {
   const [confirmTakenReminder, setConfirmTakenReminder] = useState<Reminder | null>(null);
   const [isCreatingFamily, setIsCreatingFamily] = useState(false);
   const [isJoiningFamily, setIsJoiningFamily] = useState(false);
+  const [isRenamingFamily, setIsRenamingFamily] = useState(false);
+  const [isRegeneratingCode, setIsRegeneratingCode] = useState(false);
+  const [isTransferringAdmin, setIsTransferringAdmin] = useState<string | null>(null);
+  const [isRemovingMember, setIsRemovingMember] = useState<string | null>(null);
+  const [isDisbanding, setIsDisbanding] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
   const [newPersonName, setNewPersonName] = useState("");
   const [newPersonNickname, setNewPersonNickname] = useState("");
   const [newPersonRelationship, setNewPersonRelationship] = useState("Mother");
@@ -1356,16 +1362,24 @@ export const DashboardView: React.FC = () => {
                               className="px-2 py-1 bg-white border border-outline rounded-lg text-xs font-bold focus:outline-none focus:border-primary"
                             />
                             <button
-                              onClick={async () => {
-                                if (editedFamilyName.trim()) {
-                                  await renameFamily(editedFamilyName.trim());
-                                  setIsEditingFamilyName(false);
-                                }
-                              }}
-                              className="px-2 py-1 bg-primary text-on-primary text-[10px] font-bold rounded"
-                            >
-                              Save
-                            </button>
+                               onClick={async () => {
+                                 if (editedFamilyName.trim()) {
+                                   setIsRenamingFamily(true);
+                                   try {
+                                     await renameFamily(editedFamilyName.trim());
+                                     setIsEditingFamilyName(false);
+                                   } finally {
+                                     setIsRenamingFamily(false);
+                                   }
+                                 }
+                               }}
+                               disabled={isRenamingFamily}
+                               className="px-2 py-1 bg-primary text-on-primary text-[10px] font-bold rounded flex items-center justify-center gap-1 disabled:opacity-50"
+                             >
+                               {isRenamingFamily ? (
+                                 <div className="w-2 h-2 border border-on-primary border-t-transparent rounded-full animate-spin" />
+                               ) : "Save"}
+                             </button>
                           </div>
                         ) : (
                           <div className="flex items-center gap-1.5">
@@ -1395,16 +1409,26 @@ export const DashboardView: React.FC = () => {
                     {/* Code Regeneration Option for Admins with no other members */}
                     {user?.id === activeFamily.adminId && familyMembers.length === 0 && (
                       <button
-                        onClick={async () => {
-                          if (confirm("Regenerate invitation code? This will invalidate the previous code.")) {
-                            await regenerateFamilyCode();
-                          }
-                        }}
-                        className="text-[9px] text-primary hover:underline font-bold flex items-center gap-0.5"
-                      >
-                        <span className="material-symbols-outlined text-xs">refresh</span>
-                        Regenerate Code
-                      </button>
+                         onClick={async () => {
+                           if (confirm("Regenerate invitation code? This will invalidate the previous code.")) {
+                             setIsRegeneratingCode(true);
+                             try {
+                               await regenerateFamilyCode();
+                             } finally {
+                               setIsRegeneratingCode(false);
+                             }
+                           }
+                         }}
+                         disabled={isRegeneratingCode}
+                         className="text-[9px] text-primary hover:underline font-bold flex items-center gap-0.5 disabled:opacity-50 disabled:pointer-events-none"
+                       >
+                         {isRegeneratingCode ? (
+                           <div className="w-2 h-2 border border-primary border-t-transparent rounded-full animate-spin" />
+                         ) : (
+                           <span className="material-symbols-outlined text-xs">refresh</span>
+                         )}
+                         <span>{isRegeneratingCode ? "Regenerating..." : "Regenerate Code"}</span>
+                       </button>
                     )}
                   </div>
 
@@ -1468,23 +1492,41 @@ export const DashboardView: React.FC = () => {
                                   <button
                                     onClick={async () => {
                                       if (confirm(`Transfer admin ownership rights to ${member.name}?`)) {
-                                        await transferAdminRights(member.id);
+                                        setIsTransferringAdmin(member.id);
+                                        try {
+                                          await transferAdminRights(member.id);
+                                        } finally {
+                                          setIsTransferringAdmin(null);
+                                        }
                                       }
                                     }}
-                                    className="px-2 py-1 bg-surface-container-high hover:bg-opacity-80 text-secondary font-bold text-[9px] rounded-lg transition-all"
+                                    disabled={isTransferringAdmin !== null || isRemovingMember !== null}
+                                    className="px-2 py-1 bg-surface-container-high hover:bg-opacity-80 text-secondary font-bold text-[9px] rounded-lg transition-all flex items-center gap-1 disabled:opacity-50"
                                     title="Transfer Admin Rights"
                                   >
-                                    Make Admin
+                                    {isTransferringAdmin === member.id && (
+                                      <div className="w-2 h-2 border border-secondary border-t-transparent rounded-full animate-spin" />
+                                    )}
+                                    <span>Make Admin</span>
                                   </button>
                                   <button
                                     onClick={async () => {
                                       if (confirm(`Are you sure you want to remove ${member.name} from the family portal?`)) {
-                                        await removeFamilyMember(member.id);
+                                        setIsRemovingMember(member.id);
+                                        try {
+                                          await removeFamilyMember(member.id);
+                                        } finally {
+                                          setIsRemovingMember(null);
+                                        }
                                       }
                                     }}
-                                    className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 font-bold text-[9px] rounded-lg transition-all border border-red-200/20"
+                                    disabled={isTransferringAdmin !== null || isRemovingMember !== null}
+                                    className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 font-bold text-[9px] rounded-lg transition-all border border-red-200/20 flex items-center gap-1 disabled:opacity-50"
                                   >
-                                    Remove
+                                    {isRemovingMember === member.id && (
+                                      <div className="w-2 h-2 border border-red-600 border-t-transparent rounded-full animate-spin" />
+                                    )}
+                                    <span>Remove</span>
                                   </button>
                                 </>
                               ) : (
@@ -1495,12 +1537,21 @@ export const DashboardView: React.FC = () => {
                               <button
                                 onClick={async () => {
                                   if (confirm(`Are you sure you want to delete the local profile card for ${member.name}?`)) {
-                                    await deleteFamilyMember(member.id);
+                                    setIsRemovingMember(member.id);
+                                    try {
+                                      await deleteFamilyMember(member.id);
+                                    } finally {
+                                      setIsRemovingMember(null);
+                                    }
                                   }
                                 }}
-                                className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 font-bold text-[9px] rounded-lg transition-all border border-red-200/20"
+                                disabled={isRemovingMember === member.id}
+                                className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 font-bold text-[9px] rounded-lg transition-all border border-red-200/20 flex items-center gap-1 disabled:opacity-50"
                               >
-                                Delete
+                                {isRemovingMember === member.id && (
+                                  <div className="w-2 h-2 border border-red-600 border-t-transparent rounded-full animate-spin" />
+                                )}
+                                <span>Delete</span>
                               </button>
                             )}
                           </div>
@@ -1515,25 +1566,49 @@ export const DashboardView: React.FC = () => {
                       <button
                         onClick={async () => {
                           if (confirm("Are you sure you want to DISBAND this family group? All other members will be disconnected instantly.")) {
-                            await disbandFamily();
+                            setIsDisbanding(true);
+                            try {
+                              await disbandFamily();
+                            } finally {
+                              setIsDisbanding(false);
+                            }
                           }
                         }}
-                        className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1 active:scale-95 transition-all shadow-sm"
+                        disabled={isDisbanding}
+                        className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-sm disabled:opacity-50 disabled:pointer-events-none"
                       >
-                        <span className="material-symbols-outlined text-sm">delete_forever</span>
-                        Disband Family Group
+                        {isDisbanding ? (
+                          <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <>
+                            <span className="material-symbols-outlined text-sm">delete_forever</span>
+                            <span>Disband Family Group</span>
+                          </>
+                        )}
                       </button>
                     ) : (
                       <button
                         onClick={async () => {
                           if (confirm("Are you sure you want to leave this family group? You will lose access to the shared scoreboard timeline.")) {
-                            await leaveFamily();
+                            setIsLeaving(true);
+                            try {
+                              await leaveFamily();
+                            } finally {
+                              setIsLeaving(false);
+                            }
                           }
                         }}
-                        className="w-full py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1 active:scale-95 transition-all shadow-sm"
+                        disabled={isLeaving}
+                        className="w-full py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-sm disabled:opacity-50 disabled:pointer-events-none"
                       >
-                        <span className="material-symbols-outlined text-sm">logout</span>
-                        Leave Family Group
+                        {isLeaving ? (
+                          <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <>
+                            <span className="material-symbols-outlined text-sm">logout</span>
+                            <span>Leave Family Group</span>
+                          </>
+                        )}
                       </button>
                     )}
                   </div>
