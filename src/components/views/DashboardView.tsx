@@ -1225,23 +1225,30 @@ export const DashboardView: React.FC = () => {
                             alert("Database is not configured. Please set your Supabase environment variables.");
                             return;
                           }
-                          const searchId = joinFamilyId.trim().toUpperCase();
+                          let searchId = joinFamilyId.trim().toUpperCase();
+                          if (searchId.length === 6 && !searchId.startsWith("FAM-")) {
+                            searchId = "FAM-" + searchId;
+                          }
                           setIsVerifying(true);
                           try {
                             const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
                             const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-                            const rpcPromise = fetch(`${supabaseUrl}/rest/v1/rpc/verify_family_code`, {
-                              method: "POST",
+                            const { data: { session } } = await supabase.auth.getSession();
+                            const token = session?.access_token;
+
+                            // 1. Fetch family row and join the admin profile to get their name
+                            const famPromise = fetch(`${supabaseUrl}/rest/v1/families?family_code=eq.${searchId}&select=*,profiles:admin_id(full_name)`, {
+                              method: "GET",
                               headers: {
                                 "apikey": supabaseAnonKey || "",
+                                "Authorization": token ? `Bearer ${token}` : "",
                                 "Content-Type": "application/json"
-                              },
-                              body: JSON.stringify({ input_code: searchId })
+                              }
                             }).then(async (res) => {
                               if (!res.ok) {
                                 const errText = await res.text();
-                                throw new Error(errText || "Failed to fetch verification details.");
+                                throw new Error(errText || "Failed to fetch family verification details.");
                               }
                               return res.json();
                             });
@@ -1250,18 +1257,37 @@ export const DashboardView: React.FC = () => {
                               setTimeout(() => reject(new Error("Request timed out. Please check if your Supabase database is awake and that you ran the SQL migration.")), 8000)
                             );
 
-                            const data = await Promise.race([rpcPromise, timeoutPromise]) as any;
+                            const fams = await Promise.race([famPromise, timeoutPromise]) as any;
 
-                            if (!data || data.length === 0) {
+                            if (!fams || fams.length === 0) {
                               alert("No active family found matching code: " + searchId);
                               setVerificationFamily(null);
                             } else {
-                              const match = data[0];
+                              const matchFam = fams[0];
+                              
+                              // 2. Fetch the number of profiles currently linked to this family_id
+                              const countRes = await fetch(`${supabaseUrl}/rest/v1/profiles?family_id=eq.${matchFam.id}&select=id`, {
+                                method: "GET",
+                                headers: {
+                                  "apikey": supabaseAnonKey || "",
+                                  "Authorization": token ? `Bearer ${token}` : "",
+                                  "Content-Type": "application/json"
+                                }
+                              });
+                              
+                              let memberCount = 0;
+                              if (countRes.ok) {
+                                const membersList = await countRes.json();
+                                memberCount = membersList ? membersList.length : 0;
+                              }
+
+                              const adminName = matchFam.profiles ? (matchFam.profiles.full_name || "Unknown") : "Unknown";
+
                               setVerificationFamily({
-                                id: match.family_id,
-                                name: match.family_name,
-                                memberCount: match.member_count,
-                                adminName: match.admin_name
+                                id: matchFam.id,
+                                name: matchFam.name,
+                                memberCount: memberCount,
+                                adminName: adminName
                               });
                             }
                           } catch (e: any) {
