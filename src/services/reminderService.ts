@@ -123,9 +123,22 @@ export const reminderService = {
   async addNotification(userId: string, title: string, message: string, type: "reminder" | "booking" | "system"): Promise<Notification> {
     if (!isSupabaseConfigured) throw new Error("Supabase is not configured.");
 
-    const { data, error } = await supabase
-      .from("notifications")
-      .insert({
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    // Get active session token
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+
+    const res = await fetch(`${supabaseUrl}/rest/v1/notifications`, {
+      method: "POST",
+      headers: {
+        "apikey": supabaseAnonKey || "",
+        "Authorization": token ? `Bearer ${token}` : "",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"
+      },
+      body: JSON.stringify({
         id: crypto.randomUUID(),
         user_id: userId,
         title,
@@ -133,10 +146,18 @@ export const reminderService = {
         type,
         is_read: false
       })
-      .select()
-      .single();
+    });
 
-    if (error) throw error;
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(errText || "Failed to save notification.");
+    }
+
+    const inserted = await res.json();
+    if (!inserted || inserted.length === 0) {
+      throw new Error("No data returned from notification save.");
+    }
+    const data = inserted[0];
 
     // Trigger local reminder placeholder push warning
     if (typeof window !== "undefined" && "Notification" in window) {
