@@ -126,27 +126,50 @@ export const reminderService = {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-    // Get active session token
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
+    // Get active session token with 5-second timeout
+    let token = undefined;
+    try {
+      const sessionPromise = supabase.auth.getSession();
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Database auth lookup timed out.")), 5000)
+      );
+      const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]);
+      token = session?.access_token;
+    } catch (e) {
+      console.warn("Auth token lookup failed/timed out in addNotification, executing unauthenticated/anon request.", e);
+    }
 
-    const res = await fetch(`${supabaseUrl}/rest/v1/notifications`, {
-      method: "POST",
-      headers: {
-        "apikey": supabaseAnonKey || "",
-        "Authorization": token ? `Bearer ${token}` : "",
-        "Content-Type": "application/json",
-        "Prefer": "return=representation"
-      },
-      body: JSON.stringify({
-        id: crypto.randomUUID(),
-        user_id: userId,
-        title,
-        message,
-        type,
-        is_read: false
-      })
-    });
+    const controller = new AbortController();
+    const fetchTimeoutId = setTimeout(() => controller.abort(), 6000);
+
+    let res;
+    try {
+      res = await fetch(`${supabaseUrl}/rest/v1/notifications`, {
+        method: "POST",
+        headers: {
+          "apikey": supabaseAnonKey || "",
+          "Authorization": token ? `Bearer ${token}` : "",
+          "Content-Type": "application/json",
+          "Prefer": "return=representation"
+        },
+        body: JSON.stringify({
+          id: crypto.randomUUID(),
+          user_id: userId,
+          title,
+          message,
+          type,
+          is_read: false
+        }),
+        signal: controller.signal
+      });
+    } catch (err: any) {
+      if (err.name === "AbortError") {
+        throw new Error("Connection timed out writing notification to DB.");
+      }
+      throw err;
+    } finally {
+      clearTimeout(fetchTimeoutId);
+    }
 
     if (!res.ok) {
       const errText = await res.text();

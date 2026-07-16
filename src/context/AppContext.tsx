@@ -103,7 +103,7 @@ interface AppContextType {
   setIsLinkedToFamily: React.Dispatch<React.SetStateAction<boolean>>;
   activeFamily: { id: string; name: string; familyCode: string; adminId: string } | null;
   createFamily: (name: string) => Promise<boolean>;
-  joinFamily: (familyId: string) => Promise<boolean>;
+  joinFamily: (familyId: string, name: string, code: string, adminId: string) => Promise<boolean>;
   leaveFamily: () => Promise<boolean>;
   disbandFamily: () => Promise<boolean>;
   removeFamilyMember: (memberId: string) => Promise<boolean>;
@@ -2101,7 +2101,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const joinFamily = async (familyId: string): Promise<boolean> => {
+  const joinFamily = async (familyId: string, name: string, code: string, adminId: string): Promise<boolean> => {
     if (!user) {
       alert("Failed to join family: No active user session was found.");
       return false;
@@ -2115,47 +2115,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
+      // 1. Get active session token with 6-second timeout
+      let token = undefined;
+      try {
+        const sessionPromise = supabase.auth.getSession();
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Database authentication lookup timed out.")), 6000)
+        );
+        const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]);
+        token = session?.access_token;
+      } catch (e: any) {
+        console.warn("Session check failed/timed out in joinFamily, proceeding with standard request headers.", e);
+      }
 
-      // 1. Update user's profile family_id via direct REST API
-      const updRes = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${user.id}`, {
-        method: "PATCH",
-        headers: {
-          "apikey": supabaseAnonKey || "",
-          "Authorization": `Bearer ${token}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          family_id: familyId
-        })
-      });
+      // 2. Update user's profile family_id via direct REST API with 8-second timeout
+      const controller = new AbortController();
+      const fetchTimeoutId = setTimeout(() => controller.abort(), 8000);
+
+      let updRes;
+      try {
+        updRes = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${user.id}`, {
+          method: "PATCH",
+          headers: {
+            "apikey": supabaseAnonKey || "",
+            "Authorization": token ? `Bearer ${token}` : "",
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            family_id: familyId
+          }),
+          signal: controller.signal
+        });
+      } catch (err: any) {
+        if (err.name === "AbortError") {
+          throw new Error("Request timed out writing profile update to the database. Please verify your connection.");
+        }
+        throw err;
+      } finally {
+        clearTimeout(fetchTimeoutId);
+      }
 
       if (!updRes.ok) {
         const errText = await updRes.text();
         throw new Error(errText || "Failed to link profile to family.");
       }
 
-      const n = await reminderService.addNotification(user.id, "Joined Family Portal! 🤝", "You have joined the family group successfully.", "system");
+      // Add a system notification using fetch REST API
+      const n = await reminderService.addNotification(user.id, "Joined Family Portal! 🤝", `You have successfully joined family group '${name}'.`, "system");
       setNotifications(prev => [n, ...prev]);
-
-      // 2. Query new family details via direct REST API
-      const famRes = await fetch(`${supabaseUrl}/rest/v1/families?id=eq.${familyId}`, {
-        method: "GET",
-        headers: {
-          "apikey": supabaseAnonKey || "",
-          "Authorization": `Bearer ${token}`,
-          "Content-Type": "application/json"
-        }
-      });
-
-      let famData = null;
-      if (famRes.ok) {
-        const fams = await famRes.json();
-        if (fams && fams.length > 0) {
-          famData = fams[0];
-        }
-      }
 
       const updatedUser = { ...user, familyId };
       setUser(updatedUser);
@@ -2163,15 +2170,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         safeLocalStorage.setItem("medimz_user", JSON.stringify(updatedUser));
       }
 
-      if (famData) {
-        setActiveFamily({
-          id: famData.id,
-          name: famData.name,
-          familyCode: famData.family_code,
-          adminId: famData.admin_id
-        });
-      }
+      setActiveFamily({
+        id: familyId,
+        name: name,
+        familyCode: code,
+        adminId: adminId
+      });
       setIsLinkedToFamily(true);
+
+      // Force window reload to synchronize state and trigger live subscription updates instantly
+      if (typeof window !== "undefined") {
+        window.location.reload();
+      }
 
       return true;
     } catch (e: any) {

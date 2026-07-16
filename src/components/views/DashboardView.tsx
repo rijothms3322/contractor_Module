@@ -84,7 +84,7 @@ export const DashboardView: React.FC = () => {
   const [joinFamilyId, setJoinFamilyId] = useState("");
 
   const [newFamilyName, setNewFamilyName] = useState("");
-  const [verificationFamily, setVerificationFamily] = useState<{ id: string; name: string; memberCount: number; adminName: string } | null>(null);
+  const [verificationFamily, setVerificationFamily] = useState<{ id: string; name: string; memberCount: number; adminName: string; familyCode: string; adminId: string } | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isEditingFamilyName, setIsEditingFamilyName] = useState(false);
   const [editedFamilyName, setEditedFamilyName] = useState("");
@@ -1293,7 +1293,9 @@ export const DashboardView: React.FC = () => {
                                 id: matchFam.id,
                                 name: matchFam.name,
                                 memberCount: memberCount,
-                                adminName: adminName
+                                adminName: adminName,
+                                familyCode: matchFam.family_code,
+                                adminId: matchFam.admin_id
                               });
                             }
                           } catch (e: any) {
@@ -1326,7 +1328,12 @@ export const DashboardView: React.FC = () => {
                           onClick={async () => {
                             setIsJoiningFamily(true);
                             try {
-                              const success = await joinFamily(verificationFamily.id);
+                              const success = await joinFamily(
+                                verificationFamily.id,
+                                verificationFamily.name,
+                                verificationFamily.familyCode,
+                                verificationFamily.adminId
+                              );
                               if (success) {
                                 setVerificationFamily(null);
                                 setJoinFamilyId("");
