@@ -124,6 +124,8 @@ export const DashboardView: React.FC = () => {
 
   const [isAddingNewPerson, setIsAddingNewPerson] = useState(false);
   const [confirmTakenReminder, setConfirmTakenReminder] = useState<Reminder | null>(null);
+  const [isCreatingFamily, setIsCreatingFamily] = useState(false);
+  const [isJoiningFamily, setIsJoiningFamily] = useState(false);
   const [newPersonName, setNewPersonName] = useState("");
   const [newPersonNickname, setNewPersonNickname] = useState("");
   const [newPersonRelationship, setNewPersonRelationship] = useState("Mother");
@@ -1179,11 +1181,22 @@ export const DashboardView: React.FC = () => {
                             alert("Please enter a custom Family Name.");
                             return;
                           }
-                          await createFamily(newFamilyName.trim());
+                          setIsCreatingFamily(true);
+                          try {
+                            const success = await createFamily(newFamilyName.trim());
+                            if (success) {
+                              setNewFamilyName("");
+                            }
+                          } finally {
+                            setIsCreatingFamily(false);
+                          }
                         }}
-                        className="px-4 py-2 bg-primary text-on-primary font-bold rounded-xl text-xs hover:opacity-90 active:scale-95 transition-all shadow-sm"
+                        disabled={isCreatingFamily}
+                        className="px-4 py-2 bg-primary text-on-primary font-bold rounded-xl text-xs hover:opacity-90 active:scale-95 transition-all shadow-sm flex items-center justify-center gap-1.5 min-w-[76px] disabled:opacity-50 disabled:pointer-events-none"
                       >
-                        Create
+                        {isCreatingFamily ? (
+                          <div className="w-3.5 h-3.5 border-2 border-on-primary border-t-transparent rounded-full animate-spin" />
+                        ) : "Create"}
                       </button>
                     </div>
                   </div>
@@ -1199,7 +1212,8 @@ export const DashboardView: React.FC = () => {
                         placeholder="Enter Code (e.g. FAM-X93A7Q)"
                         value={joinFamilyId}
                         onChange={(e) => setJoinFamilyId(e.target.value)}
-                        className="flex-1 px-3 py-2 bg-white border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary uppercase"
+                        disabled={isVerifying || isJoiningFamily}
+                        className="flex-1 px-3 py-2 bg-white border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary uppercase disabled:opacity-60"
                       />
                       <button
                         onClick={async () => {
@@ -1257,9 +1271,12 @@ export const DashboardView: React.FC = () => {
                             setIsVerifying(false);
                           }
                         }}
-                        className="px-3 py-2 bg-secondary text-white font-bold rounded-xl text-xs hover:opacity-90 active:scale-95 transition-all shadow-sm"
+                        disabled={isVerifying || isJoiningFamily}
+                        className="px-3 py-2 bg-secondary text-white font-bold rounded-xl text-xs hover:opacity-90 active:scale-95 transition-all shadow-sm flex items-center justify-center min-w-[70px] disabled:opacity-50 disabled:pointer-events-none"
                       >
-                        {isVerifying ? "Verifying..." : "Verify"}
+                        {isVerifying ? (
+                          <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : "Verify"}
                       </button>
                     </div>
 
@@ -1275,11 +1292,23 @@ export const DashboardView: React.FC = () => {
                         </div>
                         <button
                           onClick={async () => {
-                            await joinFamily(verificationFamily.id);
+                            setIsJoiningFamily(true);
+                            try {
+                              const success = await joinFamily(verificationFamily.id);
+                              if (success) {
+                                setVerificationFamily(null);
+                                setJoinFamilyId("");
+                              }
+                            } finally {
+                              setIsJoiningFamily(false);
+                            }
                           }}
-                          className="w-full py-2 bg-emerald-600 text-white font-bold rounded-xl text-[11px] hover:bg-emerald-700 active:scale-95 transition-all"
+                          disabled={isJoiningFamily}
+                          className="w-full py-2 bg-emerald-600 text-white font-bold rounded-xl text-[11px] hover:bg-emerald-700 active:scale-95 transition-all flex items-center justify-center gap-1.5 min-h-[32px] disabled:opacity-50 disabled:pointer-events-none"
                         >
-                          Confirm & Join Group
+                          {isJoiningFamily ? (
+                            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          ) : "Confirm & Join Group"}
                         </button>
                       </div>
                     )}

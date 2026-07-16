@@ -2026,24 +2026,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     try {
-      const { data: newFam, error: insErr } = await supabase
-        .from("families")
-        .insert({
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      // 1. Insert new family row via direct REST API
+      const insRes = await fetch(`${supabaseUrl}/rest/v1/families`, {
+        method: "POST",
+        headers: {
+          "apikey": supabaseAnonKey || "",
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "Prefer": "return=representation"
+        },
+        body: JSON.stringify({
           family_code: code,
           name,
           admin_id: user.id
         })
-        .select()
-        .single();
+      });
 
-      if (insErr) throw insErr;
+      if (!insRes.ok) {
+        const errText = await insRes.text();
+        throw new Error(errText || "Failed to insert family row.");
+      }
 
-      const { error: updErr } = await supabase
-        .from("profiles")
-        .update({ family_id: newFam.id })
-        .eq("id", user.id);
+      const insertedData = await insRes.json();
+      if (!insertedData || insertedData.length === 0) {
+        throw new Error("No data returned from family creation.");
+      }
+      const newFam = insertedData[0];
 
-      if (updErr) throw updErr;
+      // 2. Update user's profile family_id via direct REST API
+      const updRes = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${user.id}`, {
+        method: "PATCH",
+        headers: {
+          "apikey": supabaseAnonKey || "",
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          family_id: newFam.id
+        })
+      });
+
+      if (!updRes.ok) {
+        const errText = await updRes.text();
+        throw new Error(errText || "Failed to link user profile to family.");
+      }
 
       const n = await reminderService.addNotification(user.id, "Family Portal Created! 🏠", `Successfully created family '${name}' with code ${code}.`, "system");
       setNotifications(prev => [n, ...prev]);
@@ -2080,22 +2112,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     try {
-      const { error: updErr } = await supabase
-        .from("profiles")
-        .update({ family_id: familyId })
-        .eq("id", user.id);
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-      if (updErr) throw updErr;
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      // 1. Update user's profile family_id via direct REST API
+      const updRes = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${user.id}`, {
+        method: "PATCH",
+        headers: {
+          "apikey": supabaseAnonKey || "",
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          family_id: familyId
+        })
+      });
+
+      if (!updRes.ok) {
+        const errText = await updRes.text();
+        throw new Error(errText || "Failed to link profile to family.");
+      }
 
       const n = await reminderService.addNotification(user.id, "Joined Family Portal! 🤝", "You have joined the family group successfully.", "system");
       setNotifications(prev => [n, ...prev]);
 
-      // Query new family info from Supabase to load into context locally
-      const { data: famData } = await supabase
-        .from("families")
-        .select("*")
-        .eq("id", familyId)
-        .maybeSingle();
+      // 2. Query new family details via direct REST API
+      const famRes = await fetch(`${supabaseUrl}/rest/v1/families?id=eq.${familyId}`, {
+        method: "GET",
+        headers: {
+          "apikey": supabaseAnonKey || "",
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        }
+      });
+
+      let famData = null;
+      if (famRes.ok) {
+        const fams = await famRes.json();
+        if (fams && fams.length > 0) {
+          famData = fams[0];
+        }
+      }
 
       const updatedUser = { ...user, familyId };
       setUser(updatedUser);
@@ -2151,6 +2211,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       setActiveFamily(null);
       setIsLinkedToFamily(false);
+      setReminders(prev => prev.filter(r => !r.familyMemberId));
+      setFamilyMembers([]);
       return true;
     } catch (e: any) {
       alert("Failed to leave family: " + e.message);
@@ -2196,6 +2258,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       setActiveFamily(null);
       setIsLinkedToFamily(false);
+      setReminders(prev => prev.filter(r => !r.familyMemberId));
+      setFamilyMembers([]);
       return true;
     } catch (e: any) {
       alert("Failed to disband family: " + e.message);
