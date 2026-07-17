@@ -267,9 +267,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
 
-    let profilesSyncChannel: any = null;
-    let medicinesSyncChannel: any = null;
-    let remindersSyncChannel: any = null;
+    let familySyncChannel: any = null;
 
     // 2. LIVE SUPABASE REAL-TIME SESSION OBSERVER
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: any, session: any) => {
@@ -448,13 +446,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setReports(dbReports);
           setNotifications(dbNotifs);
 
-          // Real-time listener for profiles changes (like names, avatars, age) across family group
-          if (profilesSyncChannel) {
-            profilesSyncChannel.unsubscribe();
+          // Real-time listener for all family changes on a single unified channel
+          if (familySyncChannel) {
+            familySyncChannel.unsubscribe();
           }
 
-          profilesSyncChannel = supabase
-            .channel(`profiles-sync-${profile.familyId || 'public'}`)
+          familySyncChannel = supabase
+            .channel(`family-sync-${profile.familyId || 'public'}`)
             .on(
               "postgres_changes",
               {
@@ -495,15 +493,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 );
               }
             )
-            .subscribe();
-
-          // Real-time listener for medicines changes (syncs updates instantly across family)
-          if (medicinesSyncChannel) {
-            medicinesSyncChannel.unsubscribe();
-          }
-
-          medicinesSyncChannel = supabase
-            .channel(`medicines-sync-${profile.familyId || 'public'}`)
             .on(
               "postgres_changes",
               {
@@ -553,15 +542,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 }
               }
             )
-            .subscribe();
-
-          // Real-time listener for reminders changes (taken/snoozed/scheduled status sync)
-          if (remindersSyncChannel) {
-            remindersSyncChannel.unsubscribe();
-          }
-
-          remindersSyncChannel = supabase
-            .channel(`reminders-sync-${profile.familyId || 'public'}`)
             .on(
               "postgres_changes",
               {
@@ -641,14 +621,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
  
     return () => {
       subscription.unsubscribe();
-      if (profilesSyncChannel) {
-        profilesSyncChannel.unsubscribe();
-      }
-      if (medicinesSyncChannel) {
-        medicinesSyncChannel.unsubscribe();
-      }
-      if (remindersSyncChannel) {
-        remindersSyncChannel.unsubscribe();
+      if (familySyncChannel) {
+        familySyncChannel.unsubscribe();
       }
     };
   }, []);
