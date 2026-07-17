@@ -2052,6 +2052,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       setIsLinkedToFamily(true);
 
+      // Force window reload to synchronize state and trigger live subscription updates instantly
+      if (typeof window !== "undefined") {
+        window.location.reload();
+      }
+
       return true;
     } catch (e: any) {
       alert("Failed to create family: " + e.message);
