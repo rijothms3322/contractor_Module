@@ -141,7 +141,6 @@ interface AppContextType {
   markNotificationRead: (id: string) => void;
   clearNotifications: () => void;
 
-  // Active Notification Overlay State
   activeNotification: {
     id: string;
     name: string;
@@ -156,6 +155,8 @@ interface AppContextType {
     recipientName: string;
     timeLabel: string;
   } | null>>;
+  elderlyMode: boolean;
+  toggleElderlyMode: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -182,6 +183,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeTab, setActiveTab] = useState<TabType>("home");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isInitialized, setIsInitialized] = useState<boolean>(true); // default to true since we initialize synchronously
+  
+  const [elderlyMode, setElderlyMode] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("medimz_elderly_mode") === "true";
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      if (elderlyMode) {
+        document.documentElement.classList.add("elderly-mode");
+      } else {
+        document.documentElement.classList.remove("elderly-mode");
+      }
+    }
+  }, [elderlyMode]);
+
+  const toggleElderlyMode = () => {
+    setElderlyMode(prev => {
+      const next = !prev;
+      if (typeof window !== "undefined") {
+        localStorage.setItem("medimz_elderly_mode", String(next));
+      }
+      return next;
+    });
+  };
+
   const [activeNotification, setActiveNotification] = useState<{
     id: string;
     name: string;
@@ -261,6 +290,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // ====================================================================
   // INITIALIZATION TRIGGER & AUTH OBSERVER
   // ====================================================================
+  const familyMembersRef = React.useRef(familyMembers);
+  const userRef = React.useRef(user);
+
+  useEffect(() => {
+    familyMembersRef.current = familyMembers;
+  }, [familyMembers]);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
   useEffect(() => {
     // RESTORE STANDARD AUTH OBSERVER AND STORAGE LOAD
     if (!isSupabaseConfigured) {
@@ -291,12 +331,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
           };
 
-          const dbMeds = await safeFetch(medicineService.getMedicines(session.user.id), medicines, "medicines");
-          const dbFam = await safeFetch(medicineService.getFamilyMembers(session.user.id), familyMembers, "family members");
-          const dbRems = await safeFetch(reminderService.getReminders(session.user.id), reminders, "reminders");
-          const dbBookings = await safeFetch(bookingService.getBookings(session.user.id), bookings, "bookings");
-          const dbReports = await safeFetch(bookingService.getReports(session.user.id), reports, "reports");
-          const dbNotifs = await safeFetch(reminderService.getNotifications(session.user.id), notifications, "notifications");
+          const [
+            dbMeds,
+            dbFam,
+            dbRems,
+            dbBookings,
+            dbReports,
+            dbNotifs
+          ] = await Promise.all([
+            safeFetch(medicineService.getMedicines(session.user.id), medicines, "medicines"),
+            safeFetch(medicineService.getFamilyMembers(session.user.id), familyMembers, "family members"),
+            safeFetch(reminderService.getReminders(session.user.id), reminders, "reminders"),
+            safeFetch(bookingService.getBookings(session.user.id), bookings, "bookings"),
+            safeFetch(bookingService.getReports(session.user.id), reports, "reports"),
+            safeFetch(reminderService.getNotifications(session.user.id), notifications, "notifications")
+          ]);
  
           // Deduplicate medicines: keep only one medicine per name and dosage
           const uniqueMeds: Medicine[] = [];
@@ -395,8 +444,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   });
 
                   try {
-                    const lMeds = await safeFetch(medicineService.getMedicines(mProfile.id), [], `medicines for ${mProfile.full_name}`);
-                    const lRems = await safeFetch(reminderService.getReminders(mProfile.id), [], `reminders for ${mProfile.full_name}`);
+                    const [lMeds, lRems] = await Promise.all([
+                      safeFetch(medicineService.getMedicines(mProfile.id), [], `medicines for ${mProfile.full_name}`),
+                      safeFetch(reminderService.getReminders(mProfile.id), [], `reminders for ${mProfile.full_name}`)
+                    ]);
                     
                     // Filter out private items
                     const publicMeds = lMeds.filter(m => !m.isPrivate);
@@ -509,7 +560,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 } else {
                   // Verify if the medicine belongs to us or a family member
                   const isFamMed = newMed.user_id === session.user.id || 
-                    sharedFam.some(f => f.id === newMed.user_id);
+                    familyMembersRef.current.some(f => f.id === newMed.user_id);
                   
                   if (!isFamMed) return;
 
@@ -557,7 +608,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   setReminders(prev => prev.filter(r => r.id !== oldRem.id));
                 } else {
                   const isFamRem = newRem.user_id === session.user.id || 
-                    sharedFam.some(f => f.id === newRem.user_id);
+                    familyMembersRef.current.some(f => f.id === newRem.user_id);
                   
                   if (!isFamRem) return;
 
@@ -566,7 +617,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     return;
                   }
 
-                  const fm = sharedFam.find(f => f.id === newRem.user_id);
+                  const fm = familyMembersRef.current.find(f => f.id === newRem.user_id);
                   const mappedRem: Reminder = {
                     id: newRem.id,
                     medicineId: newRem.medicine_id,
@@ -2393,7 +2444,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         markNotificationRead,
         clearNotifications,
         activeNotification,
-        setActiveNotification
+        setActiveNotification,
+        elderlyMode,
+        toggleElderlyMode
       }}
     >
       {children}

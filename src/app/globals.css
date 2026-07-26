@@ -173,3 +173,184 @@ body {
   transform: rotate(-90deg);
   transform-origin: 50% 50%;
 }
+
+/* ECG Line Pulse Stroke Animation */
+.ecg-line {
+  stroke-dasharray: 200;
+  stroke-dashoffset: 200;
+  animation: draw-ecg 2.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes draw-ecg {
+  0% {
+    stroke-dashoffset: 200;
+    opacity: 0.2;
+  }
+  30% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  70% {
+    stroke-dashoffset: -200;
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: -200;
+    opacity: 0.2;
+  }
+}
+
+/* ====================================================================
+   ELDERLY MODE (ACCESSIBILITY LAYER OVERRIDES)
+   ==================================================================== */
+.elderly-mode {
+  font-size: 118% !important; /* Globally increases rem-based text size by 18% */
+}
+
+/* Enlarge typography by 30-40% */
+.elderly-mode h1,
+.elderly-mode .text-2xl,
+.elderly-mode .font-headline-lg {
+  font-size: 2.2rem !important;
+  line-height: 1.25 !important;
+  font-weight: 900 !important;
+}
+
+.elderly-mode h2,
+.elderly-mode .text-xl,
+.elderly-mode .font-headline-md {
+  font-size: 1.8rem !important;
+  line-height: 1.3 !important;
+  font-weight: 800 !important;
+}
+
+.elderly-mode h3,
+.elderly-mode .text-lg {
+  font-size: 1.5rem !important;
+  line-height: 1.35 !important;
+  font-weight: 800 !important;
+}
+
+.elderly-mode h4,
+.elderly-mode .text-base,
+.elderly-mode .font-body-lg {
+  font-size: 1.35rem !important;
+  line-height: 1.4 !important;
+  font-weight: 700 !important;
+}
+
+.elderly-mode p,
+.elderly-mode span,
+.elderly-mode label,
+.elderly-mode .text-sm,
+.elderly-mode .font-body-md {
+  font-size: 1.15rem !important;
+  line-height: 1.5 !important;
+  font-weight: 600 !important;
+}
+
+.elderly-mode .text-xs,
+.elderly-mode .text-\[10px\],
+.elderly-mode .font-label-sm {
+  font-size: 1.05rem !important;
+  line-height: 1.4 !important;
+  font-weight: 700 !important;
+}
+
+/* Enlarge button heights and touch targets (56px-64px) */
+.elderly-mode button,
+.elderly-mode a.button,
+.elderly-mode [role="button"] {
+  min-height: 58px !important;
+  padding-top: 12px !important;
+  padding-bottom: 12px !important;
+  padding-left: 24px !important;
+  padding-right: 24px !important;
+  font-size: 1.2rem !important;
+  border-radius: 16px !important;
+}
+
+/* Enlarge icons by 25% */
+.elderly-mode .material-symbols-outlined {
+  font-size: 1.6rem !important;
+}
+
+.elderly-mode .w-10.h-10 {
+  width: 3.5rem !important;
+  height: 3.5rem !important;
+}
+
+.elderly-mode .w-11.h-11 {
+  width: 3.75rem !important;
+  height: 3.75rem !important;
+}
+
+/* Enlarge input heights, dropdowns, checkboxes */
+.elderly-mode input[type="text"],
+.elderly-mode input[type="email"],
+.elderly-mode input[type="password"],
+.elderly-mode input[type="date"],
+.elderly-mode input[type="time"],
+.elderly-mode input[type="tel"],
+.elderly-mode select,
+.elderly-mode textarea {
+  min-height: 58px !important;
+  font-size: 1.2rem !important;
+  border-radius: 16px !important;
+  padding-left: 18px !important;
+  padding-right: 18px !important;
+}
+
+.elderly-mode input[type="checkbox"] {
+  width: 28px !important;
+  height: 28px !important;
+}
+
+.elderly-mode select {
+  padding-right: 36px !important;
+}
+
+/* Increase card padding and list spacings */
+.elderly-mode .glass-card,
+.elderly-mode .bg-white,
+.elderly-mode .rounded-2xl {
+  padding: 1.75rem !important;
+  margin-top: 16px !important;
+  margin-bottom: 16px !important;
+  border-radius: 24px !important;
+}
+
+.elderly-mode .space-y-3 > * + *,
+.elderly-mode .space-y-4 > * + * {
+  margin-top: 18px !important;
+}
+
+.elderly-mode .gap-3 {
+  gap: 16px !important;
+}
+
+.elderly-mode .gap-4 {
+  gap: 20px !important;
+}
+
+/* Enhanced contrast */
+.elderly-mode .text-on-surface-variant {
+  color: #38251f !important; /* Slightly darker shade of brown/grey for surface variant */
+}
+
+.elderly-mode .text-outline {
+  color: #56423b !important;
+}
+
+/* Enlarge app shell padding and navbar elements */
+.elderly-mode header {
+  height: 80px !important;
+}
+
+.elderly-mode main {
+  padding-top: 96px !important;
+  padding-bottom: 110px !important;
+}
+
+.elderly-mode nav {
+  height: 88px !important;
+}

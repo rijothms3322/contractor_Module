@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { useApp } from "../../context/AppContext";
 
 export const Header: React.FC = () => {
-  const { user, notifications, markNotificationRead, clearNotifications, activeTab, setActiveTab } = useApp();
+  const { user, notifications, markNotificationRead, clearNotifications, activeTab, setActiveTab, elderlyMode, toggleElderlyMode } = useApp();
   const [showNotifications, setShowNotifications] = useState(false);
 
   const unreadNotifications = notifications.filter((n) => !n.isRead);
@@ -58,6 +58,20 @@ export const Header: React.FC = () => {
             <span>{activeTab === "admin" ? "Exit Admin" : "Admin Panel"}</span>
           </button>
         )}
+
+        {/* Elderly Mode Toggle */}
+        <button
+          onClick={toggleElderlyMode}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all duration-300 font-label-sm text-xs font-black shadow-sm ${
+            elderlyMode
+              ? "bg-[#ee7b4d] text-white border-[#ee7b4d] scale-102"
+              : "bg-surface-container hover:bg-surface-container-high border-outline-variant/30 text-on-surface-variant"
+          }`}
+          title="Toggle Elderly Mode Accessibility"
+        >
+          <span>👴 Elderly Mode</span>
+          <span className={`w-2 h-2 rounded-full ${elderlyMode ? "bg-white animate-pulse" : "bg-outline"}`} />
+        </button>
 
         {/* Family Hub trigger */}
         <button

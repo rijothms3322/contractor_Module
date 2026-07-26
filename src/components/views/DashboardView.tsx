@@ -642,10 +642,49 @@ export const DashboardView: React.FC = () => {
 
   return (
     <div className="space-y-stack-lg pb-16">
-      
+          {/* Welcome Banner */}
+      <div className="relative overflow-hidden rounded-3xl bg-white/40 backdrop-blur-xl border border-white/40 p-6 shadow-sm flex items-center justify-between gap-6 transition-all duration-300 hover:shadow-md hover:translate-y-[-1px] group">
+        
+        {/* Soft background color blobs that shine through the frosted glass */}
+        <div className="absolute -right-12 -top-12 w-40 h-40 bg-[#ee7b4d]/10 rounded-full blur-2xl group-hover:scale-125 transition-all duration-700 pointer-events-none" />
+        <div className="absolute -left-12 -bottom-12 w-40 h-40 bg-[#096490]/10 rounded-full blur-2xl group-hover:scale-125 transition-all duration-700 pointer-events-none" />
+        
+        <div className="space-y-3 relative z-10 text-left">
+          <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-secondary/5 border border-secondary/10">
+            <span className="material-symbols-outlined text-xs text-[#ee7b4d] animate-pulse">favorite</span>
+            <span className="font-label-sm text-[8px] uppercase tracking-widest font-extrabold text-secondary">Medimz Companion</span>
+          </div>
+          
+          <div className="space-y-0.5">
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight leading-tight bg-gradient-to-r from-secondary via-primary to-primary-container text-transparent bg-clip-text">
+              Welcome to Medimz.
+            </h1>
+            <p className="text-xs sm:text-sm text-on-surface-variant font-semibold tracking-wide flex items-center gap-1.5">
+              <span>Your Health, our World.</span>
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#00b351] animate-ping" />
+            </p>
+          </div>
+        </div>
+
+        {/* Pulsing ECG line with brand coloring gradient */}
+        <div className="relative z-10 w-24 h-16 sm:w-32 sm:h-20 flex-shrink-0 flex items-center justify-center opacity-85 group-hover:opacity-100 transition-opacity duration-300">
+          <svg className="w-full h-full text-secondary" viewBox="0 0 100 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M0,20 L30,20 L35,10 L38,30 L41,3 L45,37 L48,15 L52,25 L55,20 L100,20" stroke="rgba(9,100,144,0.08)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            <path className="ecg-line" d="M0,20 L30,20 L35,10 L38,30 L41,3 L45,37 L48,15 L52,25 L55,20 L100,20" stroke="url(#ecgGradientLight)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+            <defs>
+              <linearGradient id="ecgGradientLight" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor="#096490" />
+                <stop offset="50%" stopColor="#ee7b4d" />
+                <stop offset="100%" stopColor="#00b351" />
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+      </div>
+
       {/* Date Header & Profile Greeting */}
       <div className="flex justify-between items-center glass-card bg-gradient-to-br from-secondary-container/20 to-white p-5 rounded-2xl border border-outline-variant/20 shadow-sm">
-        <div>
+        <div className="text-left">
           <h2 className="font-headline-lg-mobile text-xl text-primary font-extrabold tracking-tight">Today's Schedule</h2>
           <p className="font-label-md text-xs text-on-surface-variant font-semibold mt-0.5">{todayFormatted}</p>
         </div>
@@ -658,7 +697,7 @@ export const DashboardView: React.FC = () => {
             <span>Add Reminder</span>
           </button>
         </div>
-      </div>
+      </div> 
 
       {/* Dynamic Schedule Timeline */}
       <div className="relative pl-6 space-y-8 mt-2">
