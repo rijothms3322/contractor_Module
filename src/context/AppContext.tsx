@@ -167,7 +167,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const storedUser = safeLocalStorage.getItem("medimz_user");
       const storedIsLoggedIn = safeLocalStorage.getItem("medimz_isLoggedIn");
       if (storedUser && storedIsLoggedIn === "true") {
-        return JSON.parse(storedUser);
+        try {
+          const parsed = JSON.parse(storedUser);
+          if (parsed && parsed.avatarUrl && parsed.avatarUrl.includes("googleusercontent.com")) {
+            parsed.avatarUrl = "https://api.dicebear.com/7.x/lorelei/svg?seed=Sarah&radius=50";
+            safeLocalStorage.setItem("medimz_user", JSON.stringify(parsed));
+          }
+          return parsed;
+        } catch (err) {
+          console.warn("Failed to parse stored user profile:", err);
+        }
       }
     }
     return null;

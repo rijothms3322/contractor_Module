@@ -404,3 +404,33 @@ body {
   padding-top: 80px !important;
   padding-bottom: 96px !important;
 }
+
+/* Fix header toggle and actions overflow in Elderly Mode */
+.elderly-mode header button {
+  min-height: 38px !important;
+  height: 38px !important;
+  padding-top: 4px !important;
+  padding-bottom: 4px !important;
+  padding-left: 12px !important;
+  padding-right: 12px !important;
+  font-size: 0.9rem !important;
+  border-radius: 9999px !important;
+}
+
+/* Fix Medicine Box Inventory Clutter and Overlaps in Elderly Mode */
+.elderly-mode div[title="Click to Edit Medication"] {
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 8px !important;
+  padding: 14px !important;
+}
+
+.elderly-mode div[title="Click to Edit Medication"] > div {
+  width: 100% !important;
+  justify-content: space-between !important;
+}
+
+.elderly-mode div[title="Click to Edit Medication"] .text-right {
+  text-align: left !important;
+  margin-top: 4px !important;
+}

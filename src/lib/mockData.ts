@@ -146,7 +146,7 @@ export interface Notification {
 export const DEFAULT_PROFILE: Profile = {
   id: "sarah-uid-12345",
   fullName: "Sarah D'Souza",
-  avatarUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuBCs_YGgPk7VOsahsNOdDGaNvTVuV8ZJljMuiD4GSAvQV802koXWwDy1aqg24M8w4jkBOlONbu5i26SUif3gi5LPSJdJTIsezyMH8110SLHE0ozw3THzKTDYhaQlyt_VIlwWfdWx77zbAiEOLAL3ECuPW_nczo2q_K6P86C1sjYXaGLJLM7Yat-hklQsSRx-W2cQpIVZeYlZa67VQOAjruHo1PoamPN_KE5vR8VC_KszfJWHrEx25ab-Kht_hQ65F6W-XhUYitZ3_4",
+  avatarUrl: "https://api.dicebear.com/7.x/lorelei/svg?seed=Sarah&radius=50",
   age: 68,
   gender: "Female",
   medicalConditions: ["Hypertension", "Pre-Diabetes", "High Cholesterol"],
