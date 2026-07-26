@@ -434,3 +434,11 @@ body {
   text-align: left !important;
   margin-top: 4px !important;
 }
+
+/* Prevent schedule headings from being hidden behind timeline dots in Elderly Mode */
+.elderly-mode .relative.pl-6 {
+  padding-left: 2.25rem !important;
+}
+.elderly-mode .relative.pl-6 div.absolute.-left-\[27px\] {
+  left: -32px !important;
+}

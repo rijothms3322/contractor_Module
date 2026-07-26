@@ -70,7 +70,7 @@ export const Header: React.FC = () => {
           title="Toggle Elderly Mode Accessibility"
         >
           <span>👴 Elderly Mode</span>
-          <span className={`w-2 h-2 rounded-full ${elderlyMode ? "bg-white animate-pulse" : "bg-outline"}`} />
+          <span className={`w-2 h-2 rounded-full ${elderlyMode ? "bg-[#00b351] animate-pulse" : "bg-outline"}`} />
         </button>
 
         {/* Notifications Icon with Badge */}
