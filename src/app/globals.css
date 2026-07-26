@@ -277,11 +277,48 @@ body {
 .elderly-mode .w-10.h-10 {
   width: 3.1rem !important;
   height: 3.1rem !important;
+  flex-shrink: 0 !important;
 }
 
 .elderly-mode .w-11.h-11 {
   width: 3.3rem !important;
   height: 3.3rem !important;
+  flex-shrink: 0 !important;
+}
+
+/* Guarantee all images/avatars scale without stretching, shrinking, or distortion */
+.elderly-mode img {
+  object-fit: cover !important;
+  aspect-ratio: 1 / 1 !important;
+  flex-shrink: 0 !important;
+}
+.elderly-mode .rounded-full,
+.elderly-mode .rounded-xl,
+.elderly-mode .rounded-2xl,
+.elderly-mode .w-10,
+.elderly-mode .w-11,
+.elderly-mode .w-12,
+.elderly-mode .w-14,
+.elderly-mode .w-16 {
+  flex-shrink: 0 !important;
+}
+.elderly-mode .rounded-full img {
+  border-radius: 9999px !important;
+}
+.elderly-mode .rounded-xl img {
+  border-radius: 12px !important;
+}
+.elderly-mode .rounded-2xl img {
+  border-radius: 16px !important;
+}
+.elderly-mode .w-10.h-10 img,
+.elderly-mode .w-11.h-11 img,
+.elderly-mode .w-12.h-12 img,
+.elderly-mode .w-14.h-14 img,
+.elderly-mode .w-16.h-16 img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
 }
 
 /* Moderate input scale */

@@ -20,7 +20,7 @@ export const Header: React.FC = () => {
           <img
             alt={user?.fullName || "User profile"}
             className="w-full h-full object-cover"
-            src={user?.avatarUrl || "https://lh3.googleusercontent.com/aida-public/AB6AXuD-fiijosOOELks0G1tPoJE1MwOmluzSSwm9TEMIKcSMP21iAdVQkAz9HzvlZz_bMc9BAGFfm9eicDCBgBKlTZP6xA2M5YuPjf8kBHQXlAUMDCUFmgw6CwcZ5z4CUrLxxocC1utmx6t299A3bLTh3QfPRnX8rBnBia6B_YosJzdoBQ3em3MAveGI-y_MFhviEicCv2Zo9gtHVKAzJ4beOQSiDimbElcfX9XLdCNUHeC9gJDjfT65xTalzDi_Dea6iy-YWtbxGTSSCs"}
+            src={user?.avatarUrl || "https://api.dicebear.com/7.x/initials/svg?seed=User"}
           />
         </button>
         <div
