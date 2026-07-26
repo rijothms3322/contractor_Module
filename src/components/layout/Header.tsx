@@ -15,7 +15,7 @@ export const Header: React.FC = () => {
       <div className="flex items-center gap-stack-sm">
         <button
           onClick={() => setActiveTab("profile")}
-          className="w-10 h-10 rounded-full overflow-hidden border-2 border-primary-fixed focus:outline-none hover:scale-105 active:scale-95 transition-transform"
+          className="w-10 h-10 rounded-full overflow-hidden border-2 border-primary-fixed focus:outline-none hover:scale-105 active:scale-95 transition-transform flex-shrink-0"
         >
           <img
             alt={user?.fullName || "User profile"}
@@ -71,15 +71,6 @@ export const Header: React.FC = () => {
         >
           <span>👴 Elderly Mode</span>
           <span className={`w-2 h-2 rounded-full ${elderlyMode ? "bg-white animate-pulse" : "bg-outline"}`} />
-        </button>
-
-        {/* Family Hub trigger */}
-        <button
-          onClick={() => setActiveTab("profile")}
-          className="w-10 h-10 flex items-center justify-center rounded-full bg-surface-container hover:bg-surface-container-high transition-colors active:scale-95"
-          title="Family Health Synchronization"
-        >
-          <span className="material-symbols-outlined text-secondary">group</span>
         </button>
 
         {/* Notifications Icon with Badge */}

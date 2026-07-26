@@ -319,10 +319,25 @@ body {
   border-radius: 20px !important;
 }
 
-/* Enable text wrapping and column wrapping where flex items could overflow */
-.elderly-mode .flex,
-.elderly-mode .flex-row {
-  flex-wrap: wrap !important;
+/* Prevent logo distortion in Elderly Mode */
+.elderly-mode img[alt="MEDIMZ Logo"] {
+  height: 40px !important;
+  width: auto !important;
+  max-height: 40px !important;
+  object-fit: contain !important;
+}
+
+/* Prevent profile picture distortion in Elderly Mode */
+.elderly-mode header button.w-10.h-10 {
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 9999px !important;
+  flex-shrink: 0 !important;
+}
+.elderly-mode header button.w-10.h-10 img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
 }
 
 .elderly-mode .space-y-3 > * + *,
@@ -347,16 +362,8 @@ body {
   color: #4a342c !important;
 }
 
-/* App shell bounds - moderate adjustments to avoid screen cuts */
-.elderly-mode header {
-  height: 72px !important;
-}
-
+/* App shell bounds - maintain original layout flow */
 .elderly-mode main {
-  padding-top: 84px !important;
+  padding-top: 80px !important;
   padding-bottom: 96px !important;
-}
-
-.elderly-mode nav {
-  height: 78px !important;
 }
