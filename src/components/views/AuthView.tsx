@@ -164,34 +164,7 @@ export const AuthView: React.FC = () => {
             </div>
           )}
 
-          {/* Quick Demo Role Selector (shown in login/signup to let user test easily!) */}
-          {mode !== "forgot" && (
-            <div className="space-y-1 p-3 bg-surface-container/50 rounded-xl border border-outline-variant/20">
-              <span className="block font-label-sm text-[10px] text-secondary font-bold uppercase tracking-wider mb-2">
-                Demo Role Access:
-              </span>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setRole("user")}
-                  className={`py-1.5 rounded-lg text-xs font-bold transition-all ${
-                    role === "user" ? "bg-primary text-white" : "bg-surface-container-high text-on-surface-variant"
-                  }`}
-                >
-                  Patient Dashboard
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRole("admin")}
-                  className={`py-1.5 rounded-lg text-xs font-bold transition-all ${
-                    role === "admin" ? "bg-primary text-white" : "bg-surface-container-high text-on-surface-variant"
-                  }`}
-                >
-                  Admin Operations
-                </button>
-              </div>
-            </div>
-          )}
+
 
           {/* Forgot trigger */}
           {mode === "login" && (
