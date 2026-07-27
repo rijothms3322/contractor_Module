@@ -220,7 +220,7 @@ export const AuthView: React.FC = () => {
         </button>
 
         {/* Mode Switcher */}
-        <div className="text-center mt-6">
+        <div className="text-center mt-6 space-y-4">
           {mode === "login" ? (
             <p className="font-label-md text-xs text-on-surface-variant">
               Don't have an account?{" "}
@@ -249,6 +249,19 @@ export const AuthView: React.FC = () => {
               <span className="material-symbols-outlined text-sm">arrow_back</span>
               <span>Back to Log In</span>
             </button>
+          )}
+
+          {/* Small text switcher for admin role */}
+          {mode !== "forgot" && (
+            <div className="pt-2 border-t border-outline-variant/10 text-center">
+              <button
+                type="button"
+                onClick={() => setRole(role === "admin" ? "user" : "admin")}
+                className="text-[10px] text-outline hover:text-primary transition-colors font-bold uppercase tracking-wider"
+              >
+                ⚙️ Mode: {role === "admin" ? "Admin Portal" : "Patient Portal"} (Tap to Switch)
+              </button>
+            </div>
           )}
         </div>
 

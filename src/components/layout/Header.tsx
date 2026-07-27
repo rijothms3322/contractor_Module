@@ -44,20 +44,6 @@ export const Header: React.FC = () => {
 
       {/* Right side Actions */}
       <div className="flex items-center gap-stack-sm relative">
-        {/* Admin Switcher indicator */}
-        {user?.role === "admin" && (
-          <button
-            onClick={() => setActiveTab(activeTab === "admin" ? "home" : "admin")}
-            className={`px-3 py-1.5 rounded-full font-label-sm text-label-sm font-bold flex items-center gap-1 transition-all ${
-              activeTab === "admin"
-                ? "bg-primary text-white shadow-md"
-                : "bg-primary-fixed text-on-primary-fixed hover:bg-primary hover:text-white"
-            }`}
-          >
-            <span className="material-symbols-outlined text-sm">settings_accessibility</span>
-            <span>{activeTab === "admin" ? "Exit Admin" : "Admin Panel"}</span>
-          </button>
-        )}
 
         {/* Elderly Mode Toggle */}
         <button
