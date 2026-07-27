@@ -55,7 +55,9 @@ export const DashboardView: React.FC = () => {
     removeFamilyMember,
     transferAdminRights,
     renameFamily,
-    regenerateFamilyCode
+    regenerateFamilyCode,
+    wellnessLogs,
+    addWellnessLog
   } = useApp();
 
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -707,7 +709,7 @@ export const DashboardView: React.FC = () => {
         {/* Morning Section */}
         <section className="relative space-y-3">
           <div className="flex items-center gap-2.5">
-            <div className="absolute -left-[27px] w-4 h-4 rounded-full bg-white border-4 border-secondary flex items-center justify-center z-10 shadow-sm">
+            <div className="absolute -left-[27px] timeline-dot w-4 h-4 rounded-full bg-white border-4 border-secondary flex items-center justify-center z-10 shadow-sm">
               <span className="w-1.5 h-1.5 rounded-full bg-secondary" />
             </div>
             <h3 className="font-headline-md text-sm text-secondary font-bold">Morning</h3>
@@ -739,7 +741,7 @@ export const DashboardView: React.FC = () => {
         {/* Afternoon Section */}
         <section className="relative space-y-3">
           <div className="flex items-center gap-2.5">
-            <div className="absolute -left-[27px] w-4 h-4 rounded-full bg-white border-4 border-secondary flex items-center justify-center z-10 shadow-sm">
+            <div className="absolute -left-[27px] timeline-dot w-4 h-4 rounded-full bg-white border-4 border-secondary flex items-center justify-center z-10 shadow-sm">
               <span className="w-1.5 h-1.5 rounded-full bg-secondary" />
             </div>
             <h3 className="font-headline-md text-sm text-secondary font-bold">Afternoon</h3>
@@ -771,7 +773,7 @@ export const DashboardView: React.FC = () => {
         {/* Evening Section */}
         <section className="relative space-y-3">
           <div className="flex items-center gap-2.5">
-            <div className="absolute -left-[27px] w-4 h-4 rounded-full bg-white border-4 border-secondary flex items-center justify-center z-10 shadow-sm">
+            <div className="absolute -left-[27px] timeline-dot w-4 h-4 rounded-full bg-white border-4 border-secondary flex items-center justify-center z-10 shadow-sm">
               <span className="w-1.5 h-1.5 rounded-full bg-secondary" />
             </div>
             <h3 className="font-headline-md text-sm text-secondary font-bold">Evening</h3>
@@ -803,7 +805,7 @@ export const DashboardView: React.FC = () => {
         {/* Night Section */}
         <section className="relative space-y-3">
           <div className="flex items-center gap-2.5">
-            <div className="absolute -left-[27px] w-4 h-4 rounded-full bg-white border-4 border-secondary flex items-center justify-center z-10 shadow-sm">
+            <div className="absolute -left-[27px] timeline-dot w-4 h-4 rounded-full bg-white border-4 border-secondary flex items-center justify-center z-10 shadow-sm">
               <span className="w-1.5 h-1.5 rounded-full bg-secondary" />
             </div>
             <h3 className="font-headline-md text-sm text-secondary font-bold">Night</h3>
@@ -832,6 +834,61 @@ export const DashboardView: React.FC = () => {
           </div>
         </section>
       </div>
+
+      {/* Today's Wellness Section (Below Timeline) */}
+      <section 
+        onClick={() => {
+          const event = new CustomEvent("open-wellness-checkin");
+          window.dispatchEvent(event);
+        }}
+        className="glass-card rounded-3xl p-6 sm:p-7 shadow-md border border-outline-variant/20 bg-gradient-to-br from-orange-50/30 to-white flex items-center justify-between gap-5 cursor-pointer hover:border-primary/40 hover:shadow-lg transition-all duration-200 group active:scale-[0.99] text-left mt-4"
+        title="Tap to Change Wellness Status"
+      >
+        <div className="flex gap-5 items-center min-w-0">
+          {(() => {
+            const todayStr = new Date().toISOString().split("T")[0];
+            const todayLog = wellnessLogs.find((l) => l.date === todayStr);
+
+            return (
+              <>
+                <div className="w-14 h-14 rounded-2xl bg-orange-50 border border-orange-100 flex items-center justify-center flex-shrink-0 shadow-sm group-hover:scale-105 transition-transform duration-200">
+                  <span className="text-3xl filter drop-shadow-sm">
+                    {todayLog ? (
+                      <>
+                        {todayLog.mood === "great" && "😀"}
+                        {todayLog.mood === "okay" && "🙂"}
+                        {todayLog.mood === "not_well" && "😐"}
+                        {todayLog.mood === "need_help" && "😣"}
+                      </>
+                    ) : "☀️"}
+                  </span>
+                </div>
+                <div className="min-w-0 flex-grow">
+                  <h3 className="font-headline-md text-base text-secondary font-black group-hover:text-primary transition-colors">
+                    Today's Wellness Status
+                  </h3>
+                  <p className="font-body-md text-sm text-on-surface-variant font-semibold mt-1">
+                    {todayLog ? (
+                      <>
+                        Feeling {todayLog.mood === "great" && "Great"}
+                        {todayLog.mood === "okay" && "Okay"}
+                        {todayLog.mood === "not_well" && "Not Well"}
+                        {todayLog.mood === "need_help" && "Need Help"} ({todayLog.time})
+                      </>
+                    ) : (
+                      "Tap to log your daily wellness check-in"
+                    )}
+                  </p>
+                </div>
+              </>
+            );
+          })()}
+        </div>
+
+        <div className="flex items-center flex-shrink-0">
+          <span className="material-symbols-outlined text-lg text-outline opacity-60 group-hover:translate-x-0.5 transition-transform">arrow_forward</span>
+        </div>
+      </section>
 
       {/* Family Sync Portal Card */}
       <section className="glass-card rounded-2xl p-5 shadow-sm border border-outline-variant/20 bg-gradient-to-br from-primary-container/10 to-white flex flex-col sm:flex-row justify-between items-center gap-4">
@@ -1081,6 +1138,8 @@ export const DashboardView: React.FC = () => {
           ))
         )}
       </div>
+
+
 
       <MedicineBox
         onEditMed={(medId) => {

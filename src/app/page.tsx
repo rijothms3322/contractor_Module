@@ -26,6 +26,8 @@ import { InsightsView } from "../components/views/InsightsView";
 import { ProfileView } from "../components/views/ProfileView";
 import { AdminView } from "../components/views/AdminView";
 import { WellnessView } from "../components/views/WellnessView";
+import { EmergencySosModal } from "../components/views/EmergencySosModal";
+import { WellnessCheckInModal } from "../components/views/WellnessCheckInModal";
 
 export default function Page() {
   const { 
@@ -37,12 +39,35 @@ export default function Page() {
     toggleReminderStatus, 
     snoozeReminder, 
     setActiveTab, 
-    reminders 
+    reminders,
+    wellnessLogs
   } = useApp();
   const [showSplash, setShowSplash] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showSnoozeMenu, setShowSnoozeMenu] = useState(false);
   const [shake, setShake] = useState(false);
+
+  const [isSosOpen, setIsSosOpen] = useState(false);
+  const [isCheckInOpen, setIsCheckInOpen] = useState(false);
+
+  // Auto-prompt wellness check-in once daily on login/mount
+  useEffect(() => {
+    if (isLoggedIn && !showSplash && !showOnboarding) {
+      const todayStr = new Date().toISOString().split("T")[0];
+      const hasCheckedIn = wellnessLogs.some(log => log.date === todayStr);
+      if (!hasCheckedIn) {
+        const timer = setTimeout(() => setIsCheckInOpen(true), 2000);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [isLoggedIn, showSplash, showOnboarding, wellnessLogs]);
+
+  // Window event listener to trigger wellness check-in modal from child components
+  useEffect(() => {
+    const handleOpenCheckIn = () => setIsCheckInOpen(true);
+    window.addEventListener("open-wellness-checkin", handleOpenCheckIn);
+    return () => window.removeEventListener("open-wellness-checkin", handleOpenCheckIn);
+  }, []);
 
   // Audio and shake triggers for simulated push notification
   useEffect(() => {
@@ -272,7 +297,26 @@ export default function Page() {
 
       {/* Dynamic Highlight Footer Footer Navbar */}
       <Navbar />
-        <Footer />
+      <Footer />
+
+      {isLoggedIn && (
+        <>
+          {/* Floating SOS Button */}
+          <button
+            onClick={() => setIsSosOpen(true)}
+            className="fixed bottom-24 right-4 z-40 w-14 h-14 bg-red-600 hover:bg-red-700 text-white rounded-full flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-all cursor-pointer"
+            title="Emergency SOS Dispatch"
+          >
+            <span className="material-symbols-outlined text-2xl text-white font-bold animate-pulse">sos</span>
+          </button>
+
+          {/* Emergency SOS confirmation modal */}
+          <EmergencySosModal isOpen={isSosOpen} onClose={() => setIsSosOpen(false)} />
+
+          {/* Daily Wellness Check-In modal */}
+          <WellnessCheckInModal isOpen={isCheckInOpen} onClose={() => setIsCheckInOpen(false)} />
+        </>
+      )}
     </div>
   );
 }

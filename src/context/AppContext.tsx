@@ -65,6 +65,27 @@ const safeLocalStorage = {
   }
 };
 
+export interface EmergencyContact {
+  primaryName: string;
+  primaryPhone: string;
+  primaryRel: string;
+  secondaryName?: string;
+  secondaryPhone?: string;
+  secondaryRel?: string;
+}
+
+export interface WellnessLog {
+  date: string;
+  time: string;
+  mood: "great" | "okay" | "not_well" | "need_help";
+}
+
+export interface CheckInConfig {
+  checkInTime: string;
+  reminderWindowMins: number;
+  alertCaregiverWindowMins: number;
+}
+
 export type TabType = "home" | "health" | "insights" | "wellness" | "profile" | "admin";
 
 interface AppContextType {
@@ -157,6 +178,16 @@ interface AppContextType {
   } | null>>;
   elderlyMode: boolean;
   toggleElderlyMode: () => void;
+
+  // Emergency Contact & SOS
+  emergencyContact: EmergencyContact | null;
+  setEmergencyContact: (contact: EmergencyContact) => void;
+
+  // Wellness Logs & Config
+  wellnessLogs: WellnessLog[];
+  addWellnessLog: (mood: WellnessLog["mood"]) => void;
+  checkInConfig: CheckInConfig;
+  setCheckInConfig: (config: CheckInConfig) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -219,6 +250,91 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return next;
     });
   };
+
+  const [emergencyContact, setEmergencyContactState] = useState<EmergencyContact | null>(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("medimz_emergency_contact");
+      return stored ? JSON.parse(stored) : null;
+    }
+    return null;
+  });
+
+  const setEmergencyContact = (contact: EmergencyContact) => {
+    setEmergencyContactState(contact);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("medimz_emergency_contact", JSON.stringify(contact));
+    }
+  };
+
+  const [wellnessLogs, setWellnessLogs] = useState<WellnessLog[]>(() => {
+    const generateDefaultWellnessLogs = (): WellnessLog[] => {
+      const logs: WellnessLog[] = [];
+      const moods: WellnessLog["mood"][] = ["great", "great", "okay", "great", "not_well", "great", "okay"];
+      for (let i = 7; i >= 1; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        logs.push({
+          date: d.toISOString().split("T")[0],
+          time: "08:15",
+          mood: moods[7 - i]
+        });
+      }
+      return logs;
+    };
+
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("medimz_wellness_logs");
+      return stored ? JSON.parse(stored) : generateDefaultWellnessLogs();
+    }
+    return generateDefaultWellnessLogs();
+  });
+
+  const addWellnessLog = (mood: WellnessLog["mood"]) => {
+    const todayStr = new Date().toISOString().split("T")[0];
+    const timeStr = new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+    
+    setWellnessLogs(prev => {
+      let updated = [...prev];
+      const todayIdx = updated.findIndex(log => log.date === todayStr);
+      if (todayIdx > -1) {
+        updated[todayIdx] = { date: todayStr, time: timeStr, mood };
+      } else {
+        updated.push({ date: todayStr, time: timeStr, mood });
+      }
+      if (typeof window !== "undefined") {
+        localStorage.setItem("medimz_wellness_logs", JSON.stringify(updated));
+      }
+      return updated;
+    });
+
+    if (mood === "need_help") {
+      const newNotif = {
+        id: `sos-notif-${Date.now()}`,
+        title: "Caregiver Alert Sent",
+        message: "Sarah reported 'Need Help' this morning. Designated contacts have been alerted.",
+        type: "system" as const,
+        isRead: false,
+        createdAt: new Date().toISOString()
+      };
+      setNotifications(prev => [newNotif, ...prev]);
+    }
+  };
+
+  const [checkInConfig, setCheckInConfigState] = useState<CheckInConfig>(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("medimz_checkin_config");
+      return stored ? JSON.parse(stored) : { checkInTime: "08:00", reminderWindowMins: 120, alertCaregiverWindowMins: 120 };
+    }
+    return { checkInTime: "08:00", reminderWindowMins: 120, alertCaregiverWindowMins: 120 };
+  });
+
+  const setCheckInConfig = (config: CheckInConfig) => {
+    setCheckInConfigState(config);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("medimz_checkin_config", JSON.stringify(config));
+    }
+  };
+
 
   const [activeNotification, setActiveNotification] = useState<{
     id: string;
@@ -2455,7 +2571,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         activeNotification,
         setActiveNotification,
         elderlyMode,
-        toggleElderlyMode
+        toggleElderlyMode,
+
+        emergencyContact,
+        setEmergencyContact,
+        wellnessLogs,
+        addWellnessLog,
+        checkInConfig,
+        setCheckInConfig
       }}
     >
       {children}
