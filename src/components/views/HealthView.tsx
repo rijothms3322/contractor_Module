@@ -247,6 +247,126 @@ export const HealthView: React.FC = () => {
     }
   }, []);
 
+  // Lifestyle Insights State persisted via localStorage
+  const [lifestyleWater, setLifestyleWater] = useState<{ today: number; goal: number; streak: number; history: number[] }>(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("lifestyle_water");
+      return stored ? JSON.parse(stored) : { today: 0, goal: 2000, streak: 0, history: [] };
+    }
+    return { today: 0, goal: 2000, streak: 0, history: [] };
+  });
+
+  const [lifestyleSleep, setLifestyleSleep] = useState<{ hours: number; quality: string; history: number[] }>(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("lifestyle_sleep");
+      return stored ? JSON.parse(stored) : { hours: 0, quality: "-", history: [] };
+    }
+    return { hours: 0, quality: "-", history: [] };
+  });
+
+  const [lifestyleBmi, setLifestyleBmi] = useState<{ value: number; category: string; history: number[] }>(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("lifestyle_bmi");
+      return stored ? JSON.parse(stored) : { value: 0, category: "-", history: [] };
+    }
+    return { value: 0, category: "-", history: [] };
+  });
+
+  // Track if card has been logged today (displays glass frost cover if false)
+  const [lifestyleLoggedToday, setLifestyleLoggedToday] = useState<{
+    water: boolean;
+    sleep: boolean;
+    bmi: boolean;
+  }>(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("lifestyle_logged_today");
+      return stored ? JSON.parse(stored) : { water: false, sleep: false, bmi: false };
+    }
+    return { water: false, sleep: false, bmi: false };
+  });
+
+  // Check if any manual updates were made to lifestyle data (empty state tracker)
+  const [hasLoggedAny, setHasLoggedAny] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("lifestyle_has_logged") === "true";
+    }
+    return false; // Default: show empty state layout until first entry!
+  });
+
+  // Sync to localStorage
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("lifestyle_water", JSON.stringify(lifestyleWater));
+      localStorage.setItem("lifestyle_sleep", JSON.stringify(lifestyleSleep));
+      localStorage.setItem("lifestyle_bmi", JSON.stringify(lifestyleBmi));
+      localStorage.setItem("lifestyle_logged_today", JSON.stringify(lifestyleLoggedToday));
+      localStorage.setItem("lifestyle_has_logged", hasLoggedAny ? "true" : "false");
+    }
+  }, [lifestyleWater, lifestyleSleep, lifestyleBmi, lifestyleLoggedToday, hasLoggedAny]);
+
+  // Logging Dialogs State
+  const [activeLogType, setActiveLogType] = useState<"water" | "sleep" | "bmi" | null>(null);
+  const [selectedCorrelation, setSelectedCorrelation] = useState<string | null>(null);
+  const [expandedCard, setExpandedCard] = useState<"water" | "sleep" | "bmi" | null>(null);
+
+  // Form input states
+  const [inputWater, setInputWater] = useState("250");
+  const [inputSleep, setInputSleep] = useState("8.0");
+  const [inputSleepQuality, setInputSleepQuality] = useState("Good");
+  const [inputBmiWeight, setInputBmiWeight] = useState("68.5");
+  const [inputBmiHeight, setInputBmiHeight] = useState("170");
+
+  // Helper: Render simple SVG Trend Graphs responsive to viewBox
+  const renderTrendGraph = (data: number[], color: string = "#A04117") => {
+    if (data.length === 0) {
+      return (
+        <div className="h-16 flex items-center justify-center border border-dashed border-outline-variant/30 rounded-xl bg-surface-container-low/20">
+          <span className="text-[10px] text-outline font-semibold">Log more days to view trend line</span>
+        </div>
+      );
+    }
+    if (data.length === 1) {
+      return (
+        <div className="h-16 flex flex-col items-center justify-center bg-surface-container-low/30 rounded-xl p-1.5 border border-outline-variant/10">
+          <svg width="100%" height="24" className="overflow-visible">
+            <circle cx="50%" cy="12" r="5" fill={color} className="animate-ping opacity-75" />
+            <circle cx="50%" cy="12" r="4.5" fill={color} />
+          </svg>
+          <span className="text-[8px] text-outline font-black mt-0.5">Today's Log: {data[0]}</span>
+        </div>
+      );
+    }
+    const max = Math.max(...data);
+    const min = Math.min(...data);
+    const range = max - min === 0 ? 1 : max - min;
+    const points = data.map((val, idx) => {
+      const x = (idx / (data.length - 1)) * 100;
+      const y = 36 - ((val - min) / range) * 36;
+      return `${x},${y}`;
+    }).join(" ");
+
+    return (
+      <div className="bg-surface-container-low/40 rounded-xl p-2.5 border border-outline-variant/10 space-y-1.5 animate-in slide-in-from-top-1 duration-200">
+        <div className="flex justify-between items-center text-[8px] font-bold text-outline uppercase tracking-wider">
+          <span>Daily Trend Line</span>
+          <span>Max: {max} • Min: {min}</span>
+        </div>
+        <div className="h-[36px] w-full">
+          <svg viewBox="0 0 100 36" preserveAspectRatio="none" className="w-full h-full overflow-visible">
+            <polyline
+              fill="none"
+              stroke={color}
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              points={points}
+            />
+          </svg>
+        </div>
+      </div>
+    );
+  };
+
   // Helper: Convert slot time or reminder time to sorting minutes from midnight
   const getSortMinutes = (timeString: string): number => {
     // Check if it's an ISO datetime string
@@ -676,6 +796,579 @@ export const HealthView: React.FC = () => {
 
       {/* WELLNESS HEALTH SECTION (Merged Wellness) */}
       <WellnessView hideHero={true} />
+
+      {/* 2. LIFESTYLE INSIGHTS SECTION */}
+      <section className="space-y-4 text-left">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+          <div>
+            <h3 className="font-headline-md text-base text-secondary font-bold">Lifestyle Insights</h3>
+            <p className="font-body-md text-xs text-on-surface-variant mt-0.5">
+              Track your daily habits and discover how they influence your overall health.
+            </p>
+          </div>
+          {hasLoggedAny && (
+            <button
+              onClick={() => {
+                setLifestyleWater({ today: 0, goal: 2000, streak: 0, history: [] });
+                setLifestyleSleep({ hours: 0, quality: "-", history: [] });
+                setLifestyleBmi({ value: 0, category: "-", history: [] });
+                setLifestyleLoggedToday({ water: false, sleep: false, bmi: false });
+                setHasLoggedAny(false);
+                localStorage.removeItem("lifestyle_water");
+                localStorage.removeItem("lifestyle_sleep");
+                localStorage.removeItem("lifestyle_bmi");
+                localStorage.removeItem("lifestyle_logged_today");
+                localStorage.removeItem("lifestyle_has_logged");
+              }}
+              className="text-[10px] font-bold text-outline hover:text-primary transition-colors flex items-center gap-1 border border-outline-variant/20 px-2 py-1 rounded-lg"
+              title="Reset data to see empty state"
+            >
+              <span className="material-symbols-outlined text-[10px]">restart_alt</span>
+              Reset Data
+            </button>
+          )}
+        </div>
+
+        {!hasLoggedAny ? (
+          /* Empty State Illustration Card */
+          <div className="p-8 text-center bg-white border border-outline-variant/25 rounded-3xl shadow-sm flex flex-col items-center justify-center gap-4 animate-in fade-in duration-300">
+            <div className="w-16 h-16 rounded-full bg-orange-50/80 border border-orange-100 flex items-center justify-center text-primary shadow-inner">
+              <span className="material-symbols-outlined text-3xl">spa</span>
+            </div>
+            <div className="space-y-1.5 max-w-sm">
+              <h4 className="font-headline-md text-sm text-secondary font-bold">No Lifestyle Data Yet</h4>
+              <p className="font-body-md text-xs text-on-surface-variant leading-relaxed">
+                Start logging your daily habits to unlock personalized health insights and medicine correlations.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setHasLoggedAny(true);
+                setActiveLogType("water");
+              }}
+              className="px-5 py-2.5 bg-primary text-white font-bold rounded-xl text-xs shadow-md hover:opacity-90 active:scale-98 transition-all"
+            >
+              Log First Entry
+            </button>
+          </div>
+        ) : (
+          /* Lifestyle Cards Grid */
+          <div className="space-y-4 animate-in fade-in duration-300">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              
+              {/* Card 1: Water Intake */}
+              <div 
+                onClick={(e) => {
+                  // Only expand if clicking the card body, not buttons
+                  const target = e.target as HTMLElement;
+                  if (!target.closest("button")) {
+                    setExpandedCard(expandedCard === "water" ? null : "water");
+                  }
+                }}
+                className="relative overflow-hidden bg-white p-5 rounded-3xl border border-outline-variant/15 shadow-sm space-y-4 flex flex-col justify-between hover:border-primary/20 transition-all min-h-[190px] cursor-pointer"
+              >
+                {!lifestyleLoggedToday.water && (
+                  <div 
+                    onClick={() => setActiveLogType("water")}
+                    className="absolute inset-0 rounded-3xl backdrop-blur-md bg-white/40 border border-white/10 flex flex-col items-center justify-center p-4 text-center z-10 cursor-pointer hover:bg-white/50 transition-all duration-300 group"
+                  >
+                    <span className="material-symbols-outlined text-blue-600 text-2xl mb-1.5 animate-pulse">water_drop</span>
+                    <span className="text-secondary font-black text-xs">Hydration Locked</span>
+                    <p className="text-[10px] text-on-surface-variant font-medium mt-1 max-w-[150px]">Log today's water to unlock details</p>
+                    <button className="mt-3 px-3 py-1.5 bg-primary text-white text-[10px] font-bold rounded-lg shadow-sm group-hover:scale-105 transition-transform">
+                      Log Water
+                    </button>
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <div className="flex justify-between items-start">
+                    <div className="flex gap-2.5 items-center">
+                      <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
+                        <span className="material-symbols-outlined text-lg">water_drop</span>
+                      </div>
+                      <div className="text-left">
+                        <h4 className="font-headline-md text-xs text-secondary font-black">Water Intake</h4>
+                        <span className="text-[8px] text-outline font-bold uppercase tracking-wider block">Today</span>
+                      </div>
+                    </div>
+                    <span className="text-[9px] bg-surface-container-high/65 px-2 py-0.5 rounded-full text-outline font-bold">
+                      {expandedCard === "water" ? "Hide Graph" : "Tap to Expand"}
+                    </span>
+                  </div>
+
+                  <div className="text-left pt-1">
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-xl font-extrabold text-secondary">{lifestyleWater.today}</span>
+                      <span className="text-[10px] text-outline">/ {lifestyleWater.goal} ml</span>
+                    </div>
+                    <div className="w-full h-1.5 bg-surface-container-high rounded-full mt-1.5 overflow-hidden">
+                      <div 
+                        className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                        style={{ width: `${Math.min((lifestyleWater.today / lifestyleWater.goal) * 100, 100)}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between items-center text-[9px] text-outline font-semibold mt-2">
+                      <span>🔥 Streak: {lifestyleWater.streak} Days</span>
+                      <span>Target: {lifestyleWater.goal} ml</span>
+                    </div>
+                  </div>
+
+                  {/* Expandable trend graph */}
+                  {expandedCard === "water" && (
+                    <div className="pt-2 animate-in slide-in-from-top-1 duration-200">
+                      {renderTrendGraph(lifestyleWater.history, "#096490")}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => setActiveLogType("water")}
+                  className="w-full mt-3 py-2 bg-blue-50/50 hover:bg-blue-50 text-blue-700 font-bold text-xs rounded-xl transition-all border border-blue-100/35"
+                >
+                  Log Water
+                </button>
+              </div>
+
+              {/* Card 2: Sleep Quality */}
+              <div 
+                onClick={(e) => {
+                  const target = e.target as HTMLElement;
+                  if (!target.closest("button")) {
+                    setExpandedCard(expandedCard === "sleep" ? null : "sleep");
+                  }
+                }}
+                className="relative overflow-hidden bg-white p-5 rounded-3xl border border-outline-variant/15 shadow-sm space-y-4 flex flex-col justify-between hover:border-primary/20 transition-all min-h-[190px] cursor-pointer"
+              >
+                {!lifestyleLoggedToday.sleep && (
+                  <div 
+                    onClick={() => setActiveLogType("sleep")}
+                    className="absolute inset-0 rounded-3xl backdrop-blur-md bg-white/40 border border-white/10 flex flex-col items-center justify-center p-4 text-center z-10 cursor-pointer hover:bg-white/50 transition-all duration-300 group"
+                  >
+                    <span className="material-symbols-outlined text-purple-600 text-2xl mb-1.5 animate-pulse">bedtime</span>
+                    <span className="text-secondary font-black text-xs">Sleep Tracking Locked</span>
+                    <p className="text-[10px] text-on-surface-variant font-medium mt-1 max-w-[150px]">Log today's sleep to unlock details</p>
+                    <button className="mt-3 px-3 py-1.5 bg-primary text-white text-[10px] font-bold rounded-lg shadow-sm group-hover:scale-105 transition-transform">
+                      Log Sleep
+                    </button>
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <div className="flex justify-between items-start">
+                    <div className="flex gap-2.5 items-center">
+                      <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center flex-shrink-0">
+                        <span className="material-symbols-outlined text-lg">bedtime</span>
+                      </div>
+                      <div className="text-left">
+                        <h4 className="font-headline-md text-xs text-secondary font-black">Sleep Quality</h4>
+                        <span className="text-[8px] text-outline font-bold uppercase tracking-wider block">Last Night</span>
+                      </div>
+                    </div>
+                    <span className="text-[9px] bg-surface-container-high/65 px-2 py-0.5 rounded-full text-outline font-bold">
+                      {expandedCard === "sleep" ? "Hide Graph" : "Tap to Expand"}
+                    </span>
+                  </div>
+
+                  <div className="text-left pt-1">
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-xl font-extrabold text-secondary">{lifestyleSleep.hours}</span>
+                      <span className="text-[10px] text-outline">hours</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-2">
+                      <span className="bg-purple-100 text-purple-800 text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                        {lifestyleSleep.quality}
+                      </span>
+                      <span className="text-[9px] text-outline font-semibold">Restful cycles</span>
+                    </div>
+                    <div className="flex justify-between items-center text-[9px] text-outline font-semibold mt-3">
+                      <span>Daily goal: 8.0 hrs</span>
+                      <span>Quality status: {lifestyleSleep.quality}</span>
+                    </div>
+                  </div>
+
+                  {/* Expandable trend graph */}
+                  {expandedCard === "sleep" && (
+                    <div className="pt-2 animate-in slide-in-from-top-1 duration-200">
+                      {renderTrendGraph(lifestyleSleep.history, "#7c3aed")}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => setActiveLogType("sleep")}
+                  className="w-full mt-3 py-2 bg-purple-50/50 hover:bg-purple-50 text-purple-700 font-bold text-xs rounded-xl transition-all border border-purple-100/35"
+                >
+                  Log Sleep
+                </button>
+              </div>
+
+              {/* Card 3: BMI Tracker */}
+              <div 
+                onClick={(e) => {
+                  const target = e.target as HTMLElement;
+                  if (!target.closest("button")) {
+                    setExpandedCard(expandedCard === "bmi" ? null : "bmi");
+                  }
+                }}
+                className="relative overflow-hidden bg-white p-5 rounded-3xl border border-outline-variant/15 shadow-sm space-y-4 flex flex-col justify-between hover:border-primary/20 transition-all min-h-[190px] cursor-pointer"
+              >
+                {!lifestyleLoggedToday.bmi && (
+                  <div 
+                    onClick={() => setActiveLogType("bmi")}
+                    className="absolute inset-0 rounded-3xl backdrop-blur-md bg-white/40 border border-white/10 flex flex-col items-center justify-center p-4 text-center z-10 cursor-pointer hover:bg-white/50 transition-all duration-300 group"
+                  >
+                    <span className="material-symbols-outlined text-emerald-600 text-2xl mb-1.5 animate-pulse">scale</span>
+                    <span className="text-secondary font-black text-xs">BMI Locked</span>
+                    <p className="text-[10px] text-on-surface-variant font-medium mt-1 max-w-[150px]">Log today's weight & height to unlock details</p>
+                    <button className="mt-3 px-3 py-1.5 bg-primary text-white text-[10px] font-bold rounded-lg shadow-sm group-hover:scale-105 transition-transform">
+                      Log BMI
+                    </button>
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <div className="flex justify-between items-start">
+                    <div className="flex gap-2.5 items-center">
+                      <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
+                        <span className="material-symbols-outlined text-lg">scale</span>
+                      </div>
+                      <div className="text-left">
+                        <h4 className="font-headline-md text-xs text-secondary font-black">BMI Index</h4>
+                        <span className="text-[8px] text-outline font-bold uppercase tracking-wider block">Body Mass Index</span>
+                      </div>
+                    </div>
+                    <span className="text-[9px] bg-surface-container-high/65 px-2 py-0.5 rounded-full text-outline font-bold">
+                      {expandedCard === "bmi" ? "Hide Graph" : "Tap to Expand"}
+                    </span>
+                  </div>
+
+                  <div className="text-left pt-1">
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-xl font-extrabold text-secondary">{lifestyleBmi.value}</span>
+                      <span className="text-[10px] text-outline">kg/m²</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-2">
+                      <span className="bg-emerald-100 text-emerald-800 text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                        {lifestyleBmi.category}
+                      </span>
+                      <span className="text-[9px] text-outline font-semibold">Weight Category</span>
+                    </div>
+                    <div className="flex justify-between items-center text-[9px] text-outline font-semibold mt-3">
+                      <span>Normal target: 18.5 - 24.9</span>
+                      <span>Logs count: {lifestyleBmi.history.length}</span>
+                    </div>
+                  </div>
+
+                  {/* Expandable trend graph */}
+                  {expandedCard === "bmi" && (
+                    <div className="pt-2 animate-in slide-in-from-top-1 duration-200">
+                      {renderTrendGraph(lifestyleBmi.history, "#006E2F")}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => setActiveLogType("bmi")}
+                  className="w-full mt-3 py-2 bg-emerald-50/50 hover:bg-emerald-50 text-emerald-700 font-bold text-xs rounded-xl transition-all border border-emerald-100/35"
+                >
+                  Log BMI
+                </button>
+              </div>
+
+            </div>
+
+            {/* AI Summary Premium Insight Card */}
+            <section className="bg-gradient-to-br from-primary-container/10 via-white to-secondary-container/10 rounded-3xl p-6 border border-outline-variant/20 shadow-sm space-y-4">
+              <div className="flex items-center gap-3 text-left">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-secondary text-white flex items-center justify-center flex-shrink-0 shadow-sm">
+                  <span className="material-symbols-outlined text-lg">psychology</span>
+                </div>
+                <div>
+                  <h4 className="font-headline-md text-sm text-secondary font-bold">Lifestyle Summary</h4>
+                  <p className="text-[10px] text-outline uppercase tracking-wider font-bold">AI observations & health patterns</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-left">
+                <div className="space-y-2 bg-white/70 p-3.5 rounded-2xl border border-outline-variant/10">
+                  <p className="text-xs text-secondary font-medium leading-relaxed flex items-start gap-2">
+                    <span className="text-base flex-shrink-0">💧</span>
+                    <span>Your hydration records are building. Keep logging water daily to track improvements.</span>
+                  </p>
+                  <p className="text-xs text-secondary font-medium leading-relaxed flex items-start gap-2 pt-2 border-t border-outline-variant/5">
+                    <span className="text-base flex-shrink-0">😴</span>
+                    <span>Consistently logging sleep timings reveals correlations with daytime alertness metrics.</span>
+                  </p>
+                </div>
+
+                <div className="space-y-2 bg-white/70 p-3.5 rounded-2xl border border-outline-variant/10">
+                  <p className="text-xs text-secondary font-medium leading-relaxed flex items-start gap-2">
+                    <span className="text-base flex-shrink-0">⏱️</span>
+                    <span>Consistent lifestyle routines directly improve overall medicine adherence levels.</span>
+                  </p>
+                  <p className="text-xs text-secondary font-medium leading-relaxed flex items-start gap-2 pt-2 border-t border-outline-variant/5">
+                    <span className="text-base flex-shrink-0">⚖️</span>
+                    <span>Tracking BMI changes regularly assists in maintaining ideal weight ranges.</span>
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            {/* Correlation Chips Section */}
+            <div className="space-y-2">
+              <span className="text-[10px] font-bold text-outline uppercase tracking-wider block text-left">💡 Correlation Explorer</span>
+              <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none -mx-gutter px-gutter">
+                {[
+                  { label: "Water ↔ Energy", icon: "bolt" },
+                  { label: "Sleep ↔ BMI", icon: "fitness_center" },
+                  { label: "Sleep ↔ Medicine Adherence", icon: "alarm" }
+                ].map((chip, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setSelectedCorrelation(chip.label)}
+                    className="flex items-center gap-1.5 bg-white border border-outline-variant/20 hover:border-primary/40 px-3.5 py-2 rounded-full font-label-md text-xs font-bold text-secondary shadow-sm transition-all whitespace-nowrap active:scale-95 flex-shrink-0"
+                  >
+                    <span className="material-symbols-outlined text-xs text-outline">{chip.icon}</span>
+                    <span>{chip.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* QUICK LOG DIALOG MODALS OVERLAY */}
+      {activeLogType && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-surface-container/90 backdrop-blur-sm flex items-center justify-center p-gutter animate-in fade-in duration-200">
+          <div className="w-full max-w-sm bg-white border border-outline-variant/30 rounded-3xl p-6 shadow-xl flex flex-col gap-4 relative text-left">
+            <div className="flex justify-between items-center pb-2 border-b border-outline-variant/10">
+              <span className="font-headline-md text-sm text-secondary font-black capitalize flex items-center gap-1.5">
+                {activeLogType === "water" && "💧 Log Water Intake"}
+                {activeLogType === "sleep" && "😴 Log Sleep Session"}
+                {activeLogType === "bmi" && "⚖️ Log BMI Metrics"}
+              </span>
+              <button onClick={() => setActiveLogType(null)} className="w-6 h-6 rounded-full hover:bg-surface-container flex items-center justify-center text-outline">
+                <span className="material-symbols-outlined text-base">close</span>
+              </button>
+            </div>
+
+            {/* Water Form */}
+            {activeLogType === "water" && (
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <label className="block font-label-md text-xs text-on-surface-variant font-bold">Amount (ml)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={inputWater}
+                    onChange={(e) => setInputWater(e.target.value)}
+                    className="w-full px-4 py-3 bg-surface-container/30 border border-outline-variant/45 rounded-xl font-body-md text-sm text-on-surface focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {["250", "500", "750"].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setInputWater(preset)}
+                      className={`py-2 rounded-xl text-xs font-bold border transition-all ${
+                        inputWater === preset ? "border-primary bg-primary/5 text-primary" : "border-outline-variant/20 text-secondary"
+                      }`}
+                    >
+                      {preset} ml
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => {
+                    const rawAmt = parseInt(inputWater, 10) || 0;
+                    const amt = Math.max(0, rawAmt);
+                    setLifestyleWater(prev => {
+                      const updatedToday = prev.today + amt;
+                      return {
+                        ...prev,
+                        today: updatedToday,
+                        history: [...prev.history, updatedToday]
+                      };
+                    });
+                    setLifestyleLoggedToday(prev => ({ ...prev, water: true }));
+                    setHasLoggedAny(true);
+                    setActiveLogType(null);
+                  }}
+                  className="w-full py-3 bg-primary text-white font-bold rounded-xl text-xs shadow-md hover:opacity-90 active:scale-98 transition-all"
+                >
+                  Save Entry
+                </button>
+              </div>
+            )}
+
+            {/* Sleep Form */}
+            {activeLogType === "sleep" && (
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <label className="block font-label-md text-xs text-on-surface-variant font-bold">Hours Slept</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={inputSleep}
+                    onChange={(e) => setInputSleep(e.target.value)}
+                    className="w-full px-4 py-3 bg-surface-container/30 border border-outline-variant/45 rounded-xl font-body-md text-sm text-on-surface focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="block font-label-md text-xs text-on-surface-variant font-bold">Sleep Quality</label>
+                  <select
+                    value={inputSleepQuality}
+                    onChange={(e) => setInputSleepQuality(e.target.value)}
+                    className="w-full px-4 py-3 bg-surface-container/30 border border-outline-variant/45 rounded-xl font-body-md text-sm text-on-surface focus:outline-none focus:border-primary"
+                  >
+                    <option value="Excellent">Excellent</option>
+                    <option value="Good">Good</option>
+                    <option value="Fair">Fair</option>
+                    <option value="Restless">Restless</option>
+                  </select>
+                </div>
+                <button
+                  onClick={() => {
+                    const rawHrs = parseFloat(inputSleep) || 0;
+                    const hrs = Math.max(0, rawHrs);
+                    setLifestyleSleep(prev => ({
+                      hours: hrs,
+                      quality: inputSleepQuality,
+                      history: [...prev.history, hrs]
+                    }));
+                    setLifestyleLoggedToday(prev => ({ ...prev, sleep: true }));
+                    setHasLoggedAny(true);
+                    setActiveLogType(null);
+                  }}
+                  className="w-full py-3 bg-primary text-white font-bold rounded-xl text-xs shadow-md hover:opacity-90 active:scale-98 transition-all"
+                >
+                  Save Entry
+                </button>
+              </div>
+            )}
+
+            {/* BMI Form */}
+            {activeLogType === "bmi" && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="block font-label-md text-xs text-on-surface-variant font-bold">Weight (kg)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={inputBmiWeight}
+                      onChange={(e) => setInputBmiWeight(e.target.value)}
+                      className="w-full px-4 py-3 bg-surface-container/30 border border-outline-variant/45 rounded-xl font-body-md text-sm text-on-surface focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block font-label-md text-xs text-on-surface-variant font-bold">Height (cm)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={inputBmiHeight}
+                      onChange={(e) => setInputBmiHeight(e.target.value)}
+                      className="w-full px-4 py-3 bg-surface-container/30 border border-outline-variant/45 rounded-xl font-body-md text-sm text-on-surface focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    const rawWt = parseFloat(inputBmiWeight) || 0;
+                    const rawHt = parseFloat(inputBmiHeight) || 0;
+                    const wt = Math.max(0, rawWt);
+                    const ht = Math.max(1, rawHt);
+                    const bmiVal = Math.round((wt / Math.pow(ht / 100, 2)) * 10) / 10;
+                    
+                    let cat = "Normal";
+                    if (bmiVal < 18.5) cat = "Underweight";
+                    else if (bmiVal < 25) cat = "Normal Weight";
+                    else if (bmiVal < 30) cat = "Overweight";
+                    else cat = "Obese";
+
+                    setLifestyleBmi(prev => ({
+                      value: bmiVal,
+                      category: cat,
+                      history: [...prev.history, bmiVal]
+                    }));
+                    setLifestyleLoggedToday(prev => ({ ...prev, bmi: true }));
+                    setHasLoggedAny(true);
+                    setActiveLogType(null);
+                  }}
+                  className="w-full py-3 bg-primary text-white font-bold rounded-xl text-xs shadow-md hover:opacity-90 active:scale-98 transition-all"
+                >
+                  Save & Calculate BMI
+                </button>
+              </div>
+            )}
+
+          </div>
+        </div>
+      )}
+
+      {/* CORRELATION BOTTOM SHEET DIALOG OVERLAY */}
+      {selectedCorrelation && (
+        <div className="fixed inset-0 z-50 bg-surface-container/90 backdrop-blur-sm flex items-end justify-center animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-white border border-outline-variant/30 rounded-t-[32px] p-6 shadow-2xl flex flex-col gap-4 animate-in slide-in-from-bottom duration-300 relative text-left">
+            <div className="w-12 h-1.5 bg-outline-variant/50 rounded-full mx-auto mb-2" />
+            <div className="flex justify-between items-center pb-2 border-b border-outline-variant/10">
+              <h4 className="font-headline-md text-sm text-secondary font-black flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-primary text-sm">analytics</span>
+                <span>Correlation Analysis: {selectedCorrelation}</span>
+              </h4>
+              <button onClick={() => setSelectedCorrelation(null)} className="w-6 h-6 rounded-full hover:bg-surface-container flex items-center justify-center text-outline">
+                <span className="material-symbols-outlined text-base">close</span>
+              </button>
+            </div>
+
+            <div className="space-y-4 pt-2">
+              <p className="text-xs text-on-surface-variant leading-relaxed">
+                We compare historical data for <strong>{selectedCorrelation.split(" ↔ ")[0]}</strong> and <strong>{selectedCorrelation.split(" ↔ ")[1]}</strong> over the last 30 days.
+              </p>
+
+              {/* Mock visualization chart */}
+              <div className="bg-surface-container-low/50 p-4 rounded-2xl border border-outline-variant/15 space-y-3">
+                <div className="flex justify-between items-center text-[10px] font-bold text-outline uppercase tracking-wider">
+                  <span>Adherence Trend Line</span>
+                  <span>94% Positive Match</span>
+                </div>
+                <div className="h-28 w-full flex items-end justify-between gap-1.5 pt-2">
+                  {[40, 60, 55, 70, 80, 75, 90, 85, 95].map((h, i) => (
+                    <div key={i} className="flex-1 flex flex-col items-center gap-1.5 min-w-0">
+                      <div className="w-full bg-primary/20 rounded-t-md relative flex items-end" style={{ height: `${h}%` }}>
+                        <div className="w-full bg-primary rounded-t-md transition-all" style={{ height: "45%" }} />
+                      </div>
+                      <span className="text-[8px] text-outline font-bold">W{i+1}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="p-3.5 bg-primary/5 border border-primary/10 rounded-2xl">
+                <p className="text-xs text-secondary font-semibold leading-relaxed flex items-start gap-2">
+                  <span className="material-symbols-outlined text-primary text-sm">tips_and_updates</span>
+                  <span>
+                    {selectedCorrelation.includes("Sleep") && "Better sleep scores lead to 25% higher compliance on morning reminders."}
+                    {selectedCorrelation.includes("Water") && "Hydration streaks of 4+ days align directly with higher afternoon energy logs."}
+                    {selectedCorrelation.includes("Nutrition") && "Weekly healthy eating scores directly control stable BMI averages."}
+                    {selectedCorrelation.includes("Stress") && "Low stress states are closely mapped to on-time medication logs."}
+                  </span>
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setSelectedCorrelation(null)}
+              className="w-full py-3 bg-secondary text-white font-bold rounded-xl text-xs shadow-md hover:opacity-90 active:scale-98 transition-all mt-2"
+            >
+              Done / Close
+            </button>
+          </div>
+        </div>
+      )}
 
 
       {/* 3. TODAY'S TIMELINE */}

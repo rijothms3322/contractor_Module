@@ -85,10 +85,22 @@ const generateAvatars = (): AvatarItem[] => {
     "Golden Retriever Dog", "Tabby Cat", "Canary Bird", "French Bulldog",
     "Siamese Cat", "Cute Puppy", "Fluffy Kitten", "Parrot", "Rabbit", "Hamster"
   ];
+  const petUrls = [
+    "https://images.unsplash.com/photo-1543466835-00a7907e9de1?w=150&auto=format&fit=crop&q=80",
+    "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=150&auto=format&fit=crop&q=80",
+    "https://images.unsplash.com/photo-1522858547137-f1dcee55d6aa?w=150&auto=format&fit=crop&q=80",
+    "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?w=150&auto=format&fit=crop&q=80",
+    "https://images.unsplash.com/photo-1533738363-b7f9aef128ce?w=150&auto=format&fit=crop&q=80",
+    "https://images.unsplash.com/photo-1537151608828-ea2b117b62e4?w=150&auto=format&fit=crop&q=80",
+    "https://images.unsplash.com/photo-1573865526739-10659fec78a5?w=150&auto=format&fit=crop&q=80",
+    "https://images.unsplash.com/photo-1552728089-57bdde30ebd3?w=150&auto=format&fit=crop&q=80",
+    "https://images.unsplash.com/photo-1585110396000-c9ffd4e4b308?w=150&auto=format&fit=crop&q=80",
+    "https://images.unsplash.com/photo-1548767797-d8c844163c4c?w=150&auto=format&fit=crop&q=80"
+  ];
   for (let i = 1; i <= 10; i++) {
     list.push({
       id: `pet-${i}`,
-      url: `https://api.dicebear.com/7.x/identicon/svg?seed=pet-seed-${i}&radius=50&backgroundColor=f0f3ff,ffdad6`,
+      url: petUrls[i - 1],
       category: "pets",
       label: petLabels[i - 1] || `Pet ${i}`
     });

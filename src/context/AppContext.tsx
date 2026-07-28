@@ -164,6 +164,7 @@ interface AppContextType {
 
   activeNotification: {
     id: string;
+    reminderId: string;
     name: string;
     dosage: string;
     recipientName: string;
@@ -171,6 +172,7 @@ interface AppContextType {
   } | null;
   setActiveNotification: React.Dispatch<React.SetStateAction<{
     id: string;
+    reminderId: string;
     name: string;
     dosage: string;
     recipientName: string;
@@ -338,6 +340,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [activeNotification, setActiveNotification] = useState<{
     id: string;
+    reminderId: string;
     name: string;
     dosage: string;
     recipientName: string;
@@ -754,7 +757,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     status: newRem.status as any,
                     isPrivate: newRem.is_private || false,
                     familyMemberId: newRem.user_id,
-                    recipientNickname: fm ? fm.name : "Myself",
+                    recipientNickname: fm ? (fm.nickname || fm.name) : "Myself",
                     recipientAvatar: fm ? fm.avatarUrl : (profile?.avatarUrl || "https://api.dicebear.com/7.x/initials/svg?seed=User"),
                     recipientColor: fm ? (fm.color || "purple") : "orange",
                     takenAt: newRem.taken_at || undefined,
@@ -859,6 +862,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // Trigger visual overlay banner on localhost:3000
         setActiveNotification({
           id: dueReminder.medicineId,
+          reminderId: dueReminder.id,
           name: dueReminder.medicineName,
           dosage: dueReminder.dosage,
           recipientName: dueReminder.recipientNickname || "Myself",
@@ -1454,12 +1458,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (typeof window !== "undefined") {
         safeLocalStorage.setItem("medimz_user", JSON.stringify(updated));
+        safeLocalStorage.setItem("medimz_user_nickname", updated.nickname || "");
+        safeLocalStorage.setItem("medimz_user_dob", updated.dob || "");
+        safeLocalStorage.setItem("medimz_user_bloodGroup", updated.bloodGroup || "");
+        safeLocalStorage.setItem("medimz_user_phone", updated.phone || "");
       }
 
       if (isSupabaseConfigured) {
         authService.updateProfile(user.id, profileData)
           .then(dbP => {
-            const merged = { ...updated, ...dbP };
+            const merged = { ...dbP, ...updated };
             setUser(merged);
             if (typeof window !== "undefined") {
               safeLocalStorage.setItem("medimz_user", JSON.stringify(merged));
@@ -1491,11 +1499,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setFamilyMembers(prev => [...prev, newMember]);
 
+    if (typeof window !== "undefined") {
+      safeLocalStorage.setItem(`medimz_fam_metadata_${tempId}`, JSON.stringify({
+        nickname: member.nickname,
+        dob: member.dob,
+        bloodGroup: member.bloodGroup,
+        phone: member.phone,
+        color: member.color,
+        medicalNotes: member.medicalNotes
+      }));
+    }
+
     if (isSupabaseConfigured && user) {
       medicineService.addFamilyMember(user.id, member)
         .then(dbFam => {
           // Swap temp client ID with true DB generated UUID
           setFamilyMembers(prev => prev.map(f => f.id === tempId ? dbFam : f));
+          if (typeof window !== "undefined") {
+            safeLocalStorage.setItem(`medimz_fam_metadata_${dbFam.id}`, JSON.stringify({
+              nickname: dbFam.nickname || member.nickname,
+              dob: dbFam.dob || member.dob,
+              bloodGroup: dbFam.bloodGroup || member.bloodGroup,
+              phone: dbFam.phone || member.phone,
+              color: dbFam.color || member.color,
+              medicalNotes: dbFam.medicalNotes || member.medicalNotes
+            }));
+          }
           reminderService.addNotification(user.id, "Family Member Added! 🧑‍⚕️", `${member.name} has been added to your profile synchronization.`, "system")
             .then(n => setNotifications(prev => [n, ...prev]));
         })
@@ -1506,7 +1535,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateFamilyMember = (memberId: string, memberData: Partial<FamilyMember>) => {
-    setFamilyMembers(prev => prev.map(f => f.id === memberId ? { ...f, ...memberData } : f));
+    setFamilyMembers(prev => prev.map(f => {
+      if (f.id === memberId) {
+        const updated = { ...f, ...memberData };
+        if (typeof window !== "undefined") {
+          safeLocalStorage.setItem(`medimz_fam_metadata_${memberId}`, JSON.stringify({
+            nickname: updated.nickname,
+            dob: updated.dob,
+            bloodGroup: updated.bloodGroup,
+            phone: updated.phone,
+            color: updated.color,
+            medicalNotes: updated.medicalNotes
+          }));
+        }
+        return updated;
+      }
+      return f;
+    }));
 
     if (isSupabaseConfigured && user) {
       medicineService.updateFamilyMember(memberId, memberData)
@@ -1605,6 +1650,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setTimeout(() => {
       setActiveNotification({
         id: medId,
+        reminderId: `rem-${medId}-0-0`,
         name: medicine.name,
         dosage: medicine.dosage,
         recipientName: familyMember ? (familyMember.nickname || familyMember.name) : "Myself",

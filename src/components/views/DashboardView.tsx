@@ -523,8 +523,8 @@ export const DashboardView: React.FC = () => {
       <div key={r.id} className={`glass-card p-4 rounded-2xl shadow-sm flex flex-col sm:flex-row sm:items-center justify-between border-l-4 transition-all gap-3 ${borderClass}`}>
         <div className="flex items-center gap-4 min-w-0">
           <div className="w-11 h-11 rounded-xl bg-surface-container-highest flex items-center justify-center flex-shrink-0 overflow-hidden border border-outline-variant/10">
-            {r.recipientAvatar && r.recipientNickname !== "Myself" ? (
-              <img src={r.recipientAvatar} alt={r.recipientNickname} className="w-full h-full object-cover" />
+            {r.recipientAvatar ? (
+              <img src={r.recipientAvatar} alt={r.recipientNickname || "Myself"} className="w-full h-full object-cover" />
             ) : (
               <span className="material-symbols-outlined text-secondary text-2xl">
                 {r.timingSlot === "afternoon" ? "vaccines" : "pill"}
@@ -536,8 +536,8 @@ export const DashboardView: React.FC = () => {
               <h4 className="font-headline-md text-xs text-on-surface font-bold break-words leading-tight">
                 {displayName}
               </h4>
-              {r.recipientNickname && r.recipientNickname !== "Myself" && (
-                <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${theme.bg}`}>
+              {r.recipientNickname && (
+                <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${r.recipientNickname === "Myself" ? "bg-orange-50 text-orange-700" : theme.bg}`}>
                   {r.recipientNickname}
                 </span>
               )}
@@ -632,15 +632,34 @@ export const DashboardView: React.FC = () => {
     };
   }).filter(item => item !== null && item.remainingDays <= 6) as any[];
 
-  let refillAlertText = "Please add your prescriptions to the system so we can calculate your remaining medicine days.";
-  const hasConfiguredStock = medicines.some(m => m.stockCount !== undefined);
-  if (hasConfiguredStock) {
-    if (medicinesNeedingRefill.length > 0) {
-      refillAlertText = medicinesNeedingRefill.map(m => `${m.name} needs refill in ${m.remainingDays} days`).join(", ") + ".";
-    } else {
-      refillAlertText = "You are all Set. No medicine needs refill";
+  const renderRefillAlertContent = () => {
+    const hasConfiguredStock = medicines.some(m => m.stockCount !== undefined);
+    if (!hasConfiguredStock) {
+      return (
+        <p className="font-body-md text-xs text-on-surface leading-relaxed">
+          Please add your prescriptions to the system so we can calculate your remaining medicine days.
+        </p>
+      );
     }
-  }
+
+    if (medicinesNeedingRefill.length > 0) {
+      return (
+        <ul className="list-disc pl-4 space-y-1 mt-1 text-xs text-on-surface text-left">
+          {medicinesNeedingRefill.map((m, idx) => (
+            <li key={idx}>
+              <strong className="text-secondary">{m.name}</strong>: Refill needed in <span className="text-red-600 font-bold">{m.remainingDays} days</span> (Remaining doses: <span className="font-bold">{m.stockCount}</span>)
+            </li>
+          ))}
+        </ul>
+      );
+    }
+
+    return (
+      <p className="font-body-md text-xs text-on-surface leading-relaxed">
+        You are all Set. No medicine needs refill
+      </p>
+    );
+  };
 
   return (
     <div className="space-y-stack-lg pb-16">
@@ -971,10 +990,10 @@ export const DashboardView: React.FC = () => {
           </p>
         </div>
 
-        <div className="glass-card p-6 rounded-2xl shadow-sm border border-outline-variant/20 flex flex-col justify-between h-36">
+        <div className="glass-card p-6 rounded-2xl shadow-sm border border-outline-variant/20 flex flex-col justify-between min-h-[144px]">
           <div>
             <h4 className="font-label-md text-xs text-secondary font-bold mb-1">Pharmacy Refill Alert</h4>
-            <p className="font-body-md text-xs text-on-surface leading-relaxed">{refillAlertText}</p>
+            {renderRefillAlertContent()}
           </div>
           <button
             onClick={() => setShowUploadModal(true)}
@@ -1747,7 +1766,7 @@ export const DashboardView: React.FC = () => {
                   onChange={(e) => setReportPatientId(e.target.value)}
                   className="w-full px-3 py-2.5 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
                 >
-                  <option value="Myself">Myself (Sarah)</option>
+                  <option value="Myself">Myself ({user?.nickname || user?.fullName || "Sarah"})</option>
                   {familyMembers.map((fm) => (
                     <option key={fm.id} value={fm.id}>{fm.name} ({fm.relationship})</option>
                   ))}
@@ -1880,8 +1899,8 @@ export const DashboardView: React.FC = () => {
                 type="button"
                 onClick={() => {
                   const patientName = reportPatientId === "Myself"
-                    ? "Sarah (Myself)"
-                    : familyMembers.find(f => f.id === reportPatientId)?.name || "Family Member";
+                    ? `${user?.nickname || user?.fullName || "Sarah"} (Myself)`
+                    : familyMembers.find(f => f.id === reportPatientId)?.nickname || familyMembers.find(f => f.id === reportPatientId)?.name || "Family Member";
 
                   const mergedFields: Record<string, string> = { ...reportFields };
                   customReportFields.forEach(f => {

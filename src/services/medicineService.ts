@@ -97,24 +97,34 @@ export const medicineService = {
 
     if (error) throw error;
 
-    return (data || []).map((f: any) => ({
-      id: f.id,
-      name: f.name,
-      avatarUrl: f.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(f.name)}`,
-      relationship: f.relationship,
-      age: f.age || 40,
-      gender: f.gender || "Male",
-      medicalConditions: f.medical_conditions || [],
-      adherenceRate: 100,
-      nickname: f.nickname || f.name,
-      dob: f.dob || "",
-      bloodGroup: f.blood_group || "O+",
-      phone: f.phone || "",
-      medicalNotes: f.medical_notes || "",
-      allergies: f.allergies || [],
-      existingDiseases: f.existing_diseases || [],
-      color: f.color || "blue"
-    }));
+    return (data || []).map((f: any) => {
+      let localMeta: any = {};
+      if (typeof window !== "undefined") {
+        try {
+          const stored = localStorage.getItem(`medimz_fam_metadata_${f.id}`);
+          if (stored) localMeta = JSON.parse(stored);
+        } catch (e) {}
+      }
+
+      return {
+        id: f.id,
+        name: f.name,
+        avatarUrl: f.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(f.name)}`,
+        relationship: f.relationship,
+        age: f.age || 40,
+        gender: f.gender || "Male",
+        medicalConditions: f.medical_conditions || [],
+        adherenceRate: 100,
+        nickname: localMeta.nickname || f.nickname || f.name,
+        dob: localMeta.dob || f.dob || "",
+        bloodGroup: localMeta.bloodGroup || f.blood_group || "O+",
+        phone: localMeta.phone || f.phone || "",
+        medicalNotes: localMeta.medicalNotes || f.medical_notes || "",
+        allergies: f.allergies || [],
+        existingDiseases: f.existing_diseases || [],
+        color: localMeta.color || f.color || "blue"
+      };
+    });
   },
 
   /**

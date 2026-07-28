@@ -112,7 +112,7 @@ export default function Page() {
 
   const handleTaken = () => {
     if (!activeNotification) return;
-    const todayRem = reminders.find(r => r.medicineId === activeNotification.id && r.status === "pending");
+    const todayRem = reminders.find(r => r.id === activeNotification.reminderId);
     if (todayRem) {
       toggleReminderStatus(todayRem.id, "taken");
     }
@@ -122,7 +122,7 @@ export default function Page() {
 
   const handleSkip = () => {
     if (!activeNotification) return;
-    const todayRem = reminders.find(r => r.medicineId === activeNotification.id && r.status === "pending");
+    const todayRem = reminders.find(r => r.id === activeNotification.reminderId);
     if (todayRem) {
       toggleReminderStatus(todayRem.id, "missed");
     }
@@ -132,7 +132,7 @@ export default function Page() {
 
   const handleSnoozeConfirm = (mins: number) => {
     if (!activeNotification) return;
-    const todayRem = reminders.find(r => r.medicineId === activeNotification.id && r.status === "pending");
+    const todayRem = reminders.find(r => r.id === activeNotification.reminderId);
     if (todayRem) {
       snoozeReminder(todayRem.id, mins);
     }

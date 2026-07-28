@@ -5,10 +5,41 @@ import { useApp } from "../../context/AppContext";
 import { AVATAR_CATEGORIES, AVATAR_ITEMS } from "../../lib/avatarLibrary";
 import { MemberDashboardView } from "./MemberDashboardView";
 
+export interface MedicalReport {
+  id: string;
+  patientName: string;
+  note: string;
+  fileName: string;
+  date: string;
+}
+
 export const ProfileView: React.FC = () => {
   const { user, familyMembers, addFamilyMember, deleteFamilyMember, updateUserProfile, logout } = useApp();
   const [showAddMember, setShowAddMember] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+
+  // Medical Reports State
+  const [medicalReports, setMedicalReports] = useState<MedicalReport[]>(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("medimz_medical_reports");
+      if (stored) return JSON.parse(stored);
+    }
+    return [
+      { id: "rep-1", patientName: "Myself", note: "Annual Lipid Panel Results", fileName: "lipid_profile_june2026.pdf", date: "2026-06-15" },
+      { id: "rep-2", patientName: "Mom", note: "Thyroid Function Test", fileName: "thyroid_report.pdf", date: "2026-07-02" }
+    ];
+  });
+
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("medimz_medical_reports", JSON.stringify(medicalReports));
+    }
+  }, [medicalReports]);
+
+  const [showAddReport, setShowAddReport] = useState(false);
+  const [reportPatient, setReportPatient] = useState("Myself");
+  const [reportNote, setReportNote] = useState("");
+  const [reportFileName, setReportFileName] = useState("blood_test_report.pdf");
   
   // Profile edit fields
   const [isEditing, setIsEditing] = useState(false);
@@ -141,6 +172,27 @@ export const ProfileView: React.FC = () => {
     updateUserProfile({ addresses: updatedAddresses });
   };
 
+  const handleAddReportSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reportNote) return;
+    const newReport: MedicalReport = {
+      id: `rep-${Date.now()}`,
+      patientName: reportPatient,
+      note: reportNote,
+      fileName: reportFileName || "medical_document.pdf",
+      date: new Date().toISOString().split("T")[0]
+    };
+    setMedicalReports(prev => [newReport, ...prev]);
+    setReportPatient("Myself");
+    setReportNote("");
+    setReportFileName("blood_test_report.pdf");
+    setShowAddReport(false);
+  };
+
+  const handleDeleteReport = (id: string) => {
+    setMedicalReports(prev => prev.filter(r => r.id !== id));
+  };
+
   const selectedMember = familyMembers.find(f => f.id === selectedMemberId);
 
   if (selectedMember) {
@@ -194,7 +246,18 @@ export const ProfileView: React.FC = () => {
 
           <div className="flex gap-2">
             <button
-              onClick={() => setIsEditing(true)}
+              onClick={() => {
+                setFullName(user?.fullName || "");
+                setAge(user?.age || 68);
+                setGender(user?.gender || "Female");
+                setUserNickname(user?.nickname || "");
+                setUserDob(user?.dob || "");
+                setUserBloodGroup(user?.bloodGroup || "O+");
+                setUserPhone(user?.phone || "");
+                setUserConditions(user?.medicalConditions.join(", ") || "");
+                setUserAvatarUrl(user?.avatarUrl || "https://api.dicebear.com/7.x/initials/svg?seed=Sarah");
+                setIsEditing(true);
+              }}
               className="px-4 py-2 bg-secondary text-white font-bold rounded-xl text-xs hover:bg-opacity-95 active:scale-95 transition-all flex items-center gap-1 shadow-sm"
             >
               <span className="material-symbols-outlined text-sm">edit</span>
@@ -346,6 +409,128 @@ export const ProfileView: React.FC = () => {
           ))}
         </div>
       </section>
+
+      {/* 3.8 Saved Medical Reports Section */}
+      <section className="glass-card rounded-2xl p-6 shadow-sm border border-outline-variant/20 space-y-4">
+        <div className="flex justify-between items-center">
+          <h3 className="font-headline-md text-base text-secondary font-bold">Medical Reports</h3>
+          <button
+            onClick={() => setShowAddReport(true)}
+            className="text-xs text-primary font-bold hover:underline flex items-center gap-0.5"
+          >
+            <span className="material-symbols-outlined text-sm font-bold">upload_file</span>
+            <span>Add Report</span>
+          </button>
+        </div>
+
+        <div className="space-y-2 text-left">
+          {medicalReports.map((rep) => (
+            <div key={rep.id} className="p-3.5 bg-surface-container-low rounded-xl flex gap-3 border border-outline-variant/15 hover:bg-surface-container transition-colors items-center justify-between">
+              <div className="flex gap-3">
+                <div className="w-9 h-9 bg-primary/10 text-primary rounded-lg flex items-center justify-center flex-shrink-0">
+                  <span className="material-symbols-outlined text-lg">description</span>
+                </div>
+                <div className="text-left">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <h4 className="font-label-md text-xs text-secondary font-bold leading-none">{rep.note}</h4>
+                    <span className="bg-secondary/10 text-secondary text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
+                      For: {rep.patientName}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-[10px] text-outline font-semibold flex items-center gap-0.5">
+                      <span className="material-symbols-outlined text-xs">picture_as_pdf</span>
+                      {rep.fileName}
+                    </span>
+                    <span className="text-[9px] text-outline">Uploaded: {rep.date}</span>
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleDeleteReport(rep.id)}
+                className="text-on-surface-variant/40 hover:text-red-500 transition-colors p-1"
+                title="Delete Report"
+              >
+                <span className="material-symbols-outlined text-base">delete</span>
+              </button>
+            </div>
+          ))}
+          {medicalReports.length === 0 && (
+            <p className="text-xs text-outline italic text-center py-4 w-full">No medical reports uploaded yet.</p>
+          )}
+        </div>
+      </section>
+
+      {/* 3.9 ADD MEDICAL REPORT MODAL */}
+      {showAddReport && (
+        <div className="fixed inset-0 bg-inverse-surface/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-[360px] bg-white rounded-3xl p-6 shadow-2xl border border-outline-variant/30 flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-headline-md text-sm text-secondary font-bold flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-xl">upload_file</span>
+                <span>Add Medical Report</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowAddReport(false)}
+                className="w-8 h-8 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center focus:outline-none"
+              >
+                <span className="material-symbols-outlined text-sm">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleAddReportSubmit} className="space-y-4 text-left">
+              <div className="space-y-1">
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Who's report is this?</label>
+                <select
+                  value={reportPatient}
+                  onChange={(e) => setReportPatient(e.target.value)}
+                  className="w-full px-2 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                >
+                  <option value="Myself">Myself ({user?.nickname || user?.fullName || "Sarah"})</option>
+                  {familyMembers.map((fm) => (
+                    <option key={fm.id} value={fm.nickname || fm.name}>
+                      {fm.nickname || fm.name} ({fm.relationship})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Report Description / Note</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Annual Blood Sugar Report, Lipid Panel"
+                  value={reportNote}
+                  onChange={(e) => setReportNote(e.target.value)}
+                  className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">File Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. blood_test_july.pdf"
+                  value={reportFileName}
+                  onChange={(e) => setReportFileName(e.target.value)}
+                  className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3 bg-primary text-on-primary font-bold rounded-xl text-xs hover:opacity-90 active:scale-95 transition-all shadow-md mt-2"
+              >
+                Upload & Save Report
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* 3.5 ADD ADDRESS MODAL */}
       {showAddAddress && (

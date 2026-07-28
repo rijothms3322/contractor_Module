@@ -140,7 +140,7 @@ export const reminderService = {
     })();
 
     const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("Connection timed out writing notification to DB.")), 6000)
+      setTimeout(() => reject(new Error("Connection timed out writing notification to DB.")), 8000)
     );
 
     try {
@@ -165,7 +165,15 @@ export const reminderService = {
         createdAt: data.created_at
       };
     } catch (err: any) {
-      throw err;
+      console.warn("Failed to write notification to DB (using local fallback):", err.message || err);
+      return {
+        id: `local-noti-${Date.now()}`,
+        title,
+        message,
+        type,
+        isRead: false,
+        createdAt: new Date().toISOString()
+      };
     }
   },
 

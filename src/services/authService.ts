@@ -106,6 +106,19 @@ export const authService = {
 
       if (error) throw error;
 
+      let localNickname = "";
+      let localDob = "";
+      let localBloodGroup = "";
+      let localPhone = "";
+      if (typeof window !== "undefined") {
+        try {
+          localNickname = localStorage.getItem("medimz_user_nickname") || "";
+          localDob = localStorage.getItem("medimz_user_dob") || "";
+          localBloodGroup = localStorage.getItem("medimz_user_bloodGroup") || "";
+          localPhone = localStorage.getItem("medimz_user_phone") || "";
+        } catch (e) {}
+      }
+
       // Auto-create profile row if it doesn't exist yet
       if (!data) {
         console.log("No profile row found for user, auto-creating profile in database...");
@@ -149,7 +162,11 @@ export const authService = {
           medicalConditions: newProfile.medical_conditions || [],
           addresses: newProfile.addresses || [],
           role: newProfile.role || "user",
-          familyId: newProfile.family_id || null
+          familyId: newProfile.family_id || null,
+          nickname: localNickname || newProfile.full_name || "Health Champion",
+          dob: localDob || "",
+          bloodGroup: localBloodGroup || "O+",
+          phone: localPhone || ""
         };
       }
 
@@ -162,7 +179,11 @@ export const authService = {
         medicalConditions: data.medical_conditions || [],
         addresses: data.addresses || [],
         role: data.role || "user",
-        familyId: data.family_id || null
+        familyId: data.family_id || null,
+        nickname: localNickname || data.full_name || "Health Champion",
+        dob: localDob || "",
+        bloodGroup: localBloodGroup || "O+",
+        phone: localPhone || ""
       };
     } catch (error) {
       console.warn("Failed to fetch profiles table row, attempting local cache recovery:", error);
@@ -226,6 +247,19 @@ export const authService = {
       throw new Error(error.message || "Database update failed");
     }
 
+    let localNickname = "";
+    let localDob = "";
+    let localBloodGroup = "";
+    let localPhone = "";
+    if (typeof window !== "undefined") {
+      try {
+        localNickname = localStorage.getItem("medimz_user_nickname") || "";
+        localDob = localStorage.getItem("medimz_user_dob") || "";
+        localBloodGroup = localStorage.getItem("medimz_user_bloodGroup") || "";
+        localPhone = localStorage.getItem("medimz_user_phone") || "";
+      } catch (e) {}
+    }
+
     return {
       id: data.id,
       fullName: data.full_name,
@@ -235,7 +269,11 @@ export const authService = {
       medicalConditions: data.medical_conditions || [],
       addresses: data.addresses || [],
       role: data.role as "user" | "admin",
-      familyId: data.family_id || null
+      familyId: data.family_id || null,
+      nickname: localNickname || data.full_name,
+      dob: localDob || "",
+      bloodGroup: localBloodGroup || "O+",
+      phone: localPhone || ""
     };
   }
 };
