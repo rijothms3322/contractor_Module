@@ -7,6 +7,7 @@ import { authService } from "../services/authService";
 import { medicineService } from "../services/medicineService";
 import { reminderService } from "../services/reminderService";
 import { bookingService } from "../services/bookingService";
+import { adminService, UserRole, AdminAuditLog, FeatureFlag, RolePermission } from "../services/adminService";
 import {
   Profile,
   FamilyMember,
@@ -86,7 +87,7 @@ export interface CheckInConfig {
   alertCaregiverWindowMins: number;
 }
 
-export type TabType = "home" | "health" | "insights" | "wellness" | "profile" | "admin";
+export type TabType = "home" | "health" | "insights" | "wellness" | "profile" | "admin" | "admin-operations" | "admin-analytics" | "admin-system";
 
 interface AppContextType {
   // Auth State
@@ -100,6 +101,23 @@ interface AppContextType {
   logout: () => void;
   updateUserProfile: (profileData: Partial<Profile>) => void;
   isLoading: boolean;
+
+  // Admin Role Management
+  adminRole: UserRole["role"] | null;
+  adminRoles: UserRole[];
+  auditLogs: AdminAuditLog[];
+  rolePermissions: RolePermission[];
+  featureFlags: FeatureFlag[];
+  dashboardStats: any | null;
+  healthcareStats: any | null;
+  isBackendAvailable: boolean;
+  assignAdminRole: (email: string, role: UserRole["role"]) => Promise<void>;
+  revokeAdminRole: (roleId: string) => Promise<void>;
+  updatePermissionRule: (permId: string, allowed: boolean) => Promise<void>;
+  toggleFeatureFlagState: (flagId: string, enabled: boolean) => Promise<void>;
+  fetchOperationsAnalytics: () => Promise<void>;
+  searchPatientsPaginated: (query: string, limit: number, offset: number) => Promise<any[]>;
+  fetchAuditLogs: () => Promise<void>;
 
   // Family Members
   familyMembers: FamilyMember[];
@@ -222,9 +240,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return false;
   });
 
-  const [activeTab, setActiveTab] = useState<TabType>("home");
+  const [activeTab, setActiveTab] = useState<TabType>(() => {
+    if (typeof window !== "undefined") {
+      const storedUser = safeLocalStorage.getItem("medimz_user");
+      const storedIsLoggedIn = safeLocalStorage.getItem("medimz_isLoggedIn");
+      if (storedUser && storedIsLoggedIn === "true") {
+        try {
+          const parsed = JSON.parse(storedUser);
+          if (parsed && parsed.email === "teams@medimz.com") {
+            return "admin-operations";
+          }
+        } catch (e) {}
+      }
+    }
+    return "home";
+  });
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isInitialized, setIsInitialized] = useState<boolean>(true); // default to true since we initialize synchronously
+
+  // Admin states
+  const [adminRole, setAdminRole] = useState<UserRole["role"] | null>(null);
+  const [adminRoles, setAdminRoles] = useState<UserRole[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AdminAuditLog[]>([]);
+  const [rolePermissions, setRolePermissions] = useState<RolePermission[]>([]);
+  const [featureFlags, setFeatureFlags] = useState<FeatureFlag[]>([]);
+  const [dashboardStats, setDashboardStats] = useState<any | null>(null);
+  const [healthcareStats, setHealthcareStats] = useState<any | null>(null);
+  const [isBackendAvailable, setIsBackendAvailable] = useState<boolean>(isSupabaseConfigured);
   
   const [elderlyMode, setElderlyMode] = useState<boolean>(() => {
     if (typeof window !== "undefined") {
@@ -444,8 +486,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         try {
           // Fetch authenticated profile details
           const profile = await authService.getProfile(session.user.id);
-          setUser({ ...profile, email: session.user.email });
+          
+          let resolvedRole: UserRole["role"] | null = null;
+          if (session.user.email === "teams@medimz.com") {
+            resolvedRole = "super_admin";
+            await adminService.assignUserRole(session.user.email, session.user.email, "super_admin").catch(() => {});
+          } else {
+            try {
+              const roles = await adminService.getAllUserRoles();
+              const matched = roles.find(r => r.email === session.user.email?.toLowerCase().trim());
+              if (matched) {
+                resolvedRole = matched.role;
+              }
+            } catch (err) {}
+          }
+
+          const isUserAdmin = resolvedRole !== null;
+          const finalRole: "admin" | "user" = isUserAdmin ? "admin" : "user";
+          setUser({ ...profile, role: finalRole, email: session.user.email });
+          setAdminRole(resolvedRole);
           setIsLoggedIn(true);
+
+          if (isUserAdmin) {
+            // Load operations center metrics
+            adminService.getDashboardAnalytics().then(stats => setDashboardStats(stats)).catch(() => {});
+            adminService.getHealthcareIntelligence().then(hStats => setHealthcareStats(hStats)).catch(() => {});
+            adminService.getFeatureFlags().then(flags => setFeatureFlags(flags)).catch(() => {});
+            adminService.getRolePermissions().then(perms => setRolePermissions(perms)).catch(() => {});
+            adminService.getAuditLogs().then(logs => setAuditLogs(logs)).catch(() => {});
+            adminService.getAllUserRoles().then(allRoles => setAdminRoles(allRoles)).catch(() => {});
+          }
  
           const safeFetch = async <T,>(promise: Promise<T>, fallback: T, label: string): Promise<T> => {
             const timeout = new Promise<never>((_, reject) =>
@@ -1346,34 +1416,94 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsLoading(true);
     try {
       if (isSupabaseConfigured) {
-        // Live Supabase Authentication
-        const cleanPassword = password || "password123"; // safe fallback for developer login testing
+        const cleanPassword = password || "password123";
         const { user: dbProfile } = await authService.signIn(email, cleanPassword);
-        
-        // Override profile role with targetRole selected on form to grant appropriate permissions
-        const updatedProfile = { ...dbProfile, role: targetRole, email };
+
+        // Load role details
+        let resolvedRole: UserRole["role"] | null = null;
+        if (email === "teams@medimz.com") {
+          resolvedRole = "super_admin";
+          // Seed super admin role dynamically if needed
+          await adminService.assignUserRole(email, email, "super_admin").catch(() => {});
+        } else {
+          const roles = await adminService.getAllUserRoles();
+          const matched = roles.find(r => r.email === email.toLowerCase().trim());
+          if (matched) {
+            resolvedRole = matched.role;
+          }
+        }
+
+        const isUserAdmin = resolvedRole !== null;
+        const finalRole: "admin" | "user" = isUserAdmin ? "admin" : "user";
+        const updatedProfile = { ...dbProfile, role: finalRole, email };
         setUser(updatedProfile);
+        setAdminRole(resolvedRole);
         setIsLoggedIn(true);
 
-        // Fetch operational admin lists if administrator
-        if (targetRole === "admin") {
+        if (isUserAdmin) {
+          setActiveTab("admin-operations");
           const allB = await bookingService.getAllBookingsAdmin();
           setBookings(allB);
+          // Load audit logs and admin roles
+          const logs = await adminService.getAuditLogs();
+          setAuditLogs(logs);
+          const allRoles = await adminService.getAllUserRoles();
+          setAdminRoles(allRoles);
+        } else {
+          setActiveTab("home");
         }
       } else {
         // Offline Simulated Mock Login
         const name = email.split("@")[0];
         const formattedName = name.charAt(0).toUpperCase() + name.slice(1);
         
+        let resolvedRole: UserRole["role"] | null = null;
+        if (email === "teams@medimz.com") {
+          resolvedRole = "super_admin";
+          await adminService.assignUserRole(email, email, "super_admin").catch(() => {});
+        } else {
+          try {
+            const roles = await adminService.getAllUserRoles();
+            const matched = roles.find(r => r.email === email.toLowerCase().trim());
+            if (matched) {
+              resolvedRole = matched.role;
+            }
+          } catch (e) {
+            console.log("Offline mode: skipping admin role lookup.");
+          }
+        }
+
+        const isUserAdmin = resolvedRole !== null;
+        const finalRole = isUserAdmin ? "admin" : "user";
         const loggedProfile: Profile = {
           ...DEFAULT_PROFILE,
           id: `user-${Date.now()}`,
           fullName: formattedName,
-          role: targetRole
+          role: finalRole,
+          email
         };
         
         setUser(loggedProfile);
+        setAdminRole(resolvedRole);
         setIsLoggedIn(true);
+
+        if (isUserAdmin) {
+          setActiveTab("admin-operations");
+          try {
+            const logs = await adminService.getAuditLogs();
+            setAuditLogs(logs);
+          } catch (e) {
+            console.warn("Offline mode: skipping audit log fetch.");
+          }
+          try {
+            const allRoles = await adminService.getAllUserRoles();
+            setAdminRoles(allRoles);
+          } catch (e) {
+            console.warn("Offline mode: skipping user role list fetch.");
+          }
+        } else {
+          setActiveTab("home");
+        }
         addNotification(`Welcome back, ${formattedName}! 👋`, "Successfully logged in to Medimz Healthcare.", "system");
       }
       return true;
@@ -2545,6 +2675,107 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Admin functions
+  const assignAdminRole = async (email: string, role: UserRole["role"]) => {
+    if (!user) return;
+    try {
+      const newRole = await adminService.assignUserRole(user.email || "", email, role);
+      setAdminRoles(prev => {
+        const filtered = prev.filter(r => r.email !== email.toLowerCase().trim());
+        return [newRole, ...filtered];
+      });
+      const logs = await adminService.getAuditLogs();
+      setAuditLogs(logs);
+      addNotification("Admin Role Assigned 🛡️", `${email} has been promoted to ${role} role.`, "system");
+    } catch (e: any) {
+      alert("Failed to assign role: " + e.message);
+    }
+  };
+
+  const revokeAdminRole = async (roleId: string) => {
+    if (!user) return;
+    try {
+      await adminService.revokeUserRole(user.email || "", roleId);
+      setAdminRoles(prev => prev.filter(r => r.id !== roleId));
+      const logs = await adminService.getAuditLogs();
+      setAuditLogs(logs);
+      addNotification("Admin Role Revoked 🗑️", `Access revoked successfully.`, "system");
+    } catch (e: any) {
+      alert("Failed to revoke role: " + e.message);
+    }
+  };
+
+  const updatePermissionRule = async (permId: string, allowed: boolean) => {
+    if (!user) return;
+    try {
+      await adminService.updateRolePermission(permId, allowed);
+      setRolePermissions(prev => prev.map(p => p.id === permId ? { ...p, allowed } : p));
+      await adminService.logAdminAction(
+        user.id,
+        user.email || "",
+        `Updated permission rule ${permId} to ${allowed}`,
+        "role_permissions",
+        permId,
+        { allowed: !allowed },
+        { allowed }
+      );
+    } catch (e: any) {
+      alert("Failed to update permission: " + e.message);
+    }
+  };
+
+  const toggleFeatureFlagState = async (flagId: string, enabled: boolean) => {
+    if (!user) return;
+    try {
+      await adminService.updateFeatureFlag(flagId, enabled);
+      setFeatureFlags(prev => prev.map(f => f.id === flagId ? { ...f, enabled } : f));
+      await adminService.logAdminAction(
+        user.id,
+        user.email || "",
+        `Updated feature flag ${flagId} to ${enabled}`,
+        "feature_flags",
+        flagId,
+        { enabled: !enabled },
+        { enabled }
+      );
+    } catch (e: any) {
+      alert("Failed to update feature flag: " + e.message);
+    }
+  };
+
+  const fetchOperationsAnalytics = async () => {
+    try {
+      const stats = await adminService.getDashboardAnalytics();
+      setDashboardStats(stats);
+      const hStats = await adminService.getHealthcareIntelligence();
+      setHealthcareStats(hStats);
+      const flags = await adminService.getFeatureFlags();
+      setFeatureFlags(flags);
+      const perms = await adminService.getRolePermissions();
+      setRolePermissions(perms);
+    } catch (e: any) {
+      console.warn("Analytics fetch failure (live Supabase missing or unconfigured):", e);
+    }
+  };
+
+  const searchPatientsPaginated = async (query: string, limit: number, offset: number) => {
+    try {
+      return await adminService.searchUsersPaginated(query, limit, offset);
+    } catch (e) {
+      console.error("Paginated search failed:", e);
+      return [];
+    }
+  };
+
+  const fetchAuditLogs = async () => {
+    try {
+      const logs = await adminService.getAuditLogs();
+      setAuditLogs(logs);
+    } catch (e: any) {
+      console.error("Failed to load audit logs:", e);
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -2558,6 +2789,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         logout,
         updateUserProfile,
         isLoading,
+
+        adminRole,
+        adminRoles,
+        auditLogs,
+        rolePermissions,
+        featureFlags,
+        dashboardStats,
+        healthcareStats,
+        isBackendAvailable,
+        assignAdminRole,
+        revokeAdminRole,
+        updatePermissionRule,
+        toggleFeatureFlagState,
+        fetchOperationsAnalytics,
+        searchPatientsPaginated,
+        fetchAuditLogs,
 
         familyMembers,
         addFamilyMember,

@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useApp } from "../../context/AppContext";
 import { supabase, isSupabaseConfigured } from "../../lib/supabaseClient";
+import { adminService } from "../../services/adminService";
 
 export const AuthView: React.FC = () => {
   const { login, signup, resetPassword } = useApp();
@@ -39,8 +40,25 @@ export const AuthView: React.FC = () => {
 
     try {
       if (mode === "login") {
+        if (role === "admin") {
+          const isSuper = email.toLowerCase().trim() === "teams@medimz.com";
+          let hasAssignedRole = false;
+          try {
+            const roles = await adminService.getAllUserRoles();
+            hasAssignedRole = roles.some(r => r.email === email.toLowerCase().trim());
+          } catch (err) {
+            console.log("Offline mode: bypassing administrative database role check.");
+          }
+          if (!isSuper && !hasAssignedRole && isSupabaseConfigured) {
+            throw new Error("Access Denied: Only authorized administrative accounts can access the Admin Portal.");
+          }
+        }
         await login(email, password, role);
       } else if (mode === "signup") {
+        const isSuper = email.toLowerCase().trim() === "teams@medimz.com";
+        if (role === "admin" && !isSuper) {
+          throw new Error("Access Denied: Unauthorized admin registration. Administrators must be promoted by a Super Admin.");
+        }
         await signup(email, password, fullName, role);
       } else {
         await resetPassword(email);
@@ -71,7 +89,11 @@ export const AuthView: React.FC = () => {
         if (oauthError) throw oauthError;
       } else {
         // Fallback demo mode login
-        await login("google-user@medimz.com", "password123", role);
+        if (role === "admin") {
+          await login("teams@medimz.com", "password123", "admin");
+        } else {
+          await login("google-user@medimz.com", "password123", "user");
+        }
       }
     } catch (err: any) {
       setError(err?.message || "Google Sign-In failed.");

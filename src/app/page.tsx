@@ -40,7 +40,8 @@ export default function Page() {
     snoozeReminder, 
     setActiveTab, 
     reminders,
-    wellnessLogs
+    wellnessLogs,
+    adminRole
   } = useApp();
   const [showSplash, setShowSplash] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -184,7 +185,10 @@ export default function Page() {
       case "profile":
         return <ProfileView />;
       case "admin":
-        if (user?.role !== "admin") {
+      case "admin-operations":
+      case "admin-analytics":
+      case "admin-system":
+        if (adminRole === null) {
           return <DashboardView />;
         }
         return <AdminView />;

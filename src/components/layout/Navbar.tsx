@@ -4,18 +4,19 @@ import React from "react";
 import { useApp, TabType } from "../../context/AppContext";
 
 export const Navbar: React.FC = () => {
-  const { activeTab, setActiveTab, user } = useApp();
+  const { activeTab, setActiveTab, adminRole } = useApp();
 
-  const navItems: { tab: TabType; icon: string; label: string }[] = [
+  const isAdmin = adminRole !== null;
+
+  const navItems: { tab: TabType; icon: string; label: string }[] = isAdmin ? [
+    { tab: "admin-operations", icon: "dashboard", label: "Operations" },
+    { tab: "admin-analytics", icon: "analytics", label: "Analytics" },
+    { tab: "admin-system", icon: "terminal", label: "System Logs" }
+  ] : [
     { tab: "home", icon: "home", label: "Home" },
     { tab: "health", icon: "medical_services", label: "Health" },
     { tab: "profile", icon: "person", label: "Profile" }
   ];
-
-  // Add Admin tab dynamically if user has admin permissions
-  if (user?.role === "admin") {
-    navItems.push({ tab: "admin", icon: "admin_panel_settings", label: "Admin" });
-  }
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 max-w-container-max mx-auto h-20 px-2 pb-4 pt-2 bg-surface/90 backdrop-blur-2xl border-t border-outline-variant/20 shadow-[0_-4px_20px_rgba(9,100,144,0.06)] rounded-t-2xl flex justify-around items-center transition-all">
