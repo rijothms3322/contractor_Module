@@ -28,32 +28,54 @@ import { AdminView } from "../components/views/AdminView";
 import { WellnessView } from "../components/views/WellnessView";
 import { EmergencySosModal } from "../components/views/EmergencySosModal";
 import { WellnessCheckInModal } from "../components/views/WellnessCheckInModal";
+import { ProfileOnboarding } from "@/components/views/ProfileOnboarding";
+import { MainTour } from "@/components/tours/MainTour";
+import { requestNotificationPermission } from "@/services/notificationWeb";
 
 export default function Page() {
-  const { 
-    isLoggedIn, 
-    activeTab, 
-    user, 
-    activeNotification, 
-    setActiveNotification, 
-    toggleReminderStatus, 
-    snoozeReminder, 
-    setActiveTab, 
+  const {
+    isLoggedIn,
+    pendingOnboarding,
+    activeTab,
+    user,
+    activeNotification,
+    setActiveNotification,
+    toggleReminderStatus,
+    snoozeReminder,
+    setActiveTab,
     reminders,
     wellnessLogs,
-    adminRole
+    adminRole,
+    updateUserProfile,
   } = useApp();
   const [showSplash, setShowSplash] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showSnoozeMenu, setShowSnoozeMenu] = useState(false);
   const [shake, setShake] = useState(false);
-
+  const [showPostLoginOnboarding, setShowPostLoginOnboarding] = useState(false);
+  const [profileLoadingAction, setProfileLoadingAction] =
+    useState<"complete" | "skip" | null>(null);
   const [isSosOpen, setIsSosOpen] = useState(false);
   const [isCheckInOpen, setIsCheckInOpen] = useState(false);
+  // Decide if post‑login onboarding is needed based on user profile
+  useEffect(() => {
+    if (!isLoggedIn || !user) {
+      setShowPostLoginOnboarding(false);
+      return;
+    }
+
+    if (user.isSignupDone === true) {
+      setShowPostLoginOnboarding(false);
+    } else {
+      setShowPostLoginOnboarding(true);
+    }
+  }, [isLoggedIn, user]);
 
   // Auto-prompt wellness check-in once daily on login/mount
   useEffect(() => {
     if (isLoggedIn && !showSplash && !showOnboarding) {
+      const tourDone = user?.isWalkthroughShown
+      if (!tourDone) return;
       const todayStr = new Date().toISOString().split("T")[0];
       const hasCheckedIn = wellnessLogs.some(log => log.date === todayStr);
       if (!hasCheckedIn) {
@@ -65,7 +87,14 @@ export default function Page() {
 
   // Window event listener to trigger wellness check-in modal from child components
   useEffect(() => {
-    const handleOpenCheckIn = () => setIsCheckInOpen(true);
+    const handleOpenCheckIn = () => {
+      const tourDone = user?.isWalkthroughShown
+      if (tourDone) {
+        setIsCheckInOpen(true);
+      } else {
+        console.log("Wellness check-in is locked until the tour is complete.");
+      }
+    };
     window.addEventListener("open-wellness-checkin", handleOpenCheckIn);
     return () => window.removeEventListener("open-wellness-checkin", handleOpenCheckIn);
   }, []);
@@ -75,7 +104,7 @@ export default function Page() {
     if (activeNotification) {
       try {
         const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        
+
         // Chime note 1
         const osc1 = audioCtx.createOscillator();
         const gain1 = audioCtx.createGain();
@@ -141,6 +170,10 @@ export default function Page() {
     setShowSnoozeMenu(false);
   };
 
+  useEffect(() => {
+    requestNotificationPermission();
+  }, []);
+
   // Read onboarding preference from localStorage
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -151,17 +184,123 @@ export default function Page() {
     }
   }, []);
 
+  // useEffect(() => {
+  //   if(typeof window !== 'undefined') {
+  //     const ProfileOnboardingSkipped = localStorage.getItem('Profile_Onboarding_Skip');
+  //     if (ProfileOnboardingSkipped === 'true') {
+  //       setShowPostLoginOnboarding(false);
+  //     }
+  //   }
+  // })
+
   const handleSkipOnboarding = () => {
     setShowOnboarding(false);
     if (typeof window !== "undefined") {
       localStorage.setItem("medimz_onboarding_skipped", "true");
     }
   };
+  function calculateAge(dob: string): number {
+    const birthDate = new Date(dob);
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age;
+  }
 
-  // 1. Splash Screen Landing
+  // ─── Onboarding completion / skip handlers (post‑login) ──────────────
+  const handleOnboardingComplete = async (data: {
+    gender: string;
+    dob: string;
+    conditions: string[];
+    phone: string;
+    email: string;
+  }) => {
+    console.log('call complete')
+    try {
+      setProfileLoadingAction("complete");
+
+      const res = await updateUserProfile({
+        gender: data.gender,
+        dob: data.dob,
+        medicalConditions: data.conditions,
+        age: calculateAge(data.dob),
+        phone_number: data.phone,
+        email: data.email,
+        isSignupDone: true,
+      });
+      console.log(res, 'res ProfileOnboarding')
+
+      setShowPostLoginOnboarding(false);
+    } catch (error) {
+      console.error("Failed to complete onboarding:", error);
+    } finally {
+      setProfileLoadingAction(null);
+    }
+  };
+  // const handleOnboardingComplete = async (data: {
+  //   gender: string;
+  //   dob: string;
+  //   conditions: string[];
+  //   phone: string;
+  //   email: string;
+  // }) => {
+  //   try {
+  //     await updateUserProfile({
+  //       gender: data.gender,
+  //       dob: data.dob,
+  //       medicalConditions: data.conditions,
+  //       age: calculateAge(data.dob),
+  //       phone_number: data.phone,
+  //       email: data.email,
+
+  //       // IMPORTANT
+  //       is_signup_done: true,
+  //     });
+
+  //     setShowPostLoginOnboarding(false);
+  //   } catch (error) {
+  //     console.error("Failed to save onboarding data:", error);
+  //   }
+  // };
+
+  const handleOnboardingSkip = async () => {
+
+    console.log('call skip')
+    try {
+      setProfileLoadingAction("skip");
+
+      const res = await updateUserProfile({
+        isSignupDone: true,
+      });
+      console.log(res, 'Onboarding Skip')
+
+      setShowPostLoginOnboarding(false);
+    } catch (error) {
+      console.error(
+        "Failed to mark signup as completed:",
+        error
+      );
+    } finally {
+      setProfileLoadingAction(null);
+    }
+  };
+
+  // ─── Render logic ──────────────────────────────────────────────────────
+
+  // 1. Splash Screen
   if (showSplash) {
     return <SplashScreen onFadeComplete={() => setShowSplash(false)} />;
   }
+
+  // return (
+  //   <MainTour
+  //     onContinue={() => console.log("Continue")}
+  //     onSkip={() => console.log("Skip")}
+  //   />
+  // );
 
   // 2. Unauthenticated Flows
   if (!isLoggedIn) {
@@ -171,7 +310,19 @@ export default function Page() {
     return <AuthView />;
   }
 
-  // 3. Authenticated Dashboard Flows
+  // 3. Authenticated but needs onboarding
+  if (isLoggedIn && showPostLoginOnboarding) {
+    return (
+      <ProfileOnboarding
+        onComplete={handleOnboardingComplete}
+        onSkip={handleOnboardingSkip}
+        isLoading={profileLoadingAction !== null}
+        loadingAction={profileLoadingAction}
+      />
+    );
+  }
+
+  // 4. Fully authenticated – show dashboard
   const renderActiveView = () => {
     switch (activeTab) {
       case "home":
@@ -211,9 +362,9 @@ export default function Page() {
               </div>
               <span>now</span>
             </div>
-            
+
             {/* Content Body */}
-            <div 
+            <div
               onClick={() => {
                 setActiveTab("home");
                 setActiveNotification(null);

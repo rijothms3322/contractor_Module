@@ -11,10 +11,17 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     full_name TEXT NOT NULL,
     avatar_url TEXT,
     age INT,
+    dob DATE DEFAULT NULL,
+    phone_number TEXT DEFAULT NULL,
+    email TEXT DEFAULT NULL,
     gender TEXT,
     medical_conditions TEXT[] DEFAULT '{}',
     addresses JSONB[] DEFAULT '{}',
     role TEXT DEFAULT 'user' CHECK (role IN ('user', 'admin')),
+    is_walkthrough_shown BOOLEAN NOT NULL DEFAULT false,
+    is_medicine_walkthrough_shown BOOLEAN NOT NULL DEFAULT false,
+    is_prescription_walkthrough_shown BOOLEAN NOT NULL DEFAULT false,
+    is_signup_done BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -27,6 +34,16 @@ CREATE POLICY "Allow public read profiles" ON public.profiles
 
 CREATE POLICY "Allow users update own profile" ON public.profiles
     FOR UPDATE USING (auth.uid() = id);
+
+    DROP POLICY IF EXISTS "Allow users update own profile"
+ON public.profiles;
+
+CREATE POLICY "Allow users update own profile"
+ON public.profiles
+FOR UPDATE
+TO authenticated
+USING (auth.uid() = id)
+WITH CHECK (auth.uid() = id);
 
 -- 2. FAMILY MEMBERS
 CREATE TABLE IF NOT EXISTS public.family_members (
@@ -53,14 +70,77 @@ CREATE TABLE IF NOT EXISTS public.medicines (
     name TEXT NOT NULL,
     dosage TEXT NOT NULL, -- e.g., '10mg', '1 Tablet', '2 drops'
     instructions TEXT NOT NULL, -- e.g., 'After breakfast', 'Before sleep'
-    frequency TEXT DEFAULT 'daily' CHECK (frequency IN ('daily', 'weekly')),
+    frequency TEXT DEFAULT 'every_day' CHECK (frequency IN (  'daily', 'weekly', 'every_day', 'specific_days', 'interval')),
     timings TEXT[] DEFAULT '{}', -- subset of ['morning', 'afternoon', 'evening', 'night']
     start_date DATE NOT NULL DEFAULT CURRENT_DATE,
     end_date DATE,
+    selected_days TEXT[] DEFAULT '{}',
+    repeat_every_n_days INTEGER,
+    interval_hours INTEGER,
+    interval_start_time TIME;
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 ALTER TABLE public.medicines ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE public.medicines
+DROP CONSTRAINT IF EXISTS medicines_frequency_check;
+
+ALTER TABLE public.medicines
+ADD CONSTRAINT medicines_frequency_check
+CHECK (
+  frequency IN (
+    'daily',
+    'weekly',
+    'every_day',
+    'specific_days',
+    'interval'
+  )
+);
+
+ALTER TABLE public.medicines
+
+-- Optional validation for repeat interval
+ALTER TABLE public.medicines
+DROP CONSTRAINT IF EXISTS medicines_repeat_every_n_days_check;
+
+ALTER TABLE public.medicines
+ADD CONSTRAINT medicines_repeat_every_n_days_check
+CHECK (
+    repeat_every_n_days IS NULL
+    OR repeat_every_n_days > 0
+);
+
+-- Optional validation for hourly interval
+ALTER TABLE public.medicines
+DROP CONSTRAINT IF EXISTS medicines_interval_hours_check;
+
+ALTER TABLE public.medicines
+ADD CONSTRAINT medicines_interval_hours_check
+CHECK (
+    interval_hours IS NULL
+    OR interval_hours > 0
+);
+
+-- Optional validation for selected weekdays
+ALTER TABLE public.medicines
+DROP CONSTRAINT IF EXISTS medicines_selected_days_check;
+
+ALTER TABLE public.medicines
+ADD CONSTRAINT medicines_selected_days_check
+CHECK (
+    selected_days IS NULL
+    OR selected_days <@ ARRAY[
+        'monday',
+        'tuesday',
+        'wednesday',
+        'thursday',
+        'friday',
+        'saturday',
+        'sunday'
+    ]::TEXT[]
+);
+
 
 CREATE POLICY "Allow users access own medicines" ON public.medicines
     FOR ALL USING (auth.uid() = user_id);
@@ -189,16 +269,89 @@ CREATE POLICY "Allow users access own notifications" ON public.notifications
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.profiles (id, full_name, avatar_url, role)
+  INSERT INTO public.profiles (
+    id,
+    full_name,
+    email,
+    avatar_url,
+    role,
+    dob,
+    age,
+    phone_number,
+    gender,
+    medical_conditions,
+    is_signup_done,
+    is_walkthrough_shown
+  )
   VALUES (
     NEW.id,
-    COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.email),
+
+    COALESCE(
+      NEW.raw_user_meta_data->>'full_name',
+      NEW.raw_user_meta_data->>'name',
+      NEW.email,
+      'New User'
+    ),
+
+    NEW.email,
+
     NEW.raw_user_meta_data->>'avatar_url',
-    'user'
-  );
+
+    COALESCE(
+      NEW.raw_user_meta_data->>'role',
+      'user'
+    ),
+
+    NULLIF(
+      NEW.raw_user_meta_data->>'dob',
+      ''
+    )::DATE,
+
+    NULLIF(
+      NEW.raw_user_meta_data->>'age',
+      ''
+    )::INT,
+
+    COALESCE(
+      NEW.phone,
+      NULLIF(
+        NEW.raw_user_meta_data->>'phone_number',
+        ''
+      )
+    ),
+
+    NULLIF(
+      NEW.raw_user_meta_data->>'gender',
+      ''
+    ),
+
+    COALESCE(
+      ARRAY(
+        SELECT jsonb_array_elements_text(
+          COALESCE(
+            NEW.raw_user_meta_data->'medical_conditions',
+            '[]'::jsonb
+          )
+        )
+      ),
+      ARRAY[]::TEXT[]
+    ),
+
+    -- CRITICAL: Explicitly mark false so Google sign-up triggers ProfileOnboarding
+    false,
+    false
+  )
+  ON CONFLICT (id) DO NOTHING;
+
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Re-create Trigger
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- CREATE TRIGGER on auth.users (Requires execution as superuser in SQL editor)
 CREATE TRIGGER on_auth_user_created

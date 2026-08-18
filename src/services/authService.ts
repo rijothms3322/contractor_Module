@@ -1,5 +1,5 @@
-import { supabase, isSupabaseConfigured } from "../lib/supabaseClient";
 import { Profile } from "../lib/mockData";
+import { isSupabaseConfigured, supabase } from "../lib/supabaseClient";
 
 export const authService = {
   /**
@@ -29,7 +29,7 @@ export const authService = {
       id: data.user.id,
       fullName,
       avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(fullName)}`,
-      age: 40, // default placeholder, editable in profile screen
+      age: data.age, // default placeholder, editable in profile screen
       gender: "Male",
       medicalConditions: [],
       addresses: [],
@@ -90,7 +90,6 @@ export const authService = {
     if (!isSupabaseConfigured) {
       throw new Error("Supabase is not configured.");
     }
-
     try {
       const selectPromise = supabase
         .from("profiles")
@@ -103,7 +102,7 @@ export const authService = {
       );
 
       const { data, error } = await Promise.race([selectPromise, timeoutPromise]) as any;
-
+      console.log(data, 'data')
       if (error) throw error;
 
       let localNickname = "";
@@ -116,17 +115,18 @@ export const authService = {
           localDob = localStorage.getItem("medimz_user_dob") || "";
           localBloodGroup = localStorage.getItem("medimz_user_bloodGroup") || "";
           localPhone = localStorage.getItem("medimz_user_phone") || "";
-        } catch (e) {}
+        } catch (e) { }
       }
 
       // Auto-create profile row if it doesn't exist yet
       if (!data) {
         console.log("No profile row found for user, auto-creating profile in database...");
-        
+
         let metaName = "Health Champion";
         let metaRole = "user";
         try {
           const { data: userData } = await supabase.auth.getUser();
+          console.log(userData, 'userdata')
           if (userData?.user?.user_metadata) {
             metaName = userData.user.user_metadata.full_name || metaName;
             metaRole = userData.user.user_metadata.role || metaRole;
@@ -142,8 +142,8 @@ export const authService = {
             full_name: metaName,
             role: metaRole,
             avatar_url: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(metaName)}`,
-            age: 35,
-            gender: "Male"
+            age: null,
+            gender: null
           })
           .select()
           .single();
@@ -152,38 +152,47 @@ export const authService = {
           console.error("Failed to auto-create profile row:", insErr);
           throw insErr;
         }
-
+        console.log(data, 'av')
+        console.log(newProfile, 'ne')
         return {
           id: newProfile.id,
           fullName: newProfile.full_name,
           avatarUrl: newProfile.avatar_url,
-          age: newProfile.age || 35,
-          gender: newProfile.gender || "Male",
+          age: newProfile.age,
+          gender: newProfile.gender,
           medicalConditions: newProfile.medical_conditions || [],
           addresses: newProfile.addresses || [],
           role: newProfile.role || "user",
           familyId: newProfile.family_id || null,
-          nickname: localNickname || newProfile.full_name || "Health Champion",
-          dob: localDob || "",
-          bloodGroup: localBloodGroup || "O+",
-          phone: localPhone || ""
+          nickname: localNickname || newProfile.full_name,
+          dob: newProfile.dob,
+          bloodGroup: localBloodGroup,
+          phone_number: newProfile.phone_number,
+          isWalkthroughShown: newProfile.is_walkthrough_shown,
+          isMedicineWalkthroughShown: newProfile.is_medicine_walkthrough_shown,
+          isPrescriptionWalkthroughShown: newProfile.is_prescription_walkthrough_shown,
+          isSignupDone: newProfile.is_signup_done ?? false,
         };
       }
 
       return {
         id: data.id,
-        fullName: data.full_name || "Health Champion",
+        fullName: data.full_name,
         avatarUrl: data.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(data.full_name || "User")}`,
-        age: data.age || 35,
-        gender: data.gender || "Male",
+        age: data.age,
+        gender: data.gender,
         medicalConditions: data.medical_conditions || [],
         addresses: data.addresses || [],
         role: data.role || "user",
         familyId: data.family_id || null,
-        nickname: localNickname || data.full_name || "Health Champion",
-        dob: localDob || "",
-        bloodGroup: localBloodGroup || "O+",
-        phone: localPhone || ""
+        nickname: localNickname || data.full_name,
+        dob: data.dob,
+        bloodGroup: localBloodGroup,
+        phone_number: data.phone_number,
+        isWalkthroughShown: data.is_walkthrough_shown || false,
+        isMedicineWalkthroughShown: data.is_medicine_walkthrough_shown || false,
+        isPrescriptionWalkthroughShown: data.is_prescription_walkthrough_shown || false,
+        isSignupDone: data.is_signup_done ?? false,
       };
     } catch (error) {
       console.warn("Failed to fetch profiles table row, attempting local cache recovery:", error);
@@ -224,7 +233,7 @@ export const authService = {
     if (!isSupabaseConfigured) {
       throw new Error("Supabase is not configured.");
     }
-
+    console.log(profileData, 'updateProfile')
     // Prepare database fields
     const dbPayload: any = { id: userId };
     if (profileData.fullName !== undefined) dbPayload.full_name = profileData.fullName;
@@ -235,14 +244,23 @@ export const authService = {
     if (profileData.addresses !== undefined) dbPayload.addresses = profileData.addresses;
     if (profileData.role !== undefined) dbPayload.role = profileData.role;
     if (profileData.familyId !== undefined) dbPayload.family_id = profileData.familyId;
+    if (profileData.dob !== undefined) dbPayload.dob = profileData.dob;
+    if (profileData.phone_number !== undefined) dbPayload.phone_number = profileData.phone_number;
+    if (profileData.email !== undefined) dbPayload.email = profileData.email;
+    if (profileData.isWalkthroughShown !== undefined) dbPayload.is_walkthrough_shown = profileData.isWalkthroughShown;
+    if (profileData.isMedicineWalkthroughShown !== undefined) dbPayload.is_medicine_walkthrough_shown = profileData.isMedicineWalkthroughShown;
+    if (profileData.isPrescriptionWalkthroughShown !== undefined) dbPayload.is_prescription_walkthrough_shown = profileData.isPrescriptionWalkthroughShown;
+    if (profileData.isSignupDone !== undefined) dbPayload.is_signup_done = profileData.isSignupDone;
 
+
+    console.log(profileData.isSignupDone, 'profileData')
     const { data, error } = await supabase
       .from("profiles")
       .update(dbPayload)
       .eq("id", userId)
       .select()
       .single();
-
+    console.log(data, 'up')
     if (error) {
       throw new Error(error.message || "Database update failed");
     }
@@ -257,7 +275,7 @@ export const authService = {
         localDob = localStorage.getItem("medimz_user_dob") || "";
         localBloodGroup = localStorage.getItem("medimz_user_bloodGroup") || "";
         localPhone = localStorage.getItem("medimz_user_phone") || "";
-      } catch (e) {}
+      } catch (e) { }
     }
 
     return {
@@ -271,9 +289,11 @@ export const authService = {
       role: data.role as "user" | "admin",
       familyId: data.family_id || null,
       nickname: localNickname || data.full_name,
-      dob: localDob || "",
-      bloodGroup: localBloodGroup || "O+",
-      phone: localPhone || ""
+      dob: data.dob,
+      bloodGroup: localBloodGroup,
+      phone_number: data.phone_number,
+      email: data.email,
+      isSignupDone: data.is_signup_done ?? false,
     };
   }
 };

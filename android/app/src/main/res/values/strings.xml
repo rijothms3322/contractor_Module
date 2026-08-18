@@ -4,4 +4,6 @@
     <string name="title_activity_main">Medimz</string>
     <string name="package_name">com.medimz.app</string>
     <string name="custom_url_scheme">com.medimz.app</string>
+      <!-- Dev -->
+    <string name="server_client_id">377950550538-54dn6ld92r645v6leqovtfv995j4i1a4.apps.googleusercontent.com</string>
 </resources>

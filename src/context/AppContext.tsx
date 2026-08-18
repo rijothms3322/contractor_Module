@@ -1,30 +1,30 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useRef } from "react";
-import { notificationService } from "../services/notificationService";
-import { supabase, isSupabaseConfigured } from "../lib/supabaseClient";
-import { authService } from "../services/authService";
-import { medicineService } from "../services/medicineService";
-import { reminderService } from "../services/reminderService";
-import { bookingService } from "../services/bookingService";
-import { adminService, UserRole, AdminAuditLog, FeatureFlag, RolePermission } from "../services/adminService";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import {
-  Profile,
-  FamilyMember,
-  Medicine,
-  Reminder,
-  Lab,
-  DiagnosticTest,
   Booking,
-  HealthReport,
-  Notification,
-  DEFAULT_PROFILE,
-  DEFAULT_MEDICINES,
-  generateDefaultReminders,
   DEFAULT_LABS,
+  DEFAULT_MEDICINES,
+  DEFAULT_PROFILE,
   DEFAULT_TESTS,
-  DEFAULT_BOOKINGS
+  DiagnosticTest,
+  FamilyMember,
+  generateDefaultReminders,
+  HealthReport,
+  Lab,
+  Medicine,
+  Notification,
+  Profile,
+  Reminder
 } from "../lib/mockData";
+import { isSupabaseConfigured, supabase } from "../lib/supabaseClient";
+import { AdminAuditLog, adminService, FeatureFlag, RolePermission, UserRole } from "../services/adminService";
+import { authService } from "../services/authService";
+import { bookingService } from "../services/bookingService";
+import { medicineService } from "../services/medicineService";
+import { notificationService } from "../services/notificationService";
+import { reminderService } from "../services/reminderService";
+import { initGoogleAuth } from "@/lib/googleAuth";
 
 const safeLocalStorage = {
   getItem(key: string): string | null {
@@ -96,12 +96,14 @@ interface AppContextType {
   activeTab: TabType;
   setActiveTab: (tab: TabType) => void;
   login: (email: string, password?: string, targetRole?: "user" | "admin") => Promise<boolean>;
+  loginWithPhone: (phone: string, otp: string) => Promise<boolean>;
   signup: (email: string, password?: string, fullName?: string, targetRole?: "user" | "admin") => Promise<boolean>;
   resetPassword: (email: string) => Promise<boolean>;
   logout: () => void;
   updateUserProfile: (profileData: Partial<Profile>) => void;
   isLoading: boolean;
-
+  pendingOnboarding: boolean;
+  clearPendingOnboarding: () => void;
   // Admin Role Management
   adminRole: UserRole["role"] | null;
   adminRoles: UserRole[];
@@ -149,7 +151,7 @@ interface AppContextType {
   transferAdminRights: (memberId: string) => Promise<boolean>;
   renameFamily: (name: string) => Promise<boolean>;
   regenerateFamilyCode: () => Promise<boolean>;
-  
+
   // Wellness Engine
   wellnessScore: number;
   familyWellnessScore: number;
@@ -233,6 +235,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return null;
   });
 
+  useEffect(() => {
+    initGoogleAuth();
+  }, []);
+
+  const [pendingOnboarding, setPendingOnboarding] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("medimz_pending_onboarding") === "true";
+    }
+    return false;
+  });
+
+  const clearPendingOnboarding = () => {
+    setPendingOnboarding(false);
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("medimz_pending_onboarding");
+    }
+  };
+
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
     if (typeof window !== "undefined") {
       return safeLocalStorage.getItem("medimz_isLoggedIn") === "true";
@@ -250,7 +270,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (parsed && parsed.email === "teams@medimz.com") {
             return "admin-operations";
           }
-        } catch (e) {}
+        } catch (e) { }
       }
     }
     return "home";
@@ -267,7 +287,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [dashboardStats, setDashboardStats] = useState<any | null>(null);
   const [healthcareStats, setHealthcareStats] = useState<any | null>(null);
   const [isBackendAvailable, setIsBackendAvailable] = useState<boolean>(isSupabaseConfigured);
-  
+
   const [elderlyMode, setElderlyMode] = useState<boolean>(() => {
     if (typeof window !== "undefined") {
       return localStorage.getItem("medimz_elderly_mode") === "true";
@@ -333,10 +353,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return generateDefaultWellnessLogs();
   });
 
+  const isDashboardTourComplete = (): boolean => {
+    if (typeof window === 'undefined') return false;
+    if (user?.isWalkthroughShown) return true;
+    updateUserProfile({ isWalkthroughShown: true });
+    return true;
+  };
   const addWellnessLog = (mood: WellnessLog["mood"]) => {
     const todayStr = new Date().toISOString().split("T")[0];
     const timeStr = new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
-    
+
     setWellnessLogs(prev => {
       let updated = [...prev];
       const todayIdx = updated.findIndex(log => log.date === todayStr);
@@ -345,7 +371,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } else {
         updated.push({ date: todayStr, time: timeStr, mood });
       }
-      if (typeof window !== "undefined") {
+      if (typeof window !== "undefined" && isDashboardTourComplete()) {
         localStorage.setItem("medimz_wellness_logs", JSON.stringify(updated));
       }
       return updated;
@@ -486,11 +512,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         try {
           // Fetch authenticated profile details
           const profile = await authService.getProfile(session.user.id);
-          
+          console.log(profile, 'profile')
           let resolvedRole: UserRole["role"] | null = null;
           if (session.user.email === "teams@medimz.com") {
             resolvedRole = "super_admin";
-            await adminService.assignUserRole(session.user.email, session.user.email, "super_admin").catch(() => {});
+            await adminService.assignUserRole(session.user.email, session.user.email, "super_admin").catch(() => { });
           } else {
             try {
               const roles = await adminService.getAllUserRoles();
@@ -498,7 +524,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               if (matched) {
                 resolvedRole = matched.role;
               }
-            } catch (err) {}
+            } catch (err) { }
           }
 
           const isUserAdmin = resolvedRole !== null;
@@ -509,14 +535,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
           if (isUserAdmin) {
             // Load operations center metrics
-            adminService.getDashboardAnalytics().then(stats => setDashboardStats(stats)).catch(() => {});
-            adminService.getHealthcareIntelligence().then(hStats => setHealthcareStats(hStats)).catch(() => {});
-            adminService.getFeatureFlags().then(flags => setFeatureFlags(flags)).catch(() => {});
-            adminService.getRolePermissions().then(perms => setRolePermissions(perms)).catch(() => {});
-            adminService.getAuditLogs().then(logs => setAuditLogs(logs)).catch(() => {});
-            adminService.getAllUserRoles().then(allRoles => setAdminRoles(allRoles)).catch(() => {});
+            adminService.getDashboardAnalytics().then(stats => setDashboardStats(stats)).catch(() => { });
+            adminService.getHealthcareIntelligence().then(hStats => setHealthcareStats(hStats)).catch(() => { });
+            adminService.getFeatureFlags().then(flags => setFeatureFlags(flags)).catch(() => { });
+            adminService.getRolePermissions().then(perms => setRolePermissions(perms)).catch(() => { });
+            adminService.getAuditLogs().then(logs => setAuditLogs(logs)).catch(() => { });
+            adminService.getAllUserRoles().then(allRoles => setAdminRoles(allRoles)).catch(() => { });
           }
- 
+
           const safeFetch = async <T,>(promise: Promise<T>, fallback: T, label: string): Promise<T> => {
             const timeout = new Promise<never>((_, reject) =>
               setTimeout(() => reject(new Error(`Timeout fetching ${label}`)), 6000)
@@ -544,7 +570,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             safeFetch(bookingService.getReports(session.user.id), reports, "reports"),
             safeFetch(reminderService.getNotifications(session.user.id), notifications, "notifications")
           ]);
- 
+
           // Deduplicate medicines: keep only one medicine per name and dosage
           const uniqueMeds: Medicine[] = [];
           const seenMedKeys = new Set<string>();
@@ -635,8 +661,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     name: mProfile.full_name,
                     avatarUrl: mProfile.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(mProfile.full_name)}`,
                     relationship: mProfile.id === familyObj.adminId ? "Family Admin" : "Family Member",
-                    age: mProfile.age || 35,
-                    gender: mProfile.gender || "Male",
+                    age: mProfile.age || '-',
+                    gender: mProfile.gender || "-",
                     medicalConditions: mProfile.medical_conditions || [],
                     color: "purple"
                   });
@@ -646,7 +672,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                       safeFetch(medicineService.getMedicines(mProfile.id), [], `medicines for ${mProfile.full_name}`),
                       safeFetch(reminderService.getReminders(mProfile.id), [], `reminders for ${mProfile.full_name}`)
                     ]);
-                    
+
                     // Filter out private items
                     const publicMeds = lMeds.filter(m => !m.isPrivate);
                     const publicRems = lRems.filter(r => !r.isPrivate);
@@ -712,7 +738,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               (payload: any) => {
                 const updatedProfile = payload.new;
                 console.log("Real-time profiles sync update:", updatedProfile);
-                
+
                 // If it is the active user's own profile, update local user state
                 if (updatedProfile.id === session.user.id) {
                   setUser(prev => prev ? {
@@ -730,13 +756,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   prev.map(fm =>
                     fm.id === updatedProfile.id
                       ? {
-                          ...fm,
-                          name: updatedProfile.full_name,
-                          avatarUrl: updatedProfile.avatar_url || fm.avatarUrl,
-                          age: updatedProfile.age || fm.age,
-                          gender: updatedProfile.gender || fm.gender,
-                          medicalConditions: updatedProfile.medical_conditions || fm.medicalConditions
-                        }
+                        ...fm,
+                        name: updatedProfile.full_name,
+                        avatarUrl: updatedProfile.avatar_url || fm.avatarUrl,
+                        age: updatedProfile.age || fm.age,
+                        gender: updatedProfile.gender || fm.gender,
+                        medicalConditions: updatedProfile.medical_conditions || fm.medicalConditions
+                      }
                       : fm
                   )
                 );
@@ -757,9 +783,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   setMedicines(prev => prev.filter(m => m.id !== oldMed.id));
                 } else {
                   // Verify if the medicine belongs to us or a family member
-                  const isFamMed = newMed.user_id === session.user.id || 
+                  const isFamMed = newMed.user_id === session.user.id ||
                     familyMembersRef.current.some(f => f.id === newMed.user_id);
-                  
+
                   if (!isFamMed) return;
 
                   // Filter out private medicines if it belongs to someone else
@@ -805,9 +831,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 if (eventType === "DELETE") {
                   setReminders(prev => prev.filter(r => r.id !== oldRem.id));
                 } else {
-                  const isFamRem = newRem.user_id === session.user.id || 
+                  const isFamRem = newRem.user_id === session.user.id ||
                     familyMembersRef.current.some(f => f.id === newRem.user_id);
-                  
+
                   if (!isFamRem) return;
 
                   if (newRem.user_id !== session.user.id && newRem.is_private) {
@@ -867,7 +893,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsInitialized(true);
       }
     });
- 
+
     return () => {
       subscription.unsubscribe();
       if (familySyncChannel) {
@@ -916,11 +942,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const checkInterval = setInterval(() => {
       if (!isLoggedIn) return;
       const now = new Date();
-      
+
       const dueReminder = reminders.find(r => {
         if (r.status !== "pending") return false;
         if (notifiedIds.includes(r.id)) return false;
-        
+
         const targetTime = r.snoozedUntil ? new Date(r.snoozedUntil) : new Date(r.scheduledTime);
         // Only trigger reminders scheduled/snoozed for the current active session
         return targetTime >= sessionStartTime.current && targetTime <= now;
@@ -928,7 +954,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (dueReminder) {
         setNotifiedIds(prev => [...prev, dueReminder.id]);
-        
+
         // Trigger visual overlay banner on localhost:3000
         setActiveNotification({
           id: dueReminder.medicineId,
@@ -938,7 +964,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           recipientName: dueReminder.recipientNickname || "Myself",
           timeLabel: dueReminder.intakeTime || new Date(dueReminder.scheduledTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
         });
-        
+
         // Trigger native notification if in Capacitor APK environment
         notificationService.scheduleMedicineReminder({
           id: dueReminder.medicineId,
@@ -995,7 +1021,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       safeLocalStorage.setItem("medimz_bookings", JSON.stringify(bookings));
     }
   }, [bookings, isInitialized]);
-  
+
   useEffect(() => {
     if (!isInitialized) return;
     if (reports.length > 0) {
@@ -1066,8 +1092,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     targetFamilyMemberId?: string | null
   ): number => {
     const dayReminders = remindersList.filter(r => {
-      const matchMember = targetFamilyMemberId 
-        ? r.familyMemberId === targetFamilyMemberId 
+      const matchMember = targetFamilyMemberId
+        ? r.familyMemberId === targetFamilyMemberId
         : !r.familyMemberId;
       const rDateStr = r.scheduledTime ? r.scheduledTime.split("T")[0] : "";
       return matchMember && rDateStr === dayStr;
@@ -1090,13 +1116,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const taken = new Date(r.takenAt).getTime();
           delayMins = Math.max(0, (taken - sched) / 60000);
         }
-        
+
         if (delayMins <= 15) totalScore += 10;
         else if (delayMins <= 60) totalScore += 9;
         else if (delayMins <= 180) totalScore += 8;
         else if (delayMins <= 360) totalScore += 6;
         else totalScore += 4;
-        
+
         countedDoses++;
       } else if (r.status === "missed" || (r.status === "pending" && isPast && !r.snoozedUntil)) {
         totalScore += 0;
@@ -1161,7 +1187,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const getFamilyAlerts = (remindersList: Reminder[]): string[] => {
     const alerts: string[] = [];
     const todayStr = new Date().toISOString().split("T")[0];
-    
+
     const userMisses = remindersList.filter(r => !r.familyMemberId && r.scheduledTime && r.scheduledTime.split("T")[0] === todayStr && r.status === "missed").length;
     if (userMisses > 0) {
       alerts.push(`You have missed ${userMisses} medicine${userMisses > 1 ? "s" : ""} today.`);
@@ -1179,7 +1205,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const checkAchievements = (remindersList: Reminder[], logsList: any[]) => {
     const unlocked: { id: string; title: string; desc: string; icon: string }[] = [];
-    
+
     const dailyScores: number[] = [];
     for (let i = 0; i < 30; i++) {
       const d = new Date();
@@ -1242,113 +1268,113 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return unlocked;
   };
 
-    const getIndividualStreak = (
-      targetFamilyMemberId: string | null,
-      remindersList: Reminder[]
-    ): number | "no_medicines" => {
-      const hasAnyReminders = remindersList.some(r => 
-        targetFamilyMemberId ? r.familyMemberId === targetFamilyMemberId : !r.familyMemberId
-      );
-      if (!hasAnyReminders) {
-        return "no_medicines";
+  const getIndividualStreak = (
+    targetFamilyMemberId: string | null,
+    remindersList: Reminder[]
+  ): number | "no_medicines" => {
+    const hasAnyReminders = remindersList.some(r =>
+      targetFamilyMemberId ? r.familyMemberId === targetFamilyMemberId : !r.familyMemberId
+    );
+    if (!hasAnyReminders) {
+      return "no_medicines";
+    }
+
+    let streak = 0;
+    let dayOffset = 0;
+
+    while (dayOffset < 90) {
+      const d = new Date();
+      d.setDate(d.getDate() - dayOffset);
+      const dayStr = d.toISOString().split("T")[0];
+
+      const dayRems = remindersList.filter(r => {
+        const matchMember = targetFamilyMemberId
+          ? r.familyMemberId === targetFamilyMemberId
+          : !r.familyMemberId;
+        return matchMember && r.scheduledTime && r.scheduledTime.split("T")[0] === dayStr;
+      });
+
+      if (dayRems.length === 0) {
+        dayOffset++;
+        continue;
       }
 
-      let streak = 0;
-      let dayOffset = 0;
-      
-      while (dayOffset < 90) {
-        const d = new Date();
-        d.setDate(d.getDate() - dayOffset);
-        const dayStr = d.toISOString().split("T")[0];
+      const hasMissed = dayRems.some(r => r.status === "missed");
+      const allTaken = dayRems.every(r => r.status === "taken");
 
-        const dayRems = remindersList.filter(r => {
-          const matchMember = targetFamilyMemberId 
-            ? r.familyMemberId === targetFamilyMemberId 
-            : !r.familyMemberId;
+      if (hasMissed) {
+        break;
+      }
+
+      if (allTaken) {
+        streak++;
+      } else if (dayOffset !== 0) {
+        break;
+      }
+
+      dayOffset++;
+    }
+
+    return streak;
+  };
+
+  const getFamilyStreak = (remindersList: Reminder[]): number | "no_medicines" => {
+    const userHasRems = remindersList.some(r => !r.familyMemberId);
+    const activeMemberIds = familyMembers
+      .filter(m => remindersList.some(r => r.familyMemberId === m.id))
+      .map(m => m.id);
+
+    const includedIds: (string | null)[] = [];
+    if (userHasRems) includedIds.push(null);
+    activeMemberIds.forEach(id => includedIds.push(id));
+
+    if (includedIds.length === 0) {
+      return "no_medicines";
+    }
+
+    let streak = 0;
+    let dayOffset = 0;
+
+    while (dayOffset < 90) {
+      const d = new Date();
+      d.setDate(d.getDate() - dayOffset);
+      const dayStr = d.toISOString().split("T")[0];
+
+      const membersWithRemindersOnDay = includedIds.filter(memberId => {
+        return remindersList.some(r => {
+          const matchMember = memberId ? r.familyMemberId === memberId : !r.familyMemberId;
           return matchMember && r.scheduledTime && r.scheduledTime.split("T")[0] === dayStr;
         });
+      });
 
-        if (dayRems.length === 0) {
-          dayOffset++;
-          continue;
-        }
-
-        const hasMissed = dayRems.some(r => r.status === "missed");
-        const allTaken = dayRems.every(r => r.status === "taken");
-
-        if (hasMissed) {
-          break;
-        }
-
-        if (allTaken) {
-          streak++;
-        } else if (dayOffset !== 0) {
-          break;
-        }
-
+      if (membersWithRemindersOnDay.length === 0) {
         dayOffset++;
+        continue;
       }
 
-      return streak;
-    };
+      const dayRems = remindersList.filter(r => {
+        const isIncluded = r.familyMemberId ? activeMemberIds.includes(r.familyMemberId) : userHasRems;
+        return isIncluded && r.scheduledTime && r.scheduledTime.split("T")[0] === dayStr;
+      });
 
-    const getFamilyStreak = (remindersList: Reminder[]): number | "no_medicines" => {
-      const userHasRems = remindersList.some(r => !r.familyMemberId);
-      const activeMemberIds = familyMembers
-        .filter(m => remindersList.some(r => r.familyMemberId === m.id))
-        .map(m => m.id);
+      const hasMissed = dayRems.some(r => r.status === "missed");
+      const allTaken = dayRems.every(r => r.status === "taken");
 
-      const includedIds: (string | null)[] = [];
-      if (userHasRems) includedIds.push(null);
-      activeMemberIds.forEach(id => includedIds.push(id));
-
-      if (includedIds.length === 0) {
-        return "no_medicines";
+      if (hasMissed) {
+        break;
       }
 
-      let streak = 0;
-      let dayOffset = 0;
-
-      while (dayOffset < 90) {
-        const d = new Date();
-        d.setDate(d.getDate() - dayOffset);
-        const dayStr = d.toISOString().split("T")[0];
-
-        const membersWithRemindersOnDay = includedIds.filter(memberId => {
-          return remindersList.some(r => {
-            const matchMember = memberId ? r.familyMemberId === memberId : !r.familyMemberId;
-            return matchMember && r.scheduledTime && r.scheduledTime.split("T")[0] === dayStr;
-          });
-        });
-
-        if (membersWithRemindersOnDay.length === 0) {
-          dayOffset++;
-          continue;
-        }
-
-        const dayRems = remindersList.filter(r => {
-          const isIncluded = r.familyMemberId ? activeMemberIds.includes(r.familyMemberId) : userHasRems;
-          return isIncluded && r.scheduledTime && r.scheduledTime.split("T")[0] === dayStr;
-        });
-
-        const hasMissed = dayRems.some(r => r.status === "missed");
-        const allTaken = dayRems.every(r => r.status === "taken");
-
-        if (hasMissed) {
-          break;
-        }
-
-        if (allTaken) {
-          streak++;
-        } else if (dayOffset !== 0) {
-          break;
-        }
-
-        dayOffset++;
+      if (allTaken) {
+        streak++;
+      } else if (dayOffset !== 0) {
+        break;
       }
 
-      return streak;
-    };
+      dayOffset++;
+    }
+
+    return streak;
+  };
 
   // Recalculate adherence analytics based on reminders
   const calculateMetrics = (remLogs: Reminder[]) => {
@@ -1390,7 +1416,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (ownRems.length > 0) {
       activeScores.push(score);
     }
-    
+
     familyMembers.forEach(m => {
       const mRems = remLogs.filter(r => r.familyMemberId === m.id);
       if (mRems.length > 0) {
@@ -1409,6 +1435,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUnlockedAchievements(checkAchievements(remLogs, medicationLogs));
   };
 
+
+  const loginWithPhone = async (phone: string, otp: string): Promise<boolean> => {
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({
+        phone,
+        token: otp,
+        type: 'sms',
+      });
+      if (error) throw error;
+      const profile = await authService.getProfile(data.user.id);
+      setUser({ ...profile, role: profile.role || 'user' });
+      setIsLoggedIn(true);
+      clearPendingOnboarding();
+      setActiveTab('home');
+      addNotification('Welcome!', 'Logged in with phone.', 'system');
+      return true;
+    } catch (e) {
+      throw e;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // ====================================================================
   // AUTHENTICATION INTERFACES
   // ====================================================================
@@ -1424,7 +1474,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (email === "teams@medimz.com") {
           resolvedRole = "super_admin";
           // Seed super admin role dynamically if needed
-          await adminService.assignUserRole(email, email, "super_admin").catch(() => {});
+          await adminService.assignUserRole(email, email, "super_admin").catch(() => { });
         } else {
           const roles = await adminService.getAllUserRoles();
           const matched = roles.find(r => r.email === email.toLowerCase().trim());
@@ -1439,6 +1489,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setUser(updatedProfile);
         setAdminRole(resolvedRole);
         setIsLoggedIn(true);
+        clearPendingOnboarding();
 
         if (isUserAdmin) {
           setActiveTab("admin-operations");
@@ -1456,11 +1507,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // Offline Simulated Mock Login
         const name = email.split("@")[0];
         const formattedName = name.charAt(0).toUpperCase() + name.slice(1);
-        
+
         let resolvedRole: UserRole["role"] | null = null;
         if (email === "teams@medimz.com") {
           resolvedRole = "super_admin";
-          await adminService.assignUserRole(email, email, "super_admin").catch(() => {});
+          await adminService.assignUserRole(email, email, "super_admin").catch(() => { });
         } else {
           try {
             const roles = await adminService.getAllUserRoles();
@@ -1482,7 +1533,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           role: finalRole,
           email
         };
-        
+
         setUser(loggedProfile);
         setAdminRole(resolvedRole);
         setIsLoggedIn(true);
@@ -1523,10 +1574,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const cleanPassword = password || "password123";
         const cleanName = fullName || email.split("@")[0];
         const dbProfile = await authService.signUp(email, cleanPassword, cleanName, targetRole);
-        
+
         const updatedProfile = { ...dbProfile, role: targetRole, email };
         setUser(updatedProfile);
         setIsLoggedIn(true);
+        setPendingOnboarding(true);
+        if (typeof window !== "undefined") {
+          localStorage.setItem("medimz_pending_onboarding", "true");
+        }
       } else {
         // Offline Simulated Mock Signup
         const cleanName = fullName || email.split("@")[0];
@@ -1536,7 +1591,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           fullName: cleanName,
           role: targetRole
         };
-        
+
         setUser(loggedProfile);
         setIsLoggedIn(true);
         addNotification("Account Created! 🎉", "Welcome to Medimz. Start tracking your health consistency today.", "system");
@@ -1554,7 +1609,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsLoading(true);
     try {
       if (isSupabaseConfigured) {
-        const redirectToUrl = typeof window !== "undefined" ? `${window.location.origin}` : undefined;
+        const redirectToUrl = typeof window !== "undefined" ? `${window.location.origin}/reset-password` : undefined;
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
           redirectTo: redirectToUrl,
         });
@@ -1576,46 +1631,303 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUser(null);
     setIsLoggedIn(false);
     setActiveTab("home");
+    clearPendingOnboarding();
     if (typeof window !== "undefined") {
       safeLocalStorage.clear();
     }
   };
 
-  const updateUserProfile = (profileData: Partial<Profile>) => {
-    if (user) {
-      const updated = { ...user, ...profileData };
-      setUser(updated);
+  // const updateUserProfile = async (
+  //   profileData: Partial<Profile>
+  // ): Promise<Profile> => {
+  //   if (!user) {
+  //     throw new Error("No authenticated user");
+  //   }
+  //   console.log(profileData, 'updateUserProfile')
+  //   const updated = {
+  //     ...user,
+  //     ...profileData,
+  //   };
 
-      if (typeof window !== "undefined") {
-        safeLocalStorage.setItem("medimz_user", JSON.stringify(updated));
-        safeLocalStorage.setItem("medimz_user_nickname", updated.nickname || "");
-        safeLocalStorage.setItem("medimz_user_dob", updated.dob || "");
-        safeLocalStorage.setItem("medimz_user_bloodGroup", updated.bloodGroup || "");
-        safeLocalStorage.setItem("medimz_user_phone", updated.phone || "");
-      }
+  //   // -----------------------------------------
+  //   // Supabase
+  //   // -----------------------------------------
 
-      if (isSupabaseConfigured) {
-        authService.updateProfile(user.id, profileData)
-          .then(dbP => {
-            const merged = { ...dbP, ...updated };
-            setUser(merged);
-            if (typeof window !== "undefined") {
-              safeLocalStorage.setItem("medimz_user", JSON.stringify(merged));
-            }
-            return reminderService.addNotification(user.id, "Profile Synchronized! 🧬", "Your profile changes have been successfully saved and synced to the cloud.", "system")
-              .then(n => setNotifications(prev => [n, ...prev]))
-              .catch(err => console.error("Failed to sync profile success notification:", err));
-          })
-          .catch(err => {
-            console.error("Failed to sync profile update:", err?.message || err?.details || err);
-            // Graceful fallback warning notification so they know it is saved locally
-            addNotification("Saved Locally 💾", "Failed to sync to database due to security policies. Your updates are saved on this device.", "system");
-          });
-      } else {
-        addNotification("Profile Updated! 💾", "Your personal health records were successfully saved locally.", "system");
+  //   if (isSupabaseConfigured) {
+  //     try {
+  //       const dbProfile = await authService.updateProfile(
+  //         user.id,
+  //         profileData
+  //       );
+
+  //       const merged: Profile = {
+  //         ...updated,
+  //         ...dbProfile,
+  //       };
+
+  //       // -----------------------------------------
+  //       // Update React state AFTER DB succeeds
+  //       // -----------------------------------------
+
+  //       setUser(merged);
+
+  //       // -----------------------------------------
+  //       // Update local cache
+  //       // -----------------------------------------
+
+  //       if (typeof window !== "undefined") {
+  //         safeLocalStorage.setItem(
+  //           "medimz_user",
+  //           JSON.stringify(merged)
+  //         );
+
+  //         safeLocalStorage.setItem(
+  //           "medimz_user_nickname",
+  //           merged.nickname || ""
+  //         );
+
+  //         safeLocalStorage.setItem(
+  //           "medimz_user_dob",
+  //           merged.dob || ""
+  //         );
+
+  //         safeLocalStorage.setItem(
+  //           "medimz_user_bloodGroup",
+  //           merged.bloodGroup || ""
+  //         );
+
+  //         safeLocalStorage.setItem(
+  //           "medimz_user_phone",
+  //           merged.phone_number || ""
+  //         );
+  //       }
+
+  //       // -----------------------------------------
+  //       // Notification
+  //       // -----------------------------------------
+
+  //       try {
+  //         const notification =
+  //           await reminderService.addNotification(
+  //             user.id,
+  //             "Profile Synchronized! 🧬",
+  //             "Your profile changes have been successfully saved and synced to the cloud.",
+  //             "system"
+  //           );
+
+  //         setNotifications(prev => [
+  //           notification,
+  //           ...prev,
+  //         ]);
+  //       } catch (notificationError) {
+  //         console.error(
+  //           "Failed to create sync notification:",
+  //           notificationError
+  //         );
+  //       }
+
+  //       return merged;
+
+  //     } catch (err: any) {
+  //       console.error(
+  //         "Failed to sync profile update:",
+  //         err?.message ||
+  //         err?.details ||
+  //         err
+  //       );
+
+  //       addNotification(
+  //         "Save Failed",
+  //         "Your profile could not be synchronized with the server.",
+  //         "system"
+  //       );
+
+  //       throw err;
+  //     }
+  //   }
+
+  //   // -----------------------------------------
+  //   // No Supabase configured
+  //   // -----------------------------------------
+
+  //   setUser(updated);
+
+  //   if (typeof window !== "undefined") {
+  //     safeLocalStorage.setItem(
+  //       "medimz_user",
+  //       JSON.stringify(updated)
+  //     );
+  //   }
+
+  //   addNotification(
+  //     "Profile Updated! 💾",
+  //     "Your personal health records were saved locally.",
+  //     "system"
+  //   );
+
+  //   return updated;
+  // };
+
+  const updateUserProfile = async (
+    profileData: Partial<Profile>
+  ): Promise<Profile> => {
+    if (!user) {
+      throw new Error("No authenticated user");
+    }
+
+    console.log("[Profile] Updating:", profileData);
+
+    // -----------------------------------------
+    // 1. Update React state IMMEDIATELY
+    // -----------------------------------------
+
+    const optimisticUser: Profile = {
+      ...user,
+      ...profileData,
+    };
+
+    setUser(optimisticUser);
+
+    // -----------------------------------------
+    // 2. Update local cache IMMEDIATELY
+    // -----------------------------------------
+
+    if (typeof window !== "undefined") {
+      safeLocalStorage.setItem(
+        "medimz_user",
+        JSON.stringify(optimisticUser)
+      );
+
+      safeLocalStorage.setItem(
+        "medimz_user_nickname",
+        optimisticUser.nickname || ""
+      );
+
+      safeLocalStorage.setItem(
+        "medimz_user_dob",
+        optimisticUser.dob || ""
+      );
+
+      safeLocalStorage.setItem(
+        "medimz_user_bloodGroup",
+        optimisticUser.bloodGroup || ""
+      );
+
+      safeLocalStorage.setItem(
+        "medimz_user_phone",
+        optimisticUser.phone_number || ""
+      );
+    }
+
+    // -----------------------------------------
+    // 3. Save to Supabase
+    // -----------------------------------------
+
+    if (isSupabaseConfigured) {
+      try {
+        const dbProfile = await authService.updateProfile(
+          user.id,
+          profileData
+        );
+
+        console.log("[Profile] DB response:", dbProfile);
+
+        const merged: Profile = {
+          ...optimisticUser,
+          ...dbProfile,
+        };
+
+        // -----------------------------------------
+        // 4. Update state with DB result
+        // -----------------------------------------
+
+        setUser(merged);
+
+        // -----------------------------------------
+        // 5. Update cache with DB result
+        // -----------------------------------------
+
+        if (typeof window !== "undefined") {
+          safeLocalStorage.setItem(
+            "medimz_user",
+            JSON.stringify(merged)
+          );
+
+          safeLocalStorage.setItem(
+            "medimz_user_nickname",
+            merged.nickname || ""
+          );
+
+          safeLocalStorage.setItem(
+            "medimz_user_dob",
+            merged.dob || ""
+          );
+
+          safeLocalStorage.setItem(
+            "medimz_user_bloodGroup",
+            merged.bloodGroup || ""
+          );
+
+          safeLocalStorage.setItem(
+            "medimz_user_phone",
+            merged.phone_number || ""
+          );
+        }
+
+        return merged;
+
+      } catch (err: any) {
+        console.error(
+          "Failed to sync profile update:",
+          err?.message || err
+        );
+
+        // IMPORTANT:
+        // Do NOT immediately restore old user here.
+        // Optimistic state remains.
+
+        throw err;
       }
     }
+
+    return optimisticUser;
   };
+
+  // const updateUserProfile = (profileData: Partial<Profile>) => {
+  //   if (user) {
+  //     const updated = { ...user, ...profileData };
+  //     setUser(updated);
+
+  //     if (typeof window !== "undefined") {
+  //       safeLocalStorage.setItem("medimz_user", JSON.stringify(updated));
+  //       safeLocalStorage.setItem("medimz_user_nickname", updated.nickname || "");
+  //       safeLocalStorage.setItem("medimz_user_dob", updated.dob || "");
+  //       safeLocalStorage.setItem("medimz_user_bloodGroup", updated.bloodGroup || "");
+  //       safeLocalStorage.setItem("medimz_user_phone", updated.phone_number || "");
+  //     }
+
+  //     if (isSupabaseConfigured) {
+  //       authService.updateProfile(user.id, profileData)
+  //         .then(dbP => {
+  //           const merged = { ...dbP, ...updated };
+  //           setUser(merged);
+  //           if (typeof window !== "undefined") {
+  //             safeLocalStorage.setItem("medimz_user", JSON.stringify(merged));
+  //           }
+  //           return reminderService.addNotification(user.id, "Profile Synchronized! 🧬", "Your profile changes have been successfully saved and synced to the cloud.", "system")
+  //             .then(n => setNotifications(prev => [n, ...prev]))
+  //             .catch(err => console.error("Failed to sync profile success notification:", err));
+  //         })
+  //         .catch(err => {
+  //           console.error("Failed to sync profile update:", err?.message || err?.details || err);
+  //           // Graceful fallback warning notification so they know it is saved locally
+  //           addNotification("Saved Locally 💾", "Failed to sync to database due to security policies. Your updates are saved on this device.", "system");
+  //         });
+  //     } else {
+  //       addNotification("Profile Updated! 💾", "Your personal health records were successfully saved locally.", "system");
+  //     }
+  //   }
+  // };
 
   // ====================================================================
   // FAMILY ROSTER CRUD
@@ -1708,9 +2020,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...medicine,
       id: medId
     };
-    
+
     setMedicines(prev => [...prev, newMed]);
- 
+
     // Automatically generate scheduled reminders for the next 3 days
     const newReminders: Reminder[] = [];
     const today = new Date();
@@ -1719,12 +2031,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const timesToSchedule = (medicine.intakeTimes && medicine.intakeTimes.length > 0)
       ? medicine.intakeTimes
       : medicine.timings.map(slot => {
-          if (slot === "morning") return "08:00";
-          if (slot === "afternoon") return "13:00";
-          if (slot === "evening") return "18:00";
-          return "21:00";
-        });
- 
+        if (slot === "morning") return "08:00";
+        if (slot === "afternoon") return "13:00";
+        if (slot === "evening") return "18:00";
+        return "21:00";
+      });
+
     timesToSchedule.forEach((timeStr, idx) => {
       const [hStr, mStr] = timeStr.split(":");
       const hour = parseInt(hStr, 10) || 8;
@@ -1734,11 +2046,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (hour >= 12 && hour < 17) slot = "afternoon";
       else if (hour >= 17 && hour < 20) slot = "evening";
       else if (hour >= 20 || hour < 6) slot = "night";
- 
+
       for (let dayOffset = 0; dayOffset < 3; dayOffset++) {
         const scheduledDay = new Date();
         scheduledDay.setDate(today.getDate() + dayOffset);
- 
+
         const scheduledTime = new Date(
           scheduledDay.getFullYear(),
           scheduledDay.getMonth(),
@@ -1746,7 +2058,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           hour,
           minute
         ).toISOString();
- 
+
         newReminders.push({
           id: `rem-${medId}-${idx}-${dayOffset}`,
           medicineId: medId,
@@ -1765,7 +2077,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
       }
     });
- 
+
     setReminders(prev => [...newReminders, ...prev]);
 
     // Schedule a mock native push notification in 3 seconds to demo the integration
@@ -1813,7 +2125,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         medicineService.addMedicine(user.id, medicine)
           .then(dbMed => {
             setMedicines(prev => prev.map(m => m.id === medId ? dbMed : m));
-            
+
             const dbRems = newReminders.map(r => ({
               medicineId: dbMed.id,
               familyMemberId: resolvedFamId || null,
@@ -1822,7 +2134,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               status: r.status as any,
               intakeTime: r.intakeTime
             }));
-     
+
             reminderService.addReminders(user.id, dbRems).then(() => {
               reminderService.getReminders(user.id).then(syncedRems => {
                 const resolvedRems = syncedRems.map(sr => {
@@ -1837,7 +2149,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 setReminders(resolvedRems);
               }).catch(e => console.error("Failed to query synced reminders:", e));
             }).catch(e => console.error("Failed to insert reminders to database:", e));
-    
+
             reminderService.addNotification(user.id, "Medicine Added 💊", `${medicine.name} (${medicine.dosage}) added successfully. Reminders created!`, "reminder")
               .then(n => setNotifications(prev => [n, ...prev]))
               .catch(e => console.error("Failed to post notification:", e));
@@ -1859,7 +2171,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const nonPending = prev.filter(r => r.medicineId !== medicineId || r.status !== "pending");
       const updatedMed = medicines.find(m => m.id === medicineId);
       if (!updatedMed) return prev;
-      
+
       const mergedMed = { ...updatedMed, ...updatedFields };
       const newReminders: Reminder[] = [];
       const today = new Date();
@@ -1868,11 +2180,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const timesToSchedule = (mergedMed.intakeTimes && mergedMed.intakeTimes.length > 0)
         ? mergedMed.intakeTimes
         : mergedMed.timings.map(slot => {
-            if (slot === "morning") return "08:00";
-            if (slot === "afternoon") return "13:00";
-            if (slot === "evening") return "18:00";
-            return "21:00";
-          });
+          if (slot === "morning") return "08:00";
+          if (slot === "afternoon") return "13:00";
+          if (slot === "evening") return "18:00";
+          return "21:00";
+        });
 
       timesToSchedule.forEach((timeStr, idx) => {
         const [hStr, mStr] = timeStr.split(":");
@@ -1938,12 +2250,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteMedicine = (medicineId: string) => {
     setMedicines(prev => prev.filter(m => m.id !== medicineId));
     setReminders(prev => prev.filter(r => r.medicineId !== medicineId || r.status !== "pending"));
-    
+
     if (isSupabaseConfigured && user) {
       medicineService.deleteMedicine(medicineId)
         .catch(err => console.error("Failed to delete medicine from database:", err));
     }
-    
+
     addNotification("Medicine Deleted 🗑️", `Medication and its scheduled reminders have been removed.`, "reminder");
   };
 
@@ -1965,7 +2277,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (hour >= 17 && hour < 20) return "evening" as const;
           return "night" as const;
         })));
-        
+
         editMedicine(med.id, { intakeTimes: updatedIntakeTimes, timings: updatedTimings }, targetRem.familyMemberId || null);
         addNotification("Reminder Updated 🗑️", `Removed ${targetRem.medicineName} dose at ${targetRem.intakeTime}.`, "reminder");
         return;
@@ -2055,8 +2367,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const isOperatorRealUser = operatorId && !operatorId.startsWith("fam-");
 
           if (status === "taken") {
-            const msg = operatorId !== ownerId 
-              ? `Family member marked your dose of ${targetRem.medicineName} as taken.` 
+            const msg = operatorId !== ownerId
+              ? `Family member marked your dose of ${targetRem.medicineName} as taken.`
               : `You marked ${targetRem.medicineName} as taken. Great job!`;
 
             if (isOwnerRealUser) {
@@ -2122,7 +2434,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .catch(err => console.error("Failed to submit diagnostic booking:", err));
     } else {
       addNotification("Test Booked Successfully! 🧪", `Your sample collection from ${newBooking.labName} is scheduled.`, "booking");
-      
+
       // Local Mock Dispatcher simulation
       setTimeout(() => {
         setBookings(currentBookings =>
@@ -2154,11 +2466,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       { id: "pharm-netmeds", name: "Netmeds Store", rating: 4.7, fastDeliveryMins: 60 }
     ];
     const selectedPharm = PHARMACIES.find(p => p.id === pharmacyId) || PHARMACIES[1];
-    
+
     // Look up medicines
     const selectedMeds = DEFAULT_MEDICINES.filter(m => medicineIds.includes(m.id));
     const medNames = selectedMeds.map(m => m.name);
-    
+
     const address = user?.addresses.find(a => a.id === addressId) || DEFAULT_PROFILE.addresses[0];
     const today = new Date();
     const formattedDate = today.toISOString().split("T")[0];
@@ -2213,7 +2525,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           else if (status === "completed") msg = `Diagnostic checkup reports are ready for Order #${b.id}.`;
 
           addNotification("Booking Status Update", msg, "booking");
-          
+
           if (status === "completed") {
             const repId = `rep-${Date.now()}`;
             const newReport: HealthReport = {
@@ -2280,14 +2592,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       aiSummary: textSummary,
       date: new Date().toISOString().split("T")[0]
     };
-    
+
     setReports(prev => [newReport, ...prev]);
 
     if (isSupabaseConfigured && user) {
       bookingService.addReport(user.id, null, testName, newReport.fileUrl, textSummary)
         .then(dbRep => setReports(prev => [dbRep, ...prev.filter(r => r.id !== repId)]))
         .catch(err => console.error("Failed to save uploaded report in database:", err));
-      
+
       reminderService.addNotification(user.id, "Report Uploaded Successfully! 📂", `Medimz AI has analyzed your uploaded ${testName} report.`, "system")
         .then(n => setNotifications(prev => [n, ...prev]));
     } else {
@@ -2307,7 +2619,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isRead: false,
       createdAt: new Date().toISOString()
     };
-    
+
     setNotifications(prev => [newNotif, ...prev]);
 
     if (isSupabaseConfigured && user) {
@@ -2343,7 +2655,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       alert("Database connection is not configured. Please set your Supabase environment variables.");
       return false;
     }
-    
+
     // 1. Generate invitation code
     const codeChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     let code = "FAM-";
@@ -2784,12 +3096,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         activeTab,
         setActiveTab,
         login,
+        loginWithPhone,
         signup,
         resetPassword,
         logout,
         updateUserProfile,
         isLoading,
-
+        pendingOnboarding,
+        clearPendingOnboarding,
         adminRole,
         adminRoles,
         auditLogs,

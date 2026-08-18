@@ -1,10 +1,12 @@
+import { showNotification } from "./notificationWeb";
+
 // Helper to lazy load Capacitor plugins dynamically to prevent server-side import exceptions in Next.js
 const getLocalNotifications = async () => {
   if (typeof window === "undefined") return null;
   try {
     const { Capacitor } = await import("@capacitor/core");
     if (!Capacitor.isNativePlatform()) return null;
-    
+
     const { LocalNotifications } = await import("@capacitor/local-notifications");
     return LocalNotifications;
   } catch (e) {
@@ -17,15 +19,21 @@ export const notificationService = {
   // Request notification permissions and register Action Types
   async init() {
     const LocalNotifications = await getLocalNotifications();
+    console.log("LocalNotifications:", LocalNotifications);
     if (!LocalNotifications) return;
-
+    if (!LocalNotifications) {
+      console.log("LocalNotifications is NULL");
+      return;
+    }
     try {
       // 1. Request Permission
       const permission = await LocalNotifications.requestPermissions();
+      console.log("Permission:", permission);
       if (permission.display !== "granted") {
         console.warn("Notification permissions not granted");
         return;
       }
+      console.log("Permission Granted");
 
       // 2. Register Action Types (Taken, Snooze, Skip)
       await LocalNotifications.registerActionTypes({
@@ -52,13 +60,12 @@ export const notificationService = {
           }
         ]
       });
-
+      console.log("Initialized");
       console.log("Capacitor Local Notifications initialized successfully");
     } catch (e) {
       console.error("Failed to initialize Capacitor Local Notifications:", e);
     }
   },
-
   // Schedule a high-priority native notification
   async scheduleMedicineReminder(med: {
     id: string;
@@ -84,7 +91,7 @@ export const notificationService = {
             body: `${med.name} ${med.dosage}\nTake 1 tablet now.\nFor: ${recipient}\nScheduled: ${scheduledTime}\nStay consistent. Every dose matters.`,
             id: Math.floor(Math.random() * 100000),
             schedule: { at: new Date(Date.now() + delaySeconds * 1000) },
-            sound: "beep.wav", 
+            sound: "beep.wav",
             actionTypeId: "MED_REMINDER_ACTIONS",
             extra: {
               medicineId: med.id,
@@ -107,7 +114,14 @@ export const notificationService = {
     onSkip: (medicineId: string) => void;
   }) {
     const LocalNotifications = await getLocalNotifications();
-    if (!LocalNotifications) return;
+
+    if (!LocalNotifications) {
+      if ("Notification" in window) {
+        const permission = await Notification.requestPermission();
+        console.log("Web notification permission:", permission);
+      }
+      return;
+    }
 
     LocalNotifications.addListener("localNotificationActionPerformed", (action: any) => {
       const extra = action.notification.extra;

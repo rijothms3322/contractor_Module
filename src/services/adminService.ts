@@ -1,4 +1,4 @@
-import { supabase, isSupabaseConfigured } from "../lib/supabaseClient";
+import { isSupabaseConfigured, supabase } from "../lib/supabaseClient";
 
 export interface UserRole {
   id: string;
@@ -81,7 +81,7 @@ export const adminService = {
       .from("profiles")
       .select("id")
       .ilike("full_name", `%${cleanEmail.split("@")[0]}%`);
-    
+
     const profileId = profiles && profiles[0] ? profiles[0].id : "00000000-0000-0000-0000-000000000000";
 
     const payload = {
@@ -113,11 +113,11 @@ export const adminService = {
     };
 
     await this.logAdminAction(
-      null, 
-      adminEmail, 
-      `Assigned role ${role} to ${cleanEmail}`, 
-      "user_roles", 
-      data.id, 
+      null,
+      adminEmail,
+      `Assigned role ${role} to ${cleanEmail}`,
+      "user_roles",
+      data.id,
       null,
       payload
     );
@@ -130,7 +130,7 @@ export const adminService = {
    */
   async revokeUserRole(adminEmail: string, roleId: string): Promise<void> {
     this.checkBackend();
-    
+
     // Find role email for logging
     const { data: roleData } = await supabase
       .from("user_roles")
@@ -153,11 +153,11 @@ export const adminService = {
         .eq("id", roleData.user_id);
 
       await this.logAdminAction(
-        null, 
-        adminEmail, 
-        `Revoked ${roleData.role} role for ${roleData.email}`, 
-        "user_roles", 
-        roleId, 
+        null,
+        adminEmail,
+        `Revoked ${roleData.role} role for ${roleData.email}`,
+        "user_roles",
+        roleId,
         roleData,
         null
       );
@@ -204,7 +204,7 @@ export const adminService = {
     newValue: any
   ): Promise<void> {
     this.checkBackend();
-    
+
     let ip = "127.0.0.1";
     let browserName = "Unknown Browser";
     let deviceName = "Unknown Device";
@@ -355,7 +355,7 @@ export const adminService = {
           .select("id, full_name, avatar_url, role, created_at");
         if (profErr) throw profErr;
 
-        const filtered = (profiles || []).filter((p: any) => 
+        const filtered = (profiles || []).filter((p: any) =>
           (p.full_name || "").toLowerCase().includes(query.toLowerCase())
         );
         return filtered.slice(offset, offset + limit).map((p: any) => ({
@@ -372,5 +372,28 @@ export const adminService = {
         return [];
       }
     }
-  }
+  },
+
+
+  // Server-side machine name search 
+  async searchMedicines(query: string) {
+    this.checkBackend();
+
+    const searchText = query.trim();
+
+    if (searchText.length < 2) {
+      return [];
+    }
+
+    const { data, error } = await supabase.rpc("search_medicines", {
+      search_text: searchText,
+    });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return data || [];
+  },
 };
+

@@ -40,16 +40,17 @@ export const ProfileView: React.FC = () => {
   const [reportPatient, setReportPatient] = useState("Myself");
   const [reportNote, setReportNote] = useState("");
   const [reportFileName, setReportFileName] = useState("blood_test_report.pdf");
-  
+
   // Profile edit fields
+  console.log(user, 'user')
   const [isEditing, setIsEditing] = useState(false);
-  const [fullName, setFullName] = useState(user?.fullName || "");
-  const [age, setAge] = useState(user?.age || 68);
-  const [gender, setGender] = useState(user?.gender || "Female");
+  const [fullName, setFullName] = useState(user?.fullName || "-");
+  const [age, setAge] = useState(user?.age || '-');
+  const [gender, setGender] = useState(user?.gender ?? "");
   const [userNickname, setUserNickname] = useState(user?.nickname || "");
   const [userDob, setUserDob] = useState(user?.dob || "");
-  const [userBloodGroup, setUserBloodGroup] = useState(user?.bloodGroup || "O+");
-  const [userPhone, setUserPhone] = useState(user?.phone || "");
+  const [userBloodGroup, setUserBloodGroup] = useState(user?.bloodGroup ?? "");
+  const [userPhone, setUserPhone] = useState(user?.phone_number || "");
   const [userConditions, setUserConditions] = useState(user?.medicalConditions.join(", ") || "");
   const [userAvatarUrl, setUserAvatarUrl] = useState(user?.avatarUrl || "https://api.dicebear.com/7.x/initials/svg?seed=Sarah");
   const [activeUserAvatarCategory, setActiveUserAvatarCategory] = useState<"adults" | "children" | "babies" | "friends" | "pets">("adults");
@@ -93,7 +94,7 @@ export const ProfileView: React.FC = () => {
       age: calculatedAge,
       gender,
       bloodGroup: userBloodGroup,
-      phone: userPhone,
+      phone_number: userPhone,
       medicalConditions: userConditions ? userConditions.split(",").map((s) => s.trim()) : [],
       avatarUrl: userAvatarUrl
     });
@@ -206,38 +207,78 @@ export const ProfileView: React.FC = () => {
 
   return (
     <div className="space-y-stack-lg animate-in fade-in duration-300">
-      
+
       {/* 1. Sarah's Profile Details Card */}
       <section className="glass-card rounded-2xl p-6 shadow-sm border border-outline-variant/20">
         <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="flex gap-4 items-center text-left">
+          <div className="flex justify-between gap-4 items-center text-left">
             <img
               alt={user?.fullName || "User Profile"}
               className="w-16 h-16 rounded-2xl object-cover border-2 border-primary-container shadow-md"
               src={user?.avatarUrl || "https://lh3.googleusercontent.com/aida-public/AB6AXuBCs_YGgPk7VOsahsNOdDGaNvTVuV8ZJljMuiD4GSAvQV802koXWwDy1aqg24M8w4jkBOlONbu5i26SUif3gi5LPSJdJTIs"}
             />
             <div>
-              <div className="flex items-center gap-2">
-                <h2 className="font-headline-md text-xl text-secondary font-bold leading-tight">{user?.fullName}</h2>
-                {user?.nickname && user?.nickname !== user?.fullName && (
-                  <span className="bg-primary/5 text-primary text-[8px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
-                    {user?.nickname}
+              <div className="flex items-center gap-2 min-w-0">
+                <h2 className="font-headline-md text-xl text-secondary font-bold leading-tight truncate">
+                  {user?.fullName || "-"}
+                </h2>
+
+                {user?.nickname && user.nickname !== user?.fullName && (
+                  <span className="shrink-0 bg-primary/5 text-primary text-[8px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                    {user.nickname}
                   </span>
                 )}
               </div>
-              <p className="font-body-md text-xs text-on-surface-variant mt-0.5">
-                Age: {user?.age} • {user?.gender} • Blood Type: <span className="font-bold text-secondary">{user?.bloodGroup || "O+"}</span>
-              </p>
+              <div className="flex flex-col gap-0.5 font-body-md text-xs text-on-surface-variant mt-0.5">
+                {user?.age && <span>
+                  • Age: {user?.age}
+                </span>}
+
+                {user?.gender && <span>
+                  • Gender: {user?.gender}
+                </span>}
+
+                {userBloodGroup && <span>
+                  • Blood Type:{" "}
+                  <span className="font-bold text-secondary">
+                    {userBloodGroup}
+                  </span>
+                </span>}
+              </div>
               {user?.email && (
-                <p className="font-body-md text-[11px] text-primary mt-1 flex items-center gap-1">
-                  <span className="material-symbols-outlined text-[13px]">mail</span>
-                  <span>{user.email}</span>
-                </p>
+                <div className="font-body-md text-[11px] text-primary mt-1 flex items-center gap-1 min-w-0">
+                  <span className="material-symbols-outlined text-[13px] shrink-0">
+                    mail
+                  </span>
+                  <span className="truncate" title={user.email}>
+                    {user.email}
+                  </span>
+                </div>
               )}
+
+              {user?.phone_number && (
+                <div className="font-body-md text-[11px] text-primary mt-1 flex items-center gap-1 min-w-0">
+                  <span className="material-symbols-outlined text-[13px] shrink-0">
+                    phone
+                  </span>
+                  <span className="truncate" title={user.phone_number}>
+                    {user.phone_number}
+                  </span>
+                </div>
+              )}
+
               <div className="flex gap-1.5 flex-wrap mt-2">
-                {user?.medicalConditions.map((cond, idx) => (
+                {/* {user?.medicalConditions.map((cond, idx) => (
                   <span key={idx} className="bg-primary/10 text-primary text-[8px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
                     {cond}
+                  </span>
+                ))} */}
+                {user?.medicalConditions.map((condition, idx) => (
+                  <span
+                    key={`${condition}-${idx}`}
+                    className="bg-primary/10 text-primary text-[8px] px-2 py-0.5 rounded font-bold uppercase tracking-wider"
+                  >
+                    {condition}
                   </span>
                 ))}
               </div>
@@ -248,12 +289,12 @@ export const ProfileView: React.FC = () => {
             <button
               onClick={() => {
                 setFullName(user?.fullName || "");
-                setAge(user?.age || 68);
-                setGender(user?.gender || "Female");
-                setUserNickname(user?.nickname || "");
+                setAge(user?.age || '');
+                setGender(user?.gender || '');
+                setUserNickname(user?.nickname || '');
                 setUserDob(user?.dob || "");
-                setUserBloodGroup(user?.bloodGroup || "O+");
-                setUserPhone(user?.phone || "");
+                setUserBloodGroup(user?.bloodGroup || "");
+                setUserPhone(user?.phone_number || "");
                 setUserConditions(user?.medicalConditions.join(", ") || "");
                 setUserAvatarUrl(user?.avatarUrl || "https://api.dicebear.com/7.x/initials/svg?seed=Sarah");
                 setIsEditing(true);
@@ -334,29 +375,29 @@ export const ProfileView: React.FC = () => {
                     <p className="font-body-md text-[10px] text-on-surface-variant mt-0.5">
                       Age: {fam.age} • {fam.gender}
                     </p>
-                  <div className="flex gap-1 flex-wrap mt-2">
-                    {fam.medicalConditions.map((cond, idx) => (
-                      <span key={idx} className="bg-surface-container text-outline text-[8px] px-1.5 py-0.5 rounded font-bold">
-                        {cond}
-                      </span>
-                    ))}
+                    <div className="flex gap-1 flex-wrap mt-2">
+                      {fam.medicalConditions.map((cond, idx) => (
+                        <span key={idx} className="bg-surface-container text-outline text-[8px] px-1.5 py-0.5 rounded font-bold">
+                          {cond}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Progress visual Adherence */}
-              <div className="space-y-1">
-                <div className="flex justify-between items-center text-[10px] font-bold">
-                  <span className="text-on-surface-variant font-label-sm">Dosing Compliance</span>
-                  <span className="text-tertiary">{fam.adherenceRate || 100}%</span>
+                {/* Progress visual Adherence */}
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center text-[10px] font-bold">
+                    <span className="text-on-surface-variant font-label-sm">Dosing Compliance</span>
+                    <span className="text-tertiary">{fam.adherenceRate || 100}%</span>
+                  </div>
+                  <div className="h-2 bg-surface-container rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-tertiary rounded-full transition-all duration-500"
+                      style={{ width: `${fam.adherenceRate || 100}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="h-2 bg-surface-container rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-tertiary rounded-full transition-all duration-500"
-                    style={{ width: `${fam.adherenceRate || 100}%` }}
-                  />
-                </div>
-              </div>
               </div>
             );
           })}
@@ -741,11 +782,10 @@ export const ProfileView: React.FC = () => {
                       key={cat.id}
                       type="button"
                       onClick={() => setActiveUserAvatarCategory(cat.id as any)}
-                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors flex-shrink-0 ${
-                        activeUserAvatarCategory === cat.id
-                          ? "bg-secondary/15 text-secondary"
-                          : "bg-white text-on-surface-variant border border-outline-variant/20 hover:bg-surface-container"
-                      }`}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors flex-shrink-0 ${activeUserAvatarCategory === cat.id
+                        ? "bg-secondary/15 text-secondary"
+                        : "bg-white text-on-surface-variant border border-outline-variant/20 hover:bg-surface-container"
+                        }`}
                     >
                       {cat.name}
                     </button>
@@ -760,9 +800,8 @@ export const ProfileView: React.FC = () => {
                         key={av.id}
                         type="button"
                         onClick={() => setUserAvatarUrl(av.url)}
-                        className={`w-11 h-11 rounded-full p-0.5 border-2 transition-all flex items-center justify-center overflow-hidden flex-shrink-0 ${
-                          isSelected ? "border-primary scale-110 shadow-sm" : "border-transparent hover:scale-105"
-                        }`}
+                        className={`w-11 h-11 rounded-full p-0.5 border-2 transition-all flex items-center justify-center overflow-hidden flex-shrink-0 ${isSelected ? "border-primary scale-110 shadow-sm" : "border-transparent hover:scale-105"
+                          }`}
                       >
                         <img src={av.url} alt={av.label} className="w-full h-full object-cover" />
                       </button>
@@ -781,7 +820,7 @@ export const ProfileView: React.FC = () => {
           </div>
         </div>
       )}
-      
+
       {showAddMember && (
         <div className="fixed inset-0 bg-inverse-surface/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="w-full max-w-[420px] bg-white rounded-3xl p-6 shadow-2xl border border-outline-variant/30 flex flex-col max-h-[85vh] overflow-y-auto animate-in zoom-in-95 duration-200">
@@ -936,7 +975,7 @@ export const ProfileView: React.FC = () => {
               {/* Avatar Selector Grid */}
               <div className="space-y-2">
                 <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Select Representative Avatar</label>
-                
+
                 {/* Categories */}
                 <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
                   {AVATAR_CATEGORIES.map((cat) => (
@@ -944,11 +983,10 @@ export const ProfileView: React.FC = () => {
                       key={cat.id}
                       type="button"
                       onClick={() => setActiveAvatarCategory(cat.id as any)}
-                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors flex-shrink-0 ${
-                        activeAvatarCategory === cat.id
-                          ? "bg-secondary/15 text-secondary"
-                          : "bg-white text-on-surface-variant border border-outline-variant/20 hover:bg-surface-container"
-                      }`}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors flex-shrink-0 ${activeAvatarCategory === cat.id
+                        ? "bg-secondary/15 text-secondary"
+                        : "bg-white text-on-surface-variant border border-outline-variant/20 hover:bg-surface-container"
+                        }`}
                     >
                       {cat.name}
                     </button>
@@ -964,9 +1002,8 @@ export const ProfileView: React.FC = () => {
                         key={av.id}
                         type="button"
                         onClick={() => setFamAvatarUrl(av.url)}
-                        className={`w-11 h-11 rounded-full p-0.5 border-2 transition-all flex items-center justify-center overflow-hidden flex-shrink-0 ${
-                          isSelected ? "border-primary scale-110 shadow-sm" : "border-transparent hover:scale-105"
-                        }`}
+                        className={`w-11 h-11 rounded-full p-0.5 border-2 transition-all flex items-center justify-center overflow-hidden flex-shrink-0 ${isSelected ? "border-primary scale-110 shadow-sm" : "border-transparent hover:scale-105"
+                          }`}
                         title={av.label}
                       >
                         <img src={av.url} alt={av.label} className="w-full h-full object-cover" />

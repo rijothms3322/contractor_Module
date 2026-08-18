@@ -12,7 +12,7 @@ export interface Profile {
   nickname?: string;
   dob?: string;
   bloodGroup?: string;
-  phone?: string;
+  phone_number?: string;
   addresses: {
     id: string;
     label: string;
@@ -24,6 +24,10 @@ export interface Profile {
   role: "user" | "admin";
   familyId?: string | null;
   email?: string;
+  isWalkthroughShown?: boolean;           
+  isMedicineWalkthroughShown?: boolean;     
+  isPrescriptionWalkthroughShown?: boolean; 
+  isSignupDone?: boolean; 
 }
 
 export interface FamilyMember {
@@ -50,7 +54,7 @@ export interface Medicine {
   name: string;
   dosage: string;
   instructions: string;
-  frequency: "daily" | "weekly";
+  frequency: "daily" | "weekly" | "every_day" | "specific_days" | "interval";
   timings: ("morning" | "afternoon" | "evening" | "night")[];
   startDate: string;
   endDate?: string;
@@ -233,7 +237,7 @@ export const DEFAULT_MEDICINES: Medicine[] = [
 export const generateDefaultReminders = (): Reminder[] => {
   const reminders: Reminder[] = [];
   const today = new Date();
-  
+
   // Set times for today's slots
   const morningTime = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 8, 30).toISOString();
   const afternoonTime = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 13, 0).toISOString();
@@ -553,3 +557,5 @@ export const DEFAULT_NOTIFICATIONS: Notification[] = [
     createdAt: new Date(Date.now() - 7200000).toISOString()
   }
 ];
+
+export const TermsConditions = `https://medimz.com/terms`
