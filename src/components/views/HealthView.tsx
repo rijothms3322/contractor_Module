@@ -637,12 +637,12 @@ export const HealthView: React.FC = () => {
                 }`}>
                   🟢 {wellnessCategory}
                 </span>
-                <span className="text-[10px] text-outline font-medium truncate">{wellnessTrend}</span>
+                <span className="text-[10px] text-outline font-medium">{wellnessTrend}</span>
               </div>
             </div>
 
             {/* Circular Progress Ring */}
-            <div className="relative w-[72px] h-[72px] flex items-center justify-center flex-shrink-0">
+            <div className="relative w-[65px] h-[65px] flex items-center justify-center flex-shrink-0">
               <svg className="w-full h-full" viewBox="0 0 72 72">
                 <circle cx="36" cy="36" r="30" fill="transparent" stroke="currentColor" strokeWidth="4" className="text-surface-container-highest" />
                 <circle
@@ -693,7 +693,7 @@ export const HealthView: React.FC = () => {
             </div>
 
             {/* Circular Progress Ring */}
-            <div className="relative w-[72px] h-[72px] flex items-center justify-center flex-shrink-0">
+            <div className="relative w-[65px] h-[65px] flex items-center justify-center flex-shrink-0">
               <svg className="w-full h-full" viewBox="0 0 72 72">
                 <circle cx="36" cy="36" r="30" fill="transparent" stroke="currentColor" strokeWidth="4" className="text-surface-container-highest" />
                 <circle

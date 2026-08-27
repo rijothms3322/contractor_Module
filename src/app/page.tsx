@@ -86,18 +86,14 @@ export default function Page() {
   }, [isLoggedIn, showSplash, showOnboarding, wellnessLogs]);
 
   // Window event listener to trigger wellness check-in modal from child components
-  useEffect(() => {
+useEffect(() => {
     const handleOpenCheckIn = () => {
-      const tourDone = user?.isWalkthroughShown
-      if (tourDone) {
         setIsCheckInOpen(true);
-      } else {
-        console.log("Wellness check-in is locked until the tour is complete.");
-      }
     };
     window.addEventListener("open-wellness-checkin", handleOpenCheckIn);
     return () => window.removeEventListener("open-wellness-checkin", handleOpenCheckIn);
   }, []);
+
 
   // Audio and shake triggers for simulated push notification
   useEffect(() => {

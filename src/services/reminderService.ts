@@ -77,6 +77,20 @@ export const reminderService = {
   },
 
   /**
+ * Deletes all pending reminders for a specific medicine (used when editing the medicine)
+ */
+  async deletePendingReminders(medicineId: string, userId: string): Promise<void> {
+    if (!isSupabaseConfigured) throw new Error("Supabase is not configured.");
+    const { error } = await supabase
+      .from("reminders")
+      .delete()
+      .eq("medicine_id", medicineId)
+      .eq("user_id", userId)
+      .eq("status", "pending");
+    if (error) throw error;
+  },
+
+  /**
    * Logs taken or missed dose compliance statuses
    */
   async updateReminderStatus(reminderId: string, status: "pending" | "taken" | "missed", takenAt?: string): Promise<void> {

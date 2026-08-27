@@ -70,6 +70,10 @@ CREATE TABLE IF NOT EXISTS public.medicines (
     name TEXT NOT NULL,
     dosage TEXT NOT NULL, -- e.g., '10mg', '1 Tablet', '2 drops'
     instructions TEXT NOT NULL, -- e.g., 'After breakfast', 'Before sleep'
+    intake_times TEXT[] DEFAULT '{}'
+    document_id UUID
+        REFERENCES public.documents(id)
+        ON DELETE CASCADE,
     frequency TEXT DEFAULT 'every_day' CHECK (frequency IN (  'daily', 'weekly', 'every_day', 'specific_days', 'interval')),
     timings TEXT[] DEFAULT '{}', -- subset of ['morning', 'afternoon', 'evening', 'night']
     start_date DATE NOT NULL DEFAULT CURRENT_DATE,
@@ -140,6 +144,17 @@ CHECK (
         'sunday'
     ]::TEXT[]
 );
+
+-- Add foreign key to documents table
+ALTER TABLE public.medicines
+ADD CONSTRAINT medicines_document_id_fkey
+FOREIGN KEY (document_id)
+REFERENCES public.documents(id)
+ON DELETE CASCADE;
+
+-- Index for faster document lookup
+CREATE INDEX IF NOT EXISTS idx_medicines_document_id
+ON public.medicines(document_id);
 
 
 CREATE POLICY "Allow users access own medicines" ON public.medicines

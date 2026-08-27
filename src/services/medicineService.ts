@@ -1,5 +1,5 @@
-import { supabase, isSupabaseConfigured } from "../lib/supabaseClient";
-import { Medicine, FamilyMember } from "../lib/mockData";
+import { FamilyMember, Medicine } from "../lib/mockData";
+import { isSupabaseConfigured, supabase } from "../lib/supabaseClient";
 
 export const medicineService = {
   /**
@@ -13,7 +13,6 @@ export const medicineService = {
       .select("*")
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
-
     if (error) throw error;
 
     return (data || []).map((m: any) => ({
@@ -21,12 +20,18 @@ export const medicineService = {
       name: m.name,
       dosage: m.dosage,
       instructions: m.instructions,
-      frequency: m.frequency as "daily" | "weekly",
+      frequency: m.frequency as "daily" | "weekly" | "every_day" | "specific_days" | "interval",
       timings: m.timings || [],
       startDate: m.start_date,
       endDate: m.end_date || undefined,
       stockCount: m.stock_count !== null ? m.stock_count : undefined,
-      isPrivate: !!m.is_private
+      isPrivate: !!m.is_private,
+      // intakeTimes: m.intake_times || [],
+      selected_days: m.selected_days || [],
+      repeat_every_n_days: m.repeat_every_n_days ?? undefined,
+      interval_hours: m.interval_hours ?? undefined,
+      interval_start_time: m.interval_start_time || undefined,
+      document_id: m.document_id || undefined,
     }));
   },
 
@@ -36,7 +41,7 @@ export const medicineService = {
   async addMedicine(userId: string, medicine: Omit<Medicine, "id">): Promise<Medicine> {
     if (!isSupabaseConfigured) throw new Error("Supabase is not configured.");
     console.log('call addMedicine')
-    console.log('medicine',medicine,'userId',userId)
+    console.log('medicine service', medicine.document_id, 'userId', userId)
     const { data, error } = await supabase
       .from("medicines")
       .insert({
@@ -50,13 +55,21 @@ export const medicineService = {
         start_date: medicine.startDate,
         end_date: medicine.endDate || null,
         stock_count: medicine.stockCount || null,
-        is_private: !!medicine.isPrivate
+        is_private: !!medicine.isPrivate,
+        intake_times: medicine.intakeTimes || null,
+        selected_days: medicine.selected_days || null,
+        repeat_every_n_days: medicine.repeat_every_n_days ?? null,
+        interval_hours: medicine.interval_hours ?? null,
+        interval_start_time: medicine.interval_start_time || null,
+        document_id: medicine.document_id || null,
       })
       .select()
       .single();
 
+    console.log(data, 'data medicine')
+    console.error('Supabase insert error:', error);
     if (error) throw error;
-
+    console.error('Error details:', error.message, error.details, error.hint);
     return {
       id: data.id,
       name: data.name,
@@ -67,9 +80,46 @@ export const medicineService = {
       startDate: data.start_date,
       endDate: data.end_date || undefined,
       stockCount: data.stock_count !== null ? data.stock_count : undefined,
-      isPrivate: !!data.is_private
+      isPrivate: !!data.is_private,
+      selected_days: data.selected_days || [],
+      repeat_every_n_days: data.repeat_every_n_days ?? undefined,
+      interval_hours: data.interval_hours ?? undefined,
+      interval_start_time: data.interval_start_time || undefined,
+      intakeTimes: data.intake_times || [],
     };
   },
+
+  /**
+   * Edit a medicine prescription for a patient
+   */
+  async updateMedicine(medicineId: string, updates: Partial<Medicine>): Promise<void> {
+    if (!isSupabaseConfigured) throw new Error("Supabase is not configured.");
+
+    const payload: any = {};
+    if (updates.name !== undefined) payload.name = updates.name;
+    if (updates.dosage !== undefined) payload.dosage = updates.dosage;
+    if (updates.instructions !== undefined) payload.instructions = updates.instructions;
+    if (updates.frequency !== undefined) payload.frequency = updates.frequency;
+    if (updates.timings !== undefined) payload.timings = updates.timings;
+    if (updates.startDate !== undefined) payload.start_date = updates.startDate;
+    if (updates.endDate !== undefined) payload.end_date = updates.endDate;
+    if (updates.stockCount !== undefined) payload.stock_count = updates.stockCount;
+    if (updates.isPrivate !== undefined) payload.is_private = updates.isPrivate;
+    if (updates.intakeTimes !== undefined) payload.intake_times = updates.intakeTimes;
+    if (updates.selected_days !== undefined) payload.selected_days = updates.selected_days;
+    if (updates.repeat_every_n_days !== undefined) payload.repeat_every_n_days = updates.repeat_every_n_days;
+    if (updates.interval_hours !== undefined) payload.interval_hours = updates.interval_hours;
+    if (updates.interval_start_time !== undefined) payload.interval_start_time = updates.interval_start_time;
+    if (updates.document_id !== undefined) payload.document_id = updates.document_id;
+
+    const { error } = await supabase
+      .from("medicines")
+      .update(payload)
+      .eq("id", medicineId);
+
+    if (error) throw error;
+  },
+
 
   /**
    * Deletes a medicine prescription by ID
@@ -104,7 +154,7 @@ export const medicineService = {
         try {
           const stored = localStorage.getItem(`medimz_fam_metadata_${f.id}`);
           if (stored) localMeta = JSON.parse(stored);
-        } catch (e) {}
+        } catch (e) { }
       }
 
       return {
@@ -190,7 +240,7 @@ export const medicineService = {
         gender: member.gender,
         medical_conditions: member.medicalConditions
       };
-      
+
       const { data, error } = await supabase
         .from("family_members")
         .insert(fallbackPayload)

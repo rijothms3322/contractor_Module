@@ -61,6 +61,11 @@ export interface Medicine {
   intakeTimes?: string[];
   stockCount?: number;
   isPrivate?: boolean;
+  selected_days?: string[],
+  repeat_every_n_days?: number;
+  interval_hours?: number;
+  interval_start_time?: string;
+  document_id?: string | null;   
 }
 
 export interface Reminder {

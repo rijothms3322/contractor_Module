@@ -5,10 +5,132 @@ import { getOCRService } from "@/services/ocr";
 import { parseOCRText } from "@/services/ocr/parser";
 import type { OCRUploaderProps } from "./types";
 import { processUploadedMedicalFile } from "@/lib/medical/processUploadedMedicalFile";
+import { useApp } from "@/context/AppContext";
+
+const STATIC_MEDICINES = [
+    {
+        user_id: "e77f78e3-c089-4179-85e1-9aefac9191d3",
+        document_id: "07941932-6179-49f6-9c2c-38f4e88ac7b7",
+        medicine_master_id: null,
+        medicine_name: "ABCDAMAS",
+        dosage: "1 Morning",
+        frequency: null,
+        duration: "8 Days",
+        instructions: "Total: 8 Tab",
+        confidence: 95,
+        needs_review: true,
+    },
+    {
+        user_id: "e77f78e3-c089-4179-85e1-9aefac9191d3",
+        document_id: "07941932-6179-49f6-9c2c-38f4e88ac7b7",
+        medicine_master_id: null,
+        medicine_name: "vomAST",
+        dosage: "1 Morning, 1 Night",
+        frequency: null,
+        duration: "8 Days",
+        instructions: "After Food",
+        confidence: 85,
+        needs_review: true,
+    },
+    {
+        user_id: "e77f78e3-c089-4179-85e1-9aefac9191d3",
+        document_id: "07941932-6179-49f6-9c2c-38f4e88ac7b7",
+        medicine_master_id: null,
+        medicine_name: "ZOCUAR 500",
+        dosage: "1 Morning",
+        frequency: null,
+        duration: "3 Days",
+        instructions: null,
+        confidence: 80,
+        needs_review: true,
+    },
+    {
+        user_id: "e77f78e3-c089-4179-85e1-9aefac9191d3",
+        document_id: "07941932-6179-49f6-9c2c-38f4e88ac7b7",
+        medicine_master_id: null,
+        medicine_name: "GESTAKIND 10/58",
+        dosage: "1 Night",
+        frequency: null,
+        duration: "8 Days",
+        instructions: null,
+        confidence: 85,
+        needs_review: true,
+    },
+];
+
+const STATIC_REPORT = {
+    category: "lab_report",
+    confidence: 90,
+    diagnosis: "Neutrophilia",
+    doctor_name: "Dr. Dogar",
+    hospital_name: "Shah Latif Pathology Lab",
+    notes: "Comments: film shows high Neutrophilia",
+    results: [
+        {
+            "test_name": "Haemoglobin",
+            "value_text": "12.5",
+            "confidence": 80,
+            "abnormal_flag": "NORMAL",
+            "reference_high": 14,
+            "reference_low": 11,
+            "reference_range": "11.0-14.0",
+            "unit": "g/dl",
+            "value_numeric": 12.5
+        },
+        {
+            "test_name": "PCV (HCT)",
+            "value_text": "38",
+            "confidence": 95,
+            "abnormal_flag": "NORMAL",
+            "reference_high": 40,
+            "reference_low": 35,
+            "reference_range": "35-40",
+            "unit": "%",
+            "value_numeric": 38
+        },
+        {
+            "test_name": "WBC(TLC)",
+            "value_text": "5.8",
+            "confidence": 80,
+            "abnormal_flag": "NORMAL",
+            "reference_high": 13.5,
+            "reference_low": 4.5,
+            "reference_range": "4.5-13.5",
+            "unit": "X10^9/L",
+            "value_numeric": 5.8
+        },
+        {
+            "test_name": "Lymphocytes",
+            "value_text": "24",
+            "confidence": 90,
+            "abnormal_flag": "UNKNOWN",
+            "value_numeric": 24
+        },
+        {
+            "test_name": "Platelet Count",
+            "value_text": "266",
+            "confidence": 90,
+            "abnormal_flag": "NORMAL",
+            "reference_high": 450,
+            "reference_low": 150,
+            "reference_range": "150-450",
+            "value_numeric": 266
+        },
+        {
+            "test_name": "Malaria",
+            "value_text": "Negative",
+            "confidence": 85,
+            "abnormal_flag": "NORMAL"
+        }
+    ],
+    title: "BLOOD COMPLETE PICTURE"
+};
+
 
 export default function WebUploader({
     onComplete,
     onError,
+    onClear, 
 }: OCRUploaderProps) {
     const [loading, setLoading] = useState(false);
     console.log(loading, 'loading')
@@ -17,7 +139,14 @@ export default function WebUploader({
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
+    const { user } = useApp();
 
+    if (!user?.id) {
+    throw new Error("User is not authenticated.");
+}
+
+
+    
     useEffect(() => {
         return () => {
             if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -101,18 +230,27 @@ export default function WebUploader({
             console.log('Calling processUploadedMedicalFile...');
             const medicalResult =
                 await processUploadedMedicalFile(
+                    user?.id,
                     selectedFile,
                     ocrText,
                     ocrConfidence
                 );
             console.log('processUploadedMedicalFile returned:', medicalResult);
+
+            // onComplete({
+            //     document_id: "static-doc-id",
+            //     text: ocrText,
+            //     medicines: STATIC_MEDICINES,
+            //     report: STATIC_REPORT,
+            //     requires_manual_review: false,
+            // });
             onComplete({
-                document_id: medicalResult.document.documentId,
+                document_id: medicalResult.documentId,
                 text: medicalResult.ocrText,
 
                 medicines: medicalResult.result
                     ?.data
-                    ?.medicines,
+                    ?.medicines ?? [],
 
                 report: medicalResult.result
                     ?.data
@@ -159,6 +297,7 @@ export default function WebUploader({
         if (inputRef.current) {
             inputRef.current.value = "";
         }
+        onClear?.();
     };
 
 

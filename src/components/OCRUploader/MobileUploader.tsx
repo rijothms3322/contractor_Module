@@ -6,10 +6,12 @@ import {
 } from "@/lib/medical/processUploadedMedicalFile";
 import type { OCRUploaderProps } from "./types";
 import { useState, useEffect, useRef } from "react";
+import { useApp } from "@/context/AppContext";
 
 export default function MobileUploader({
     onComplete,
     onError,
+    onClear, 
 }: OCRUploaderProps) {
     const [loading, setLoading] = useState(false);
     const [progress, setProgress] = useState(0);
@@ -18,6 +20,13 @@ export default function MobileUploader({
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
+
+    const { user } = useApp();
+
+    if (!user?.id) {
+    throw new Error("User is not authenticated.");
+}
+
 
     useEffect(() => {
         return () => {
@@ -83,25 +92,32 @@ export default function MobileUploader({
 
             console.log("OCR Confidence:", ocrConfidence);
             console.log("OCR Text:", ocrText);
-
+            console.log('Calling processUploadedMedicalFile...');
             /* -------------------------------- STEP 2 Upload file + process medical data -------------------------------- */
             const medicalResult =
                 await processUploadedMedicalFile(
+                    user?.id,
                     selectedFile,
                     ocrText,
                     ocrConfidence
                 );
+            console.log('processUploadedMedicalFile returned:', medicalResult);
+            console.log('processUploadedMedicalFile document Id', medicalResult.documentId)
+            console.log('processUploadedMedicalFile document text', medicalResult.ocrText)
+            console.log('processUploadedMedicalFile document medicine', medicalResult.result?.data?.medicines)
+            console.log('processUploadedMedicalFile document report', medicalResult.result?.data?.report)
+            console.log('processUploadedMedicalFile document requires_manual_review', medicalResult.result?.requires_manual_review)
             /* -------------------------------- STEP 3 Send result to parent -------------------------------- */
 
             onComplete({
                 document_id:
-                    medicalResult.document.documentId,
+                    medicalResult.documentId,
 
                 text:
                     medicalResult.ocrText,
 
                 medicines:
-                    medicalResult.result?.data?.medicines,
+                    medicalResult.result?.data?.medicines ?? [],
 
                 report:
                     medicalResult.result?.data?.report,
@@ -128,6 +144,7 @@ export default function MobileUploader({
 
     const handleRemove = () => {
         cleanup();
+        onClear?.(); 
     };
 
     return (
@@ -148,6 +165,15 @@ export default function MobileUploader({
                             disabled={loading}
                             className="hidden"
                         />
+                                                {loading && (
+                            <div className="absolute inset-0 z-20 rounded-xl flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm">
+                                <span className="w-7 h-7 border-2 border-white border-t-transparent rounded-full animate-spin" />
+
+                                <span className="mt-2 text-sm font-medium text-white">
+                                    Loading...
+                                </span>
+                            </div>
+                        )}
 
                         {!file ? (
                             <div className="flex items-center justify-center gap-2 p-6 min-h-[80px]">

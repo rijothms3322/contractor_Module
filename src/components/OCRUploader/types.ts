@@ -29,9 +29,10 @@ export interface OCRUploaderProps {
 
     }) => void;
 
-
     onError?: (
         error: Error
     ) => void;
+
+    onClear?: () => void;  
 
 }
