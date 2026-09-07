@@ -55,8 +55,11 @@ export const MedicineBox: React.FC<MedicineBoxProps> = ({
                         👤 {recipient}
                       </span>
                     </div>
+                    {med.dosage && <p className="text-xs text-on-surface-variant mt-0.5 truncate">
+                      • {med.dosage} 
+                    </p>}
                     <p className="text-xs text-on-surface-variant mt-0.5 truncate">
-                      {med.dosage} • {med.instructions}
+                      • {med.instructions}
                     </p>
                   </div>
                 </div>

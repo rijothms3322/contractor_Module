@@ -25,7 +25,7 @@ function CustomTooltip({
         <button
           {...skipProps}
           onClick={(e) => {
-            updateUserProfile({ isWalkthroughShown: true, isMedicineWalkthroughShown: true, isPrescriptionWalkthroughShown: true });
+            updateUserProfile({ isWalkthroughShown: true, isMedicineWalkthroughShown: true, isPrescriptionWalkthroughShown: true, isWellnessHealthWalkthroughShown: true });
             skipProps.onClick(e);
           }}
           className="text-outline font-semibold text-sm hover:text-primary transition-colors cursor-pointer bg-transparent border-none"

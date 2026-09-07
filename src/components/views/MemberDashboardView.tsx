@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useApp } from "../../context/AppContext";
 import { FamilyMember, Medicine, Reminder, Booking, HealthReport } from "../../lib/mockData";
 import { AVATAR_CATEGORIES, AVATAR_ITEMS } from "../../lib/avatarLibrary";
+import { medicineNewService } from "@/services/medicineService";
 
 interface MemberDashboardViewProps {
   member: FamilyMember;
@@ -11,17 +12,24 @@ interface MemberDashboardViewProps {
 }
 
 export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member, onBack }) => {
-  const { 
-    medicines, 
-    reminders, 
-    bookings, 
-    reports, 
+  console.log(member, 'member')
+  const {
+    medicines,
+    reminders,
+    bookings,
+    reports,
     notifications,
     addMedicine,
+    editMedicine,
     toggleReminderStatus,
-    updateFamilyMember 
+    updateFamilyMember,
+    familyMembers,
+    user,
+    addFamilyMember,
   } = useApp();
-
+  console.log(familyMembers, 'familyMembers')
+  console.log(medicines, 'medi')
+  console.log(user, 'user')
   const [activeTab, setActiveTab] = useState<"overview" | "medicines" | "orders" | "labs" | "reports" | "appointments" | "timeline" | "history">("overview");
   const [searchQuery, setSearchQuery] = useState("");
   const [showAddMedsModal, setShowAddMedsModal] = useState(false);
@@ -40,6 +48,9 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
   const [editColor, setEditColor] = useState(member.color || "blue");
   const [editAvatarUrl, setEditAvatarUrl] = useState(member.avatarUrl);
   const [activeEditAvatarCategory, setActiveEditAvatarCategory] = useState<"adults" | "children" | "babies" | "friends" | "pets">("adults");
+  const [freshMember, setFreshMember] = useState<FamilyMember | null>(null);
+  const [memberMeds, setMemberMeds] = useState<Medicine[]>([]);
+  console.log(memberMeds, 'memberMeds')
 
   // Form states for quick action: Add Medicine
   const [medName, setMedName] = useState("");
@@ -48,14 +59,14 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
   const [medInst, setMedInst] = useState("Take after food");
 
   // 1. FILTERING GLOBAL CONTEXT RECORDS FOR THIS MEMBER
-  const memberMeds = useMemo(() => {
-    // In our app, medicines are linked by matching targetFamilyMemberId (or if name matches the recipient name)
-    return medicines.filter(m => m.name.toLowerCase().includes(searchQuery.toLowerCase()));
-  }, [medicines, searchQuery]);
 
   const memberReminders = useMemo(() => {
     return reminders.filter(r => r.familyMemberId === member.id);
   }, [reminders, member.id]);
+
+  // const memberMeds = useMemo(() => {
+  //   return medicines.filter(m => m.familyMemberId === member.id);
+  // }, [medicines, member.id]);  
 
   const memberBookings = useMemo(() => {
     // Match bookings by patientName (e.g. Dad, Mom, Grandma) or direct comparison
@@ -173,9 +184,25 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
     setShowEditModal(false);
   };
 
+  useEffect(() => {
+    console.log('call 1')
+  const fetchMeds = async () => {
+
+    console.log('call 2',member.id)
+    try {
+      const allMeds = await medicineNewService.getMedicines(member.id);
+      console.log(allMeds, 'filtered')
+      setMemberMeds(allMeds);
+    } catch (error) {
+      console.error("Failed to fetch medicines:", error);
+    }
+  };
+  fetchMeds();
+}, []);
+
   return (
     <div className="space-y-6 text-left animate-in fade-in slide-in-from-bottom-4 duration-300">
-      
+
       {/* 1. Navigation Header & Back Button */}
       <div className="flex items-center gap-3">
         <button
@@ -221,7 +248,7 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
               </button>
             </div>
             <p className="font-body-md text-xs text-on-surface-variant">Full Name: {member.name} • {member.gender}</p>
-            
+
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
               <div className="bg-white/60 p-2 rounded-xl border border-outline-variant/10 text-left">
                 <span className="block text-[8px] font-bold text-outline uppercase">Age</span>
@@ -229,15 +256,15 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
               </div>
               <div className="bg-white/60 p-2 rounded-xl border border-outline-variant/10 text-left">
                 <span className="block text-[8px] font-bold text-outline uppercase">Blood Type</span>
-                <span className="text-xs font-bold text-secondary">{member.bloodGroup || "O+"}</span>
+                <span className="text-xs font-bold text-secondary">{member.bloodGroup}</span>
               </div>
               <div className="bg-white/60 p-2 rounded-xl border border-outline-variant/10 text-left">
                 <span className="block text-[8px] font-bold text-outline uppercase">Height</span>
-                <span className="text-xs font-bold text-secondary">168 cm</span>
+                <span className="text-xs font-bold text-secondary">{'-'}</span>
               </div>
               <div className="bg-white/60 p-2 rounded-xl border border-outline-variant/10 text-left">
                 <span className="block text-[8px] font-bold text-outline uppercase">Weight</span>
-                <span className="text-xs font-bold text-secondary">62 kg</span>
+                <span className="text-xs font-bold text-secondary">{"-"}</span>
               </div>
             </div>
 
@@ -254,46 +281,42 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <button
           onClick={() => setActiveTab("medicines")}
-          className={`p-3.5 rounded-2xl border text-left shadow-xs transition-all ${
-            activeTab === "medicines" ? "bg-primary text-on-primary border-primary" : "bg-white text-secondary border-outline-variant/15 hover:bg-surface-container"
-          }`}
+          className={`p-3.5 rounded-2xl border text-left shadow-xs transition-all ${activeTab === "medicines" ? "bg-primary text-on-primary border-primary" : "bg-white text-secondary border-outline-variant/15 hover:bg-surface-container"
+            }`}
         >
           <span className="material-symbols-outlined text-lg">medication</span>
           <span className="block text-xs font-bold mt-1">Active Medicines</span>
-          <span className="text-lg font-extrabold leading-none">{memberMeds.length || 3}</span>
+          <span className="text-lg font-extrabold leading-none">{memberMeds.length}</span>
         </button>
 
         <button
           onClick={() => setActiveTab("labs")}
-          className={`p-3.5 rounded-2xl border text-left shadow-xs transition-all ${
-            activeTab === "labs" ? "bg-primary text-on-primary border-primary" : "bg-white text-secondary border-outline-variant/15 hover:bg-surface-container"
-          }`}
+          className={`p-3.5 rounded-2xl border text-left shadow-xs transition-all ${activeTab === "labs" ? "bg-primary text-on-primary border-primary" : "bg-white text-secondary border-outline-variant/15 hover:bg-surface-container"
+            }`}
         >
           <span className="material-symbols-outlined text-lg">science</span>
           <span className="block text-xs font-bold mt-1">Lab Tests</span>
-          <span className="text-lg font-extrabold leading-none">{memberBookings.length || 1}</span>
+          <span className="text-lg font-extrabold leading-none">{memberBookings.length}</span>
         </button>
 
         <button
           onClick={() => setActiveTab("appointments")}
-          className={`p-3.5 rounded-2xl border text-left shadow-xs transition-all ${
-            activeTab === "appointments" ? "bg-primary text-on-primary border-primary" : "bg-white text-secondary border-outline-variant/15 hover:bg-surface-container"
-          }`}
+          className={`p-3.5 rounded-2xl border text-left shadow-xs transition-all ${activeTab === "appointments" ? "bg-primary text-on-primary border-primary" : "bg-white text-secondary border-outline-variant/15 hover:bg-surface-container"
+            }`}
         >
           <span className="material-symbols-outlined text-lg">calendar_month</span>
           <span className="block text-xs font-bold mt-1">Appointments</span>
-          <span className="text-lg font-extrabold leading-none">{memberAppointments.length || 2}</span>
+          <span className="text-lg font-extrabold leading-none">{memberAppointments.length}</span>
         </button>
 
         <button
           onClick={() => setActiveTab("reports")}
-          className={`p-3.5 rounded-2xl border text-left shadow-xs transition-all ${
-            activeTab === "reports" ? "bg-primary text-on-primary border-primary" : "bg-white text-secondary border-outline-variant/15 hover:bg-surface-container"
-          }`}
+          className={`p-3.5 rounded-2xl border text-left shadow-xs transition-all ${activeTab === "reports" ? "bg-primary text-on-primary border-primary" : "bg-white text-secondary border-outline-variant/15 hover:bg-surface-container"
+            }`}
         >
           <span className="material-symbols-outlined text-lg">description</span>
           <span className="block text-xs font-bold mt-1">Health Reports</span>
-          <span className="text-lg font-extrabold leading-none">{memberReports.length || 4}</span>
+          <span className="text-lg font-extrabold leading-none">{memberReports.length}</span>
         </button>
 
         <div className="p-3.5 rounded-2xl bg-white border border-outline-variant/15 text-left shadow-xs col-span-2 md:col-span-1">
@@ -322,11 +345,10 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
             <button
               key={t}
               onClick={() => setActiveTab(t as any)}
-              className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all flex-shrink-0 ${
-                activeTab === t
-                  ? "bg-secondary text-on-secondary shadow-sm"
-                  : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container border border-outline-variant/10"
-              }`}
+              className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all flex-shrink-0 ${activeTab === t
+                ? "bg-secondary text-on-secondary shadow-sm"
+                : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container border border-outline-variant/10"
+                }`}
             >
               {t}
             </button>
@@ -439,9 +461,8 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-headline-md text-xs text-secondary font-bold">{o.medicineName}</span>
-                    <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase ${
-                      o.status === "Delivered" ? "bg-tertiary/10 text-tertiary" : "bg-primary/10 text-primary"
-                    }`}>{o.status}</span>
+                    <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase ${o.status === "Delivered" ? "bg-tertiary/10 text-tertiary" : "bg-primary/10 text-primary"
+                      }`}>{o.status}</span>
                   </div>
                   <p className="text-[10px] text-on-surface-variant mt-1">Order Date: {o.orderDate} • Supplier: {o.supplier}</p>
                 </div>
@@ -536,9 +557,8 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                     <p className="text-[10px] text-on-surface-variant font-medium mt-1">Date: {apt.date} at {apt.time}</p>
                   </div>
                 </div>
-                <span className={`text-[8px] font-extrabold px-2 py-0.5 rounded uppercase ${
-                  apt.status === "upcoming" ? "bg-primary/10 text-primary" : "bg-tertiary/10 text-tertiary"
-                }`}>{apt.status}</span>
+                <span className={`text-[8px] font-extrabold px-2 py-0.5 rounded uppercase ${apt.status === "upcoming" ? "bg-primary/10 text-primary" : "bg-tertiary/10 text-tertiary"
+                  }`}>{apt.status}</span>
               </div>
             ))}
           </div>
@@ -847,11 +867,10 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                       key={cat.id}
                       type="button"
                       onClick={() => setActiveEditAvatarCategory(cat.id as any)}
-                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors flex-shrink-0 ${
-                        activeEditAvatarCategory === cat.id
-                          ? "bg-secondary/15 text-secondary"
-                          : "bg-white text-on-surface-variant border border-outline-variant/20 hover:bg-surface-container"
-                      }`}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors flex-shrink-0 ${activeEditAvatarCategory === cat.id
+                        ? "bg-secondary/15 text-secondary"
+                        : "bg-white text-on-surface-variant border border-outline-variant/20 hover:bg-surface-container"
+                        }`}
                     >
                       {cat.name}
                     </button>
@@ -866,9 +885,8 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                         key={av.id}
                         type="button"
                         onClick={() => setEditAvatarUrl(av.url)}
-                        className={`w-11 h-11 rounded-full p-0.5 border-2 transition-all flex items-center justify-center overflow-hidden flex-shrink-0 ${
-                          isSelected ? "border-primary scale-110 shadow-sm" : "border-transparent hover:scale-105"
-                        }`}
+                        className={`w-11 h-11 rounded-full p-0.5 border-2 transition-all flex items-center justify-center overflow-hidden flex-shrink-0 ${isSelected ? "border-primary scale-110 shadow-sm" : "border-transparent hover:scale-105"
+                          }`}
                       >
                         <img src={av.url} alt={av.label} className="w-full h-full object-cover" />
                       </button>

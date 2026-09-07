@@ -1,300 +1,984 @@
+// services/medicineNewService.ts
+
 import { FamilyMember, Medicine } from "../lib/mockData";
-import { isSupabaseConfigured, supabase } from "../lib/supabaseClient";
+import {
+  isSupabaseConfigured,
+  supabase,
+} from "../lib/supabaseClient";
 
-export const medicineService = {
-  /**
-   * Fetches all medications registered to a patient
-   */
-  async getMedicines(userId: string): Promise<Medicine[]> {
-    if (!isSupabaseConfigured) throw new Error("Supabase is not configured.");
+/**
+ * Convert Supabase medicine row -> application Medicine object
+ */
+function mapMedicine(data: any): Medicine {
+  return {
+    id: data.id,
+    name: data.name,
+    dosage: data.dosage,
+    instructions: data.instructions,
 
-    const { data, error } = await supabase
+    frequency: data.frequency as
+      | "daily"
+      | "weekly"
+      | "every_day"
+      | "specific_days"
+      | "interval",
+
+    timings: data.timings || [],
+
+    startDate: data.start_date,
+
+    endDate:
+      data.end_date || undefined,
+
+    stockCount:
+      data.stock_count !== null &&
+        data.stock_count !== undefined
+        ? data.stock_count
+        : undefined,
+
+    isPrivate:
+      !!data.is_private,
+
+    intakeTimes:
+      data.intake_times || [],
+
+    selected_days:
+      data.selected_days || [],
+
+    repeat_every_n_days:
+      data.repeat_every_n_days ?? undefined,
+
+
+    remind_every: data.remind_every ?? undefined,
+
+    interval_start_time:
+      data.interval_start_time || undefined,
+
+    document_id:
+      data.document_id || undefined,
+  };
+}
+
+function normalizeTime(value?: string | null): string | null {
+  if (!value) return null;
+
+  if (/^\d{2}:\d{2}:\d{2}$/.test(value)) {
+    return value;
+  }
+
+  if (/^\d{2}:\d{2}$/.test(value)) {
+    return `${value}:00`;
+  }
+
+  return value;
+}
+
+/**
+ * Convert application Medicine -> Supabase payload
+ */
+function medicineToPayload(
+  userId: string,
+  medicine: Omit<Medicine, "id">
+) {
+  return {
+    user_id: userId,
+
+    name:
+      medicine.name,
+
+    dosage:
+      medicine.dosage,
+
+    instructions:
+      medicine.instructions,
+
+    frequency:
+      medicine.frequency,
+
+    timings:
+      medicine.timings || [],
+
+    start_date:
+      medicine.startDate,
+
+    end_date:
+      medicine.endDate ?? null,
+
+    stock_count:
+      medicine.stockCount ?? null,
+
+    is_private:
+      !!medicine.isPrivate,
+
+    intake_times:
+      medicine.intakeTimes ?? null,
+
+    selected_days:
+      medicine.selected_days ?? null,
+
+    repeat_every_n_days:
+      medicine.repeat_every_n_days ?? null,
+
+    remind_every: medicine.remind_every ?? null,
+
+    interval_start_time:
+      normalizeTime(medicine.interval_start_time),
+
+
+    document_id:
+      medicine.document_id ?? null,
+  };
+}
+
+
+export const medicineNewService = {
+
+  // ============================================================
+  // GET ALL MEDICINES
+  // ============================================================
+
+  async getMedicines(
+    userId: string
+  ): Promise<Medicine[]> {
+
+    if (!isSupabaseConfigured) {
+      throw new Error(
+        "Supabase is not configured."
+      );
+    }
+
+    if (!userId) {
+      throw new Error(
+        "User ID is required."
+      );
+    }
+
+    const {
+      data,
+      error,
+    } = await supabase
       .from("medicines")
       .select("*")
       .eq("user_id", userId)
-      .order("created_at", { ascending: false });
-    if (error) throw error;
-
-    return (data || []).map((m: any) => ({
-      id: m.id,
-      name: m.name,
-      dosage: m.dosage,
-      instructions: m.instructions,
-      frequency: m.frequency as "daily" | "weekly" | "every_day" | "specific_days" | "interval",
-      timings: m.timings || [],
-      startDate: m.start_date,
-      endDate: m.end_date || undefined,
-      stockCount: m.stock_count !== null ? m.stock_count : undefined,
-      isPrivate: !!m.is_private,
-      // intakeTimes: m.intake_times || [],
-      selected_days: m.selected_days || [],
-      repeat_every_n_days: m.repeat_every_n_days ?? undefined,
-      interval_hours: m.interval_hours ?? undefined,
-      interval_start_time: m.interval_start_time || undefined,
-      document_id: m.document_id || undefined,
-    }));
+      .order("created_at", {
+        ascending: false,
+      });
+    console.log(data, 'getMedicine')
+    if (error) {
+      throw new Error(
+        `Failed to fetch medicines: ${error.message}`
+      );
+    }
+    return (data || []).map(mapMedicine);
   },
 
-  /**
-   * Registers a new medicine prescription for a patient
-   */
-  async addMedicine(userId: string, medicine: Omit<Medicine, "id">): Promise<Medicine> {
-    if (!isSupabaseConfigured) throw new Error("Supabase is not configured.");
-    console.log('call addMedicine')
-    console.log('medicine service', medicine.document_id, 'userId', userId)
-    const { data, error } = await supabase
+
+  // ============================================================
+  // ADD MEDICINE
+  // ============================================================
+
+  async addMedicine(
+    userId: string,
+    medicine: Omit<Medicine, "id">
+  ): Promise<Medicine> {
+
+    if (!isSupabaseConfigured) {
+      throw new Error(
+        "Supabase is not configured."
+      );
+    }
+
+    if (!userId) {
+      throw new Error(
+        "User ID is required."
+      );
+    }
+
+    if (!medicine.name) {
+      throw new Error(
+        "Medicine name is required."
+      );
+    }
+
+    const payload = medicineToPayload(
+      userId,
+      medicine
+    );
+
+    const {
+      data,
+      error,
+    } = await supabase
       .from("medicines")
-      .insert({
-        id: crypto.randomUUID(),
-        user_id: userId,
-        name: medicine.name,
-        dosage: medicine.dosage,
-        instructions: medicine.instructions,
-        frequency: medicine.frequency,
-        timings: medicine.timings,
-        start_date: medicine.startDate,
-        end_date: medicine.endDate || null,
-        stock_count: medicine.stockCount || null,
-        is_private: !!medicine.isPrivate,
-        intake_times: medicine.intakeTimes || null,
-        selected_days: medicine.selected_days || null,
-        repeat_every_n_days: medicine.repeat_every_n_days ?? null,
-        interval_hours: medicine.interval_hours ?? null,
-        interval_start_time: medicine.interval_start_time || null,
-        document_id: medicine.document_id || null,
-      })
+      .insert(payload)
       .select()
       .single();
+    console.log(data, 'addMedicine')
+    if (error) {
+      console.error(
+        "Medicine insert failed:",
+        error
+      );
 
-    console.log(data, 'data medicine')
-    console.error('Supabase insert error:', error);
-    if (error) throw error;
-    console.error('Error details:', error.message, error.details, error.hint);
-    return {
-      id: data.id,
-      name: data.name,
-      dosage: data.dosage,
-      instructions: data.instructions,
-      frequency: data.frequency,
-      timings: data.timings || [],
-      startDate: data.start_date,
-      endDate: data.end_date || undefined,
-      stockCount: data.stock_count !== null ? data.stock_count : undefined,
-      isPrivate: !!data.is_private,
-      selected_days: data.selected_days || [],
-      repeat_every_n_days: data.repeat_every_n_days ?? undefined,
-      interval_hours: data.interval_hours ?? undefined,
-      interval_start_time: data.interval_start_time || undefined,
-      intakeTimes: data.intake_times || [],
-    };
+      throw new Error(
+        `Failed to add medicine: ${error.message}`
+      );
+    }
+
+    if (!data) {
+      throw new Error(
+        "Medicine was created but no data was returned."
+      );
+    }
+    return mapMedicine(data);
   },
 
-  /**
-   * Edit a medicine prescription for a patient
-   */
-  async updateMedicine(medicineId: string, updates: Partial<Medicine>): Promise<void> {
-    if (!isSupabaseConfigured) throw new Error("Supabase is not configured.");
 
-    const payload: any = {};
-    if (updates.name !== undefined) payload.name = updates.name;
-    if (updates.dosage !== undefined) payload.dosage = updates.dosage;
-    if (updates.instructions !== undefined) payload.instructions = updates.instructions;
-    if (updates.frequency !== undefined) payload.frequency = updates.frequency;
-    if (updates.timings !== undefined) payload.timings = updates.timings;
-    if (updates.startDate !== undefined) payload.start_date = updates.startDate;
-    if (updates.endDate !== undefined) payload.end_date = updates.endDate;
-    if (updates.stockCount !== undefined) payload.stock_count = updates.stockCount;
-    if (updates.isPrivate !== undefined) payload.is_private = updates.isPrivate;
-    if (updates.intakeTimes !== undefined) payload.intake_times = updates.intakeTimes;
-    if (updates.selected_days !== undefined) payload.selected_days = updates.selected_days;
-    if (updates.repeat_every_n_days !== undefined) payload.repeat_every_n_days = updates.repeat_every_n_days;
-    if (updates.interval_hours !== undefined) payload.interval_hours = updates.interval_hours;
-    if (updates.interval_start_time !== undefined) payload.interval_start_time = updates.interval_start_time;
-    if (updates.document_id !== undefined) payload.document_id = updates.document_id;
+  // ============================================================
+  // UPDATE MEDICINE
+  // ============================================================
 
-    const { error } = await supabase
+  async updateMedicine(
+    medicineId: string,
+    updates: Partial<Medicine>
+  ): Promise<Medicine> {
+
+    if (!isSupabaseConfigured) {
+      throw new Error(
+        "Supabase is not configured."
+      );
+    }
+
+    if (!medicineId) {
+      throw new Error(
+        "Medicine ID is required."
+      );
+    }
+
+    const payload: Record<string, any> = {};
+
+    if (
+      updates.name !== undefined
+    ) {
+      payload.name =
+        updates.name;
+    }
+
+    if (
+      updates.dosage !== undefined
+    ) {
+      payload.dosage =
+        updates.dosage;
+    }
+
+    if (
+      updates.instructions !== undefined
+    ) {
+      payload.instructions =
+        updates.instructions;
+    }
+
+    if (updates.frequency !== undefined) {
+      payload.frequency = updates.frequency;
+
+      if (updates.frequency !== "interval") {
+        payload.interval_hours = null;
+        payload.interval_start_time = null;
+      }
+
+      if (updates.frequency === "interval") {
+        payload.timings = [];
+        payload.intake_times = [];
+        payload.selected_days = null;
+        payload.repeat_every_n_days = null;
+      }
+    }
+
+
+    if (
+      updates.timings !== undefined
+    ) {
+      payload.timings =
+        updates.timings;
+    }
+
+    if (
+      updates.startDate !== undefined
+    ) {
+      payload.start_date =
+        updates.startDate;
+    }
+
+    if (
+      updates.endDate !== undefined
+    ) {
+      payload.end_date =
+        updates.endDate ?? null;
+    }
+
+    if (
+      updates.stockCount !== undefined
+    ) {
+      payload.stock_count =
+        updates.stockCount ?? null;
+    }
+
+    if (
+      updates.isPrivate !== undefined
+    ) {
+      payload.is_private =
+        !!updates.isPrivate;
+    }
+
+    if (
+      updates.intakeTimes !== undefined
+    ) {
+      payload.intake_times =
+        updates.intakeTimes ?? null;
+    }
+
+    if (
+      updates.selected_days !== undefined
+    ) {
+      payload.selected_days =
+        updates.selected_days ?? null;
+    }
+
+    if (
+      updates.repeat_every_n_days !== undefined
+    ) {
+      payload.repeat_every_n_days =
+        updates.repeat_every_n_days ?? null;
+    }
+
+    if (updates.remind_every !== undefined) {
+      payload.remind_every = updates.remind_every ?? null;
+    }
+
+    if (
+      updates.interval_start_time !== undefined
+    ) {
+      payload.interval_start_time =
+        normalizeTime(updates.interval_start_time);
+    }
+
+
+    if (
+      updates.document_id !== undefined
+    ) {
+      payload.document_id =
+        updates.document_id ?? null;
+    }
+
+    if (
+      Object.keys(payload).length === 0
+    ) {
+      throw new Error(
+        "No medicine fields to update."
+      );
+    }
+
+    const {
+      data,
+      error,
+    } = await supabase
       .from("medicines")
       .update(payload)
-      .eq("id", medicineId);
+      .eq("id", medicineId)
+      .select()
+      .single();
+    console.log(data, 'updateMedicine')
+    if (error) {
+      console.error(
+        "Medicine update failed:",
+        error
+      );
 
-    if (error) throw error;
+      throw new Error(
+        `Failed to update medicine: ${error.message}`
+      );
+    }
+
+    if (!data) {
+      throw new Error(
+        "Medicine update completed but no data was returned."
+      );
+    }
+
+    return mapMedicine(data);
   },
 
 
-  /**
-   * Deletes a medicine prescription by ID
-   */
-  async deleteMedicine(medicineId: string): Promise<void> {
-    if (!isSupabaseConfigured) throw new Error("Supabase is not configured.");
+  // ============================================================
+  // DELETE MEDICINE
+  // ============================================================
 
-    const { error } = await supabase
+  async deleteMedicine(
+    medicineId: string
+  ): Promise<{ success: boolean }> {
+
+    if (!isSupabaseConfigured) {
+      throw new Error(
+        "Supabase is not configured."
+      );
+    }
+
+    if (!medicineId) {
+      throw new Error(
+        "Medicine ID is required."
+      );
+    }
+
+    const {
+      error,
+    } = await supabase
       .from("medicines")
       .delete()
       .eq("id", medicineId);
+    if (error) {
+      console.error(
+        "Medicine delete failed:",
+        error
+      );
 
-    if (error) throw error;
+      throw new Error(
+        `Failed to delete medicine: ${error.message}`
+      );
+    }
+
+    return {
+      success: true,
+    };
   },
 
-  /**
-   * Fetches all synced family profiles for a patient
-   */
-  async getFamilyMembers(userId: string): Promise<FamilyMember[]> {
-    if (!isSupabaseConfigured) throw new Error("Supabase is not configured.");
 
-    const { data, error } = await supabase
+  // ============================================================
+  // GET FAMILY MEMBERS
+  // ============================================================
+
+  async getFamilyMembers(
+    userId: string
+  ): Promise<FamilyMember[]> {
+
+    if (!isSupabaseConfigured) {
+      throw new Error(
+        "Supabase is not configured."
+      );
+    }
+
+    if (!userId) {
+      throw new Error(
+        "User ID is required."
+      );
+    }
+
+    const {
+      data,
+      error,
+    } = await supabase
       .from("family_members")
       .select("*")
       .eq("user_id", userId);
 
-    if (error) throw error;
+    if (error) {
+      throw new Error(
+        `Failed to fetch family members: ${error.message}`
+      );
+    }
 
-    return (data || []).map((f: any) => {
-      let localMeta: any = {};
-      if (typeof window !== "undefined") {
-        try {
-          const stored = localStorage.getItem(`medimz_fam_metadata_${f.id}`);
-          if (stored) localMeta = JSON.parse(stored);
-        } catch (e) { }
+    return (data || []).map(
+      (f: any) => {
+
+        let localMeta: any = {};
+
+        if (
+          typeof window !==
+          "undefined"
+        ) {
+          try {
+            const stored =
+              localStorage.getItem(
+                `medimz_fam_metadata_${f.id}`
+              );
+
+            if (stored) {
+              localMeta =
+                JSON.parse(stored);
+            }
+          } catch {
+            // Ignore local metadata errors
+          }
+        }
+
+        return {
+          id: f.id,
+
+          name:
+            f.name,
+
+          avatarUrl:
+            f.avatar_url ||
+            `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+              f.name
+            )}`,
+
+          relationship:
+            f.relationship,
+
+          age:
+            f.age,
+
+          gender:
+            f.gender,
+
+          medicalConditions:
+            f.medical_conditions || [],
+
+          adherenceRate:
+            100,
+
+          nickname:
+            localMeta.nickname ||
+            f.nickname ||
+            f.name,
+
+          dob:
+            localMeta.dob ||
+            f.dob,
+
+          bloodGroup:
+            localMeta.bloodGroup ||
+            f.blood_group,
+
+          phone:
+            localMeta.phone ||
+            f.phone,
+
+          medicalNotes:
+            localMeta.medicalNotes ||
+            f.medical_notes,
+
+          allergies:
+            f.allergies || [],
+
+          existingDiseases:
+            f.existing_diseases || [],
+
+          color:
+            localMeta.color ||
+            f.color,
+        };
       }
-
-      return {
-        id: f.id,
-        name: f.name,
-        avatarUrl: f.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(f.name)}`,
-        relationship: f.relationship,
-        age: f.age,
-        gender: f.gender,
-        medicalConditions: f.medical_conditions || [],
-        adherenceRate: 100,
-        nickname: localMeta.nickname || f.nickname || f.name,
-        dob: localMeta.dob || f.dob,
-        bloodGroup: localMeta.bloodGroup || f.blood_group,
-        phone: localMeta.phone || f.phone,
-        medicalNotes: localMeta.medicalNotes || f.medical_notes,
-        allergies: f.allergies || [],
-        existingDiseases: f.existing_diseases || [],
-        color: localMeta.color || f.color
-      };
-    });
+    );
   },
 
-  /**
-   * Creates a family profile card linked to a patient account
-   */
-  async addFamilyMember(userId: string, member: Omit<FamilyMember, "id" | "adherenceRate">): Promise<FamilyMember> {
-    if (!isSupabaseConfigured) throw new Error("Supabase is not configured.");
 
-    const payload: any = {
-      user_id: userId,
-      name: member.name,
-      avatar_url: member.avatarUrl || null,
-      relationship: member.relationship,
-      age: Number(member.age),
-      gender: member.gender,
-      medical_conditions: member.medicalConditions,
-      nickname: member.nickname || member.name,
-      dob: member.dob || null,
-      blood_group: member.bloodGroup || null,
-      phone: member.phone || null,
-      medical_notes: member.medicalNotes || null,
-      allergies: member.allergies || null,
-      existing_diseases: member.existingDiseases || null,
-      color: member.color || "blue"
+  // ============================================================
+  // ADD FAMILY MEMBER
+  // ============================================================
+
+  async addFamilyMember(
+    userId: string,
+    member: Omit<
+      FamilyMember,
+      "id" | "adherenceRate"
+    >
+  ): Promise<FamilyMember> {
+
+    if (!isSupabaseConfigured) {
+      throw new Error(
+        "Supabase is not configured."
+      );
+    }
+
+    if (!userId) {
+      throw new Error(
+        "User ID is required."
+      );
+    }
+
+    const payload = {
+      user_id:
+        userId,
+
+      name:
+        member.name,
+
+      avatar_url:
+        member.avatarUrl || null,
+
+      relationship:
+        member.relationship,
+
+      age:
+        Number(member.age),
+
+      gender:
+        member.gender,
+
+      medical_conditions:
+        member.medicalConditions || [],
+
+      nickname:
+        member.nickname ||
+        member.name,
+
+      dob:
+        member.dob || null,
+
+      blood_group:
+        member.bloodGroup || null,
+
+      phone:
+        member.phone || null,
+
+      medical_notes:
+        member.medicalNotes || null,
+
+      allergies:
+        member.allergies || null,
+
+      existing_diseases:
+        member.existingDiseases || null,
+
+      color:
+        member.color || "blue",
     };
 
-    try {
-      const { data, error } = await supabase
-        .from("family_members")
-        .insert(payload)
-        .select()
-        .single();
+    const {
+      data,
+      error,
+    } = await supabase
+      .from("family_members")
+      .insert(payload)
+      .select()
+      .single();
 
-      if (error) throw error;
+    if (error) {
+      console.error(
+        "Family member insert failed:",
+        error
+      );
 
-      return {
-        id: data.id,
-        name: data.name,
-        avatarUrl: data.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(data.name)}`,
-        relationship: data.relationship,
-        age: data.age,
-        gender: data.gender,
-        medicalConditions: data.medical_conditions || [],
-        adherenceRate: 100,
-        nickname: data.nickname || data.name,
-        dob: data.dob || "",
-        bloodGroup: data.blood_group || "",
-        phone: data.phone || "",
-        medicalNotes: data.medical_notes || "",
-        allergies: data.allergies || [],
-        existingDiseases: data.existing_diseases || [],
-        color: data.color || "blue"
-      };
-    } catch (e: any) {
-      console.warn("Extended family member insert failed, falling back to core columns:", e);
-      const fallbackPayload = {
-        user_id: userId,
-        name: member.name,
-        avatar_url: member.avatarUrl || null,
-        relationship: member.relationship,
-        age: Number(member.age),
-        gender: member.gender,
-        medical_conditions: member.medicalConditions
-      };
-
-      const { data, error } = await supabase
-        .from("family_members")
-        .insert(fallbackPayload)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      return {
-        id: data.id,
-        name: data.name,
-        avatarUrl: data.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(data.name)}`,
-        relationship: data.relationship,
-        age: data.age,
-        gender: data.gender,
-        medicalConditions: data.medical_conditions || [],
-        adherenceRate: 100,
-        nickname: member.nickname || member.name,
-        dob: member.dob || "",
-        bloodGroup: member.bloodGroup || "",
-        phone: member.phone || "",
-        medicalNotes: member.medicalNotes || "",
-        allergies: member.allergies || [],
-        existingDiseases: member.existingDiseases || [],
-        color: member.color || "blue"
-      };
+      throw new Error(
+        `Failed to add family member: ${error.message}`
+      );
     }
-  },
-  async updateFamilyMember(memberId: string, member: Partial<FamilyMember>): Promise<void> {
-    const payload: any = {};
-    if (member.name !== undefined) payload.name = member.name;
-    if (member.avatarUrl !== undefined) payload.avatar_url = member.avatarUrl;
-    if (member.relationship !== undefined) payload.relationship = member.relationship;
-    if (member.age !== undefined) payload.age = Number(member.age);
-    if (member.gender !== undefined) payload.gender = member.gender;
-    if (member.medicalConditions !== undefined) payload.medical_conditions = member.medicalConditions;
-    if (member.nickname !== undefined) payload.nickname = member.nickname;
-    if (member.dob !== undefined) payload.dob = member.dob || null;
-    if (member.bloodGroup !== undefined) payload.blood_group = member.bloodGroup || null;
-    if (member.phone !== undefined) payload.phone = member.phone || null;
-    if (member.medicalNotes !== undefined) payload.medical_notes = member.medicalNotes || null;
-    if (member.color !== undefined) payload.color = member.color || "blue";
 
-    await supabase
+    if (!data) {
+      throw new Error(
+        "Family member was created but no data was returned."
+      );
+    }
+
+    return {
+      id:
+        data.id,
+
+      name:
+        data.name,
+
+      avatarUrl:
+        data.avatar_url ||
+        `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+          data.name
+        )}`,
+
+      relationship:
+        data.relationship,
+
+      age:
+        data.age,
+
+      gender:
+        data.gender,
+
+      medicalConditions:
+        data.medical_conditions || [],
+
+      adherenceRate:
+        100,
+
+      nickname:
+        data.nickname ||
+        data.name,
+
+      dob:
+        data.dob || "",
+
+      bloodGroup:
+        data.blood_group || "",
+
+      phone:
+        data.phone || "",
+
+      medicalNotes:
+        data.medical_notes || "",
+
+      allergies:
+        data.allergies || [],
+
+      existingDiseases:
+        data.existing_diseases || [],
+
+      color:
+        data.color || "blue",
+    };
+  },
+
+
+  // ============================================================
+  // UPDATE FAMILY MEMBER
+  // ============================================================
+
+  async updateFamilyMember(
+    memberId: string,
+    member: Partial<FamilyMember>
+  ): Promise<FamilyMember> {
+
+    if (!isSupabaseConfigured) {
+      throw new Error(
+        "Supabase is not configured."
+      );
+    }
+
+    if (!memberId) {
+      throw new Error(
+        "Family member ID is required."
+      );
+    }
+
+    const payload: Record<string, any> = {};
+
+    if (
+      member.name !== undefined
+    ) {
+      payload.name =
+        member.name;
+    }
+
+    if (
+      member.avatarUrl !== undefined
+    ) {
+      payload.avatar_url =
+        member.avatarUrl;
+    }
+
+    if (
+      member.relationship !== undefined
+    ) {
+      payload.relationship =
+        member.relationship;
+    }
+
+    if (
+      member.age !== undefined
+    ) {
+      payload.age =
+        Number(member.age);
+    }
+
+    if (
+      member.gender !== undefined
+    ) {
+      payload.gender =
+        member.gender;
+    }
+
+    if (
+      member.medicalConditions !== undefined
+    ) {
+      payload.medical_conditions =
+        member.medicalConditions;
+    }
+
+    if (
+      member.nickname !== undefined
+    ) {
+      payload.nickname =
+        member.nickname;
+    }
+
+    if (
+      member.dob !== undefined
+    ) {
+      payload.dob =
+        member.dob || null;
+    }
+
+    if (
+      member.bloodGroup !== undefined
+    ) {
+      payload.blood_group =
+        member.bloodGroup || null;
+    }
+
+    if (
+      member.phone !== undefined
+    ) {
+      payload.phone =
+        member.phone || null;
+    }
+
+    if (
+      member.medicalNotes !== undefined
+    ) {
+      payload.medical_notes =
+        member.medicalNotes || null;
+    }
+
+    if (
+      member.allergies !== undefined
+    ) {
+      payload.allergies =
+        member.allergies || null;
+    }
+
+    if (
+      member.existingDiseases !== undefined
+    ) {
+      payload.existing_diseases =
+        member.existingDiseases || null;
+    }
+
+    if (
+      member.color !== undefined
+    ) {
+      payload.color =
+        member.color || "blue";
+    }
+
+    if (
+      Object.keys(payload).length === 0
+    ) {
+      throw new Error(
+        "No family member fields to update."
+      );
+    }
+
+    const {
+      data,
+      error,
+    } = await supabase
       .from("family_members")
       .update(payload)
-      .eq("id", memberId);
+      .eq("id", memberId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error(
+        "Family member update failed:",
+        error
+      );
+
+      throw new Error(
+        `Failed to update family member: ${error.message}`
+      );
+    }
+
+    if (!data) {
+      throw new Error(
+        "Family member update completed but no data was returned."
+      );
+    }
+
+    return {
+      id:
+        data.id,
+
+      name:
+        data.name,
+
+      avatarUrl:
+        data.avatar_url ||
+        `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+          data.name
+        )}`,
+
+      relationship:
+        data.relationship,
+
+      age:
+        data.age,
+
+      gender:
+        data.gender,
+
+      medicalConditions:
+        data.medical_conditions || [],
+
+      adherenceRate:
+        100,
+
+      nickname:
+        data.nickname ||
+        data.name,
+
+      dob:
+        data.dob || "",
+
+      bloodGroup:
+        data.blood_group || "",
+
+      phone:
+        data.phone || "",
+
+      medicalNotes:
+        data.medical_notes || "",
+
+      allergies:
+        data.allergies || [],
+
+      existingDiseases:
+        data.existing_diseases || [],
+
+      color:
+        data.color || "blue",
+    };
   },
-  async deleteFamilyMember(memberId: string): Promise<void> {
-    if (!isSupabaseConfigured) throw new Error("Supabase is not configured.");
-    const { error } = await supabase
+
+
+  // ============================================================
+  // DELETE FAMILY MEMBER
+  // ============================================================
+
+  async deleteFamilyMember(
+    memberId: string
+  ): Promise<{ success: boolean }> {
+
+    if (!isSupabaseConfigured) {
+      throw new Error(
+        "Supabase is not configured."
+      );
+    }
+
+    if (!memberId) {
+      throw new Error(
+        "Family member ID is required."
+      );
+    }
+
+    const {
+      error,
+    } = await supabase
       .from("family_members")
       .delete()
       .eq("id", memberId);
-    if (error) throw error;
-  }
+
+    if (error) {
+      console.error(
+        "Family member delete failed:",
+        error
+      );
+
+      throw new Error(
+        `Failed to delete family member: ${error.message}`
+      );
+    }
+
+    return {
+      success: true,
+    };
+  },
 };

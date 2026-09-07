@@ -11,7 +11,7 @@ import { useApp } from "@/context/AppContext";
 export default function MobileUploader({
     onComplete,
     onError,
-    onClear, 
+    onClear,
 }: OCRUploaderProps) {
     const [loading, setLoading] = useState(false);
     const [progress, setProgress] = useState(0);
@@ -24,8 +24,8 @@ export default function MobileUploader({
     const { user } = useApp();
 
     if (!user?.id) {
-    throw new Error("User is not authenticated.");
-}
+        throw new Error("User is not authenticated.");
+    }
 
 
     useEffect(() => {
@@ -131,8 +131,8 @@ export default function MobileUploader({
             setError(msg);
             onError?.(err);
         } finally {
-    setLoading(false);
-}
+            setLoading(false);
+        }
     };
 
     const handleFile = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -143,8 +143,19 @@ export default function MobileUploader({
     };
 
     const handleRemove = () => {
-        cleanup();
-        onClear?.(); 
+        if (previewUrl) {
+            URL.revokeObjectURL(previewUrl);
+        }
+        setFile(null);
+        setPreviewUrl(null);
+        console.log(previewUrl, 'pre')
+        setLoading(false);
+        setProgress(0);
+        setError(null);
+        if (inputRef.current) {
+            inputRef.current.value = "";
+        }
+        onClear?.();
     };
 
     return (
@@ -165,7 +176,7 @@ export default function MobileUploader({
                             disabled={loading}
                             className="hidden"
                         />
-                                                {loading && (
+                        {loading && (
                             <div className="absolute inset-0 z-20 rounded-xl flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm">
                                 <span className="w-7 h-7 border-2 border-white border-t-transparent rounded-full animate-spin" />
 

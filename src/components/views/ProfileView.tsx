@@ -1,48 +1,34 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useApp } from "../../context/AppContext";
 import { AVATAR_CATEGORIES, AVATAR_ITEMS } from "../../lib/avatarLibrary";
 import { MemberDashboardView } from "./MemberDashboardView";
-
-export interface MedicalReport {
-  id: string;
-  patientName: string;
-  note: string;
-  fileName: string;
-  date: string;
-}
+import OCRUploader from "../OCRUploader";
+import { documentService } from "@/services/documentService";
 
 export const ProfileView: React.FC = () => {
   const { user, familyMembers, addFamilyMember, deleteFamilyMember, updateUserProfile, logout } = useApp();
   const [showAddMember, setShowAddMember] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+  console.log(user, 'user data')
+  // Documents state
+  const [documents, setDocuments] = useState<any[]>([]);
+  const [loadingDocuments, setLoadingDocuments] = useState<boolean>(false);
+  const [selectedDocument, setSelectedDocument] = useState<any | null>(null);
 
-  // Medical Reports State
-  const [medicalReports, setMedicalReports] = useState<MedicalReport[]>(() => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("medimz_medical_reports");
-      if (stored) return JSON.parse(stored);
-    }
-    return [
-      { id: "rep-1", patientName: "Myself", note: "Annual Lipid Panel Results", fileName: "lipid_profile_june2026.pdf", date: "2026-06-15" },
-      { id: "rep-2", patientName: "Mom", note: "Thyroid Function Test", fileName: "thyroid_report.pdf", date: "2026-07-02" }
-    ];
-  });
+  const [previewLoading, setPreviewLoading] = useState<boolean>(false);
+  const [previewError, setPreviewError] = useState<boolean>(false);
 
-  React.useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("medimz_medical_reports", JSON.stringify(medicalReports));
-    }
-  }, [medicalReports]);
+  // OCR / upload states
+  const [ocrReportData, setOcrReportData] = useState<any>(null);
+  const [ocrError, setOcrError] = useState<string | null>(null);
+  const [ocrMessage, setOcrMessage] = useState<string | null>(null);
 
   const [showAddReport, setShowAddReport] = useState(false);
   const [reportPatient, setReportPatient] = useState("Myself");
-  const [reportNote, setReportNote] = useState("");
-  const [reportFileName, setReportFileName] = useState("blood_test_report.pdf");
 
   // Profile edit fields
-  console.log(user, 'user')
   const [isEditing, setIsEditing] = useState(false);
   const [fullName, setFullName] = useState(user?.fullName || "-");
   const [age, setAge] = useState(user?.age || '-');
@@ -76,6 +62,7 @@ export const ProfileView: React.FC = () => {
   const [famAvatarUrl, setFamAvatarUrl] = useState("https://api.dicebear.com/7.x/lorelei/svg?seed=adult-seed-2&radius=50");
   const [activeAvatarCategory, setActiveAvatarCategory] = useState<"adults" | "children" | "babies" | "friends" | "pets">("adults");
 
+  // --- Profile handlers ---
   const handleProfileSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!fullName) return;
@@ -102,6 +89,7 @@ export const ProfileView: React.FC = () => {
     setIsEditing(false);
   };
 
+  // --- Family handlers ---
   const handleAddMemberSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!famName || !famRel) return;
@@ -144,6 +132,7 @@ export const ProfileView: React.FC = () => {
     setShowAddMember(false);
   };
 
+  // --- Address handlers ---
   const handleAddressSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!addressLine1 || !addressArea || !addressPincode) return;
@@ -160,7 +149,6 @@ export const ProfileView: React.FC = () => {
     const updatedAddresses = [...(user?.addresses || []), newAddress];
     updateUserProfile({ addresses: updatedAddresses });
 
-    // Reset fields
     setAddressLabel("Home");
     setAddressLine1("");
     setAddressArea("");
@@ -173,25 +161,47 @@ export const ProfileView: React.FC = () => {
     updateUserProfile({ addresses: updatedAddresses });
   };
 
-  const handleAddReportSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!reportNote) return;
-    const newReport: MedicalReport = {
-      id: `rep-${Date.now()}`,
-      patientName: reportPatient,
-      note: reportNote,
-      fileName: reportFileName || "medical_document.pdf",
-      date: new Date().toISOString().split("T")[0]
-    };
-    setMedicalReports(prev => [newReport, ...prev]);
-    setReportPatient("Myself");
-    setReportNote("");
-    setReportFileName("blood_test_report.pdf");
-    setShowAddReport(false);
+  // --- Document fetching ---
+  const fetchDocuments = async () => {
+    if (!user?.id) return;
+    setLoadingDocuments(true);
+    try {
+      const docs = await documentService.getUserDocuments(user.id);
+      console.log("📂 User documents:", docs);
+      setDocuments(docs);
+    } catch (err) {
+      console.error("Failed to fetch documents:", err);
+    } finally {
+      setLoadingDocuments(false);
+    }
   };
 
-  const handleDeleteReport = (id: string) => {
-    setMedicalReports(prev => prev.filter(r => r.id !== id));
+  useEffect(() => {
+    fetchDocuments();
+  }, [user?.id]);
+
+  useEffect(() => {
+    setPreviewLoading(false);
+    setPreviewError(false);
+  }, [selectedDocument]);
+  useEffect(() => {
+    if (selectedDocument) {
+      setPreviewLoading(true);
+      setPreviewError(false);
+      console.log('🔍 Preview URL:', selectedDocument.previewUrl);
+    }
+  }, [selectedDocument]);
+
+  // --- Delete document (placeholder – implement real deletion if needed) ---
+  const handleDeleteDocument = async (documentId: string) => {
+    if (!confirm("Are you sure you want to delete this document?")) return;
+    try {
+      await documentService.deleteDocument(documentId);
+      fetchDocuments()
+    } catch (error) {
+      console.error("Delete failed:", error);
+      alert("Failed to delete document.");
+    }
   };
 
   const selectedMember = familyMembers.find(f => f.id === selectedMemberId);
@@ -208,7 +218,7 @@ export const ProfileView: React.FC = () => {
   return (
     <div className="space-y-stack-lg animate-in fade-in duration-300">
 
-      {/* 1. Sarah's Profile Details Card */}
+      {/* 1. Profile Card */}
       <section className="glass-card rounded-2xl p-6 shadow-sm border border-outline-variant/20">
         <div className="flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="flex justify-between gap-4 items-center text-left">
@@ -230,54 +240,25 @@ export const ProfileView: React.FC = () => {
                 )}
               </div>
               <div className="flex flex-col gap-0.5 font-body-md text-xs text-on-surface-variant mt-0.5">
-                {user?.age && <span>
-                  • Age: {user?.age}
-                </span>}
-
-                {user?.gender && <span>
-                  • Gender: {user?.gender}
-                </span>}
-
-                {userBloodGroup && <span>
-                  • Blood Type:{" "}
-                  <span className="font-bold text-secondary">
-                    {userBloodGroup}
-                  </span>
-                </span>}
+                {user?.age && <span>• Age: {user?.age}</span>}
+                {user?.gender && <span>• Gender: {user?.gender}</span>}
+                {userBloodGroup && <span>• Blood Type: <span className="font-bold text-secondary">{userBloodGroup}</span></span>}
               </div>
               {user?.email && (
                 <div className="font-body-md text-[11px] text-primary mt-1 flex items-center gap-1 min-w-0">
-                  <span className="material-symbols-outlined text-[13px] shrink-0">
-                    mail
-                  </span>
-                  <span className="truncate" title={user.email}>
-                    {user.email}
-                  </span>
+                  <span className="material-symbols-outlined text-[13px] shrink-0">mail</span>
+                  <span className="truncate" title={user.email}>{user.email}</span>
                 </div>
               )}
-
               {user?.phone_number && (
                 <div className="font-body-md text-[11px] text-primary mt-1 flex items-center gap-1 min-w-0">
-                  <span className="material-symbols-outlined text-[13px] shrink-0">
-                    phone
-                  </span>
-                  <span className="truncate" title={user.phone_number}>
-                    {user.phone_number}
-                  </span>
+                  <span className="material-symbols-outlined text-[13px] shrink-0">phone</span>
+                  <span className="truncate" title={user.phone_number}>{user.phone_number}</span>
                 </div>
               )}
-
               <div className="flex gap-1.5 flex-wrap mt-2">
-                {/* {user?.medicalConditions.map((cond, idx) => (
-                  <span key={idx} className="bg-primary/10 text-primary text-[8px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
-                    {cond}
-                  </span>
-                ))} */}
                 {user?.medicalConditions.map((condition, idx) => (
-                  <span
-                    key={`${condition}-${idx}`}
-                    className="bg-primary/10 text-primary text-[8px] px-2 py-0.5 rounded font-bold uppercase tracking-wider"
-                  >
+                  <span key={`${condition}-${idx}`} className="bg-primary/10 text-primary text-[8px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
                     {condition}
                   </span>
                 ))}
@@ -301,8 +282,7 @@ export const ProfileView: React.FC = () => {
               }}
               className="px-4 py-2 bg-secondary text-white font-bold rounded-xl text-xs hover:bg-opacity-95 active:scale-95 transition-all flex items-center gap-1 shadow-sm"
             >
-              <span className="material-symbols-outlined text-sm">edit</span>
-              <span>Edit Profile</span>
+              <span className="material-symbols-outlined text-sm">edit</span> Edit Profile
             </button>
             <button
               onClick={logout}
@@ -314,7 +294,7 @@ export const ProfileView: React.FC = () => {
         </div>
       </section>
 
-      {/* 2. Family Health Sync Dashboard (Mom & Dad Card representation) */}
+      {/* 2. Family Sync Dashboard */}
       <section className="space-y-3">
         <div className="flex justify-between items-center">
           <h3 className="font-headline-md text-base text-secondary font-bold">Family Synchronization Hub</h3>
@@ -322,8 +302,7 @@ export const ProfileView: React.FC = () => {
             onClick={() => setShowAddMember(true)}
             className="text-xs text-primary font-bold hover:underline flex items-center gap-0.5"
           >
-            <span className="material-symbols-outlined text-sm font-bold">add</span>
-            <span>Sync Member</span>
+            <span className="material-symbols-outlined text-sm font-bold">add</span> Sync Member
           </button>
         </div>
 
@@ -344,7 +323,6 @@ export const ProfileView: React.FC = () => {
                 onClick={() => setSelectedMemberId(fam.id)}
                 className={`p-5 glass-card rounded-2xl border border-outline-variant/20 border-l-4 ${BORDER_COLORS[fam.color || "blue"] || "border-l-blue-500"} flex flex-col justify-between gap-4 hover:border-secondary/35 cursor-pointer hover:scale-[1.01] transition-all shadow-sm relative group`}
               >
-                {/* Delete Local Profile Card option */}
                 {fam.color !== "purple" && (
                   <button
                     onClick={(e) => {
@@ -384,8 +362,6 @@ export const ProfileView: React.FC = () => {
                     </div>
                   </div>
                 </div>
-
-                {/* Progress visual Adherence */}
                 <div className="space-y-1">
                   <div className="flex justify-between items-center text-[10px] font-bold">
                     <span className="text-on-surface-variant font-label-sm">Dosing Compliance</span>
@@ -404,7 +380,7 @@ export const ProfileView: React.FC = () => {
         </div>
       </section>
 
-      {/* 3. Saved Address Book List */}
+      {/* 3. Saved Address Book */}
       <section className="glass-card rounded-2xl p-6 shadow-sm border border-outline-variant/20 space-y-4 pb-16">
         <div className="flex justify-between items-center">
           <h3 className="font-headline-md text-base text-secondary font-bold">Saved Home & Office Addresses</h3>
@@ -412,8 +388,7 @@ export const ProfileView: React.FC = () => {
             onClick={() => setShowAddAddress(true)}
             className="text-xs text-primary font-bold hover:underline flex items-center gap-0.5"
           >
-            <span className="material-symbols-outlined text-sm font-bold">add_location</span>
-            <span>Add Address</span>
+            <span className="material-symbols-outlined text-sm font-bold">add_location</span> Add Address
           </button>
         </div>
 
@@ -451,7 +426,7 @@ export const ProfileView: React.FC = () => {
         </div>
       </section>
 
-      {/* 3.8 Saved Medical Reports Section */}
+      {/* 4. Documents List */}
       <section className="glass-card rounded-2xl p-6 shadow-sm border border-outline-variant/20 space-y-4">
         <div className="flex justify-between items-center">
           <h3 className="font-headline-md text-base text-secondary font-bold">Medical Reports</h3>
@@ -459,51 +434,64 @@ export const ProfileView: React.FC = () => {
             onClick={() => setShowAddReport(true)}
             className="text-xs text-primary font-bold hover:underline flex items-center gap-0.5"
           >
-            <span className="material-symbols-outlined text-sm font-bold">upload_file</span>
-            <span>Add Report</span>
+            <span className="material-symbols-outlined text-sm font-bold">upload_file</span> Add Report
           </button>
         </div>
 
         <div className="space-y-2 text-left">
-          {medicalReports.map((rep) => (
-            <div key={rep.id} className="p-3.5 bg-surface-container-low rounded-xl flex gap-3 border border-outline-variant/15 hover:bg-surface-container transition-colors items-center justify-between">
-              <div className="flex gap-3">
-                <div className="w-9 h-9 bg-primary/10 text-primary rounded-lg flex items-center justify-center flex-shrink-0">
-                  <span className="material-symbols-outlined text-lg">description</span>
-                </div>
-                <div className="text-left">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <h4 className="font-label-md text-xs text-secondary font-bold leading-none">{rep.note}</h4>
-                    <span className="bg-secondary/10 text-secondary text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
-                      For: {rep.patientName}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-[10px] text-outline font-semibold flex items-center gap-0.5">
-                      <span className="material-symbols-outlined text-xs">picture_as_pdf</span>
-                      {rep.fileName}
-                    </span>
-                    <span className="text-[9px] text-outline">Uploaded: {rep.date}</span>
-                  </div>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleDeleteReport(rep.id)}
-                className="text-on-surface-variant/40 hover:text-red-500 transition-colors p-1"
-                title="Delete Report"
-              >
-                <span className="material-symbols-outlined text-base">delete</span>
-              </button>
+          {loadingDocuments ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-primary mx-auto" />
+              <p className="text-xs text-outline mt-2">Loading documents...</p>
             </div>
-          ))}
-          {medicalReports.length === 0 && (
-            <p className="text-xs text-outline italic text-center py-4 w-full">No medical reports uploaded yet.</p>
+          ) : documents.length === 0 ? (
+            <p className="text-xs text-outline italic text-center py-4 w-full">No documents uploaded yet.</p>
+          ) : (
+            documents.map((doc) => (
+              <div
+                key={doc.id}
+                onClick={() => setSelectedDocument(doc)}
+                className="p-3.5 bg-surface-container-low rounded-xl flex gap-3 border border-outline-variant/15 hover:bg-surface-container transition-colors items-center justify-between cursor-pointer"
+              >
+                <div className="flex gap-3">
+                  <div className="w-9 h-9 bg-primary/10 text-primary rounded-lg flex items-center justify-center flex-shrink-0">
+                    <span className="material-symbols-outlined text-lg">description</span>
+                  </div>
+                  <div className="text-left">
+                    <div className="flex items-center flex-wrap">
+                      <span className="bg-secondary/10 text-secondary text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
+                        {'Myself'}
+                      </span>
+                      <span className="text-secondary text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
+                        • {new Date(doc.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[10px] text-outline font-semibold flex items-center gap-0.5">
+                        <span className="material-symbols-outlined text-xs">picture_as_pdf</span>
+                        {doc.fileName}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteDocument(doc.id);
+                  }}
+                  className="w-7 h-7 rounded-full hover:bg-red-50 flex items-center justify-center text-outline hover:text-red-500 transition-colors ml-1 disabled:opacity-50"
+                  title="Delete Document"
+                >
+                  <span className="material-symbols-outlined text-base">delete</span>
+                </button>
+              </div>
+            ))
           )}
         </div>
       </section>
 
-      {/* 3.9 ADD MEDICAL REPORT MODAL */}
+      {/* 5. ADD DOCUMENT MODAL */}
       {showAddReport && (
         <div className="fixed inset-0 bg-inverse-surface/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="w-full max-w-[360px] bg-white rounded-3xl p-6 shadow-2xl border border-outline-variant/30 flex flex-col animate-in zoom-in-95 duration-200">
@@ -514,66 +502,61 @@ export const ProfileView: React.FC = () => {
               </h3>
               <button
                 type="button"
-                onClick={() => setShowAddReport(false)}
+                onClick={() => {
+                  setShowAddReport(false);
+                  setOcrReportData(null);
+                  setOcrError(null);
+                  setOcrMessage(null);
+                }}
                 className="w-8 h-8 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center focus:outline-none"
               >
                 <span className="material-symbols-outlined text-sm">close</span>
               </button>
             </div>
 
-            <form onSubmit={handleAddReportSubmit} className="space-y-4 text-left">
-              <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Who's report is this?</label>
-                <select
-                  value={reportPatient}
-                  onChange={(e) => setReportPatient(e.target.value)}
-                  className="w-full px-2 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
-                >
-                  <option value="Myself">Myself ({user?.nickname || user?.fullName || "Sarah"})</option>
-                  {familyMembers.map((fm) => (
-                    <option key={fm.id} value={fm.nickname || fm.name}>
-                      {fm.nickname || fm.name} ({fm.relationship})
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div className="space-y-4 text-left">
 
-              <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Report Description / Note</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Annual Blood Sugar Report, Lipid Panel"
-                  value={reportNote}
-                  onChange={(e) => setReportNote(e.target.value)}
-                  className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
-                />
-              </div>
+              {/* OCR Uploader – handles upload and logs data */}
+              <OCRUploader
+                onComplete={async (data) => {
+                  console.log('OCR Data:', data);
+                  setOcrError(null);
+                  setOcrMessage(null);
+                  setOcrReportData(data);
 
-              <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">File Name</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. blood_test_july.pdf"
-                  value={reportFileName}
-                  onChange={(e) => setReportFileName(e.target.value)}
-                  className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
-                />
-              </div>
+                  if (!data.document_id) {
+                    setOcrError('No document ID returned. Upload may have failed.');
+                    return;
+                  }
 
-              <button
-                type="submit"
-                className="w-full py-3 bg-primary text-on-primary font-bold rounded-xl text-xs hover:opacity-90 active:scale-95 transition-all shadow-md mt-2"
-              >
-                Upload & Save Report
-              </button>
-            </form>
+                  // Refresh the document list
+                  await fetchDocuments();
+
+                  setOcrMessage('Document uploaded and processed successfully!');
+                  setShowAddReport(false);
+                  setOcrReportData(null);
+                  setOcrError(null);
+                  setOcrMessage(null);
+                }}
+                onError={(err) => {
+                  setOcrError('Failed to process the file. Please try again.');
+                  console.error(err);
+                }}
+                onClear={() => {
+                  setOcrReportData(null);
+                  setOcrError(null);
+                  setOcrMessage(null);
+                }}
+              />
+
+              {ocrError && <p className="text-red-500 text-xs font-medium text-center">{ocrError}</p>}
+              {ocrMessage && <p className="text-green-500 text-xs font-medium text-center">{ocrMessage}</p>}
+            </div>
           </div>
         </div>
       )}
 
-      {/* 3.5 ADD ADDRESS MODAL */}
+      {/* 6. Add Address Modal */}
       {showAddAddress && (
         <div className="fixed inset-0 bg-inverse-surface/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="w-full max-w-[360px] bg-white rounded-3xl p-6 shadow-2xl border border-outline-variant/30 flex flex-col animate-in zoom-in-95 duration-200">
@@ -655,8 +638,7 @@ export const ProfileView: React.FC = () => {
         </div>
       )}
 
-      {/* 4. ADD FAMILY MEMBER MODAL */}
-      {/* 1.5 EDIT USER PROFILE MODAL */}
+      {/* 7. Edit Profile Modal */}
       {isEditing && (
         <div className="fixed inset-0 bg-inverse-surface/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="w-full max-w-[420px] bg-white rounded-3xl p-6 shadow-2xl border border-outline-variant/30 flex flex-col max-h-[85vh] overflow-y-auto animate-in zoom-in-95 duration-200">
@@ -821,6 +803,7 @@ export const ProfileView: React.FC = () => {
         </div>
       )}
 
+      {/* 8. Add Family Member Modal */}
       {showAddMember && (
         <div className="fixed inset-0 bg-inverse-surface/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="w-full max-w-[420px] bg-white rounded-3xl p-6 shadow-2xl border border-outline-variant/30 flex flex-col max-h-[85vh] overflow-y-auto animate-in zoom-in-95 duration-200">
@@ -940,9 +923,9 @@ export const ProfileView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Identification Color Picker */}
+              {/* Color Picker */}
               <div className="space-y-1.5">
-                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider font-bold">Personalized Accent Color</label>
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Personalized Accent Color</label>
                 <div className="flex gap-2">
                   {["blue", "green", "purple", "orange", "pink", "teal", "grey"].map((c) => {
                     const isSelected = famColor === c;
@@ -963,20 +946,16 @@ export const ProfileView: React.FC = () => {
                         className={`w-6 h-6 rounded-full ${bgColors[c] || "bg-blue-500"} transition-all flex items-center justify-center`}
                         title={c}
                       >
-                        {isSelected && (
-                          <span className="material-symbols-outlined text-white text-xs font-bold">done</span>
-                        )}
+                        {isSelected && <span className="material-symbols-outlined text-white text-xs font-bold">done</span>}
                       </button>
                     );
                   })}
                 </div>
               </div>
 
-              {/* Avatar Selector Grid */}
+              {/* Avatar Selector */}
               <div className="space-y-2">
                 <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Select Representative Avatar</label>
-
-                {/* Categories */}
                 <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
                   {AVATAR_CATEGORIES.map((cat) => (
                     <button
@@ -992,8 +971,6 @@ export const ProfileView: React.FC = () => {
                     </button>
                   ))}
                 </div>
-
-                {/* Avatar items */}
                 <div className="grid grid-cols-5 gap-2 max-h-36 overflow-y-auto p-1 bg-white border border-outline-variant/10 rounded-xl">
                   {AVATAR_ITEMS.filter((av) => av.category === activeAvatarCategory).map((av) => {
                     const isSelected = famAvatarUrl === av.url;
@@ -1025,6 +1002,109 @@ export const ProfileView: React.FC = () => {
         </div>
       )}
 
+      {/* 9. Document Preview Modal */}
+      {selectedDocument && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
+          onClick={() => setSelectedDocument(null)}
+        >
+          <div
+            className="relative max-w-4xl max-h-[90vh] w-full bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-outline-variant/20 bg-white/80 backdrop-blur-sm">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="material-symbols-outlined text-primary">description</span>
+                <div className="min-w-0">
+                  <h3 className="font-headline-md text-sm text-secondary font-bold truncate">
+                    {selectedDocument.fileName}
+                  </h3>
+                  <p className="text-[10px] text-outline">
+                    {selectedDocument.documentType || "Document"} • {new Date(selectedDocument.createdAt).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSelectedDocument(null)}
+                  className="p-2 rounded-full hover:bg-surface-container transition-colors"
+                >
+                  <span className="material-symbols-outlined text-sm">close</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Preview Content */}
+            <div className="flex-1 overflow-auto p-4 bg-surface-container-low/30">
+              {selectedDocument.previewUrl ? (
+                selectedDocument.mimeType?.startsWith("image/") ? (
+                  <div className="relative flex items-center justify-center min-h-[50vh]">
+                    {previewLoading && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-white/50">
+                        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-primary" />
+                      </div>
+                    )}
+                    {!previewError ? (
+                      <img
+                        key={selectedDocument.id}
+                        src={selectedDocument.previewUrl}
+                        alt={selectedDocument.fileName}
+                        className="max-w-full max-h-[70vh] object-contain mx-auto rounded-lg"
+                        onLoad={() => setPreviewLoading(false)}
+                        onError={() => {
+                          setPreviewLoading(false);
+                          setPreviewError(true);
+                        }}
+                        style={{ display: previewLoading ? 'none' : 'block' }}
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center h-[70vh] text-center">
+                        <span className="material-symbols-outlined text-6xl text-outline-variant">image_not_supported</span>
+                        <p className="text-sm text-on-surface-variant mt-2">Failed to load image preview.</p>
+                        <a
+                          href={selectedDocument.previewUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-4 text-primary text-sm font-bold underline"
+                        >
+                          Open in new tab
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                ) : selectedDocument.mimeType === "application/pdf" ? (
+                  <iframe
+                    src={selectedDocument.previewUrl}
+                    className="w-full h-[70vh] rounded-lg"
+                    title={selectedDocument.fileName}
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-[70vh] text-center">
+                    <span className="material-symbols-outlined text-6xl text-outline-variant">insert_drive_file</span>
+                    <p className="text-sm text-on-surface-variant mt-2">Preview not available for this file type.</p>
+                    {selectedDocument.previewUrl && (
+                      <a
+                        href={selectedDocument.previewUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-4 text-primary text-sm font-bold underline"
+                      >
+                        Open in new tab
+                      </a>
+                    )}
+                  </div>
+                )
+              ) : (
+                <div className="flex flex-col items-center justify-center h-[70vh] text-center">
+                  <span className="material-symbols-outlined text-6xl text-outline-variant">image_not_supported</span>
+                  <p className="text-sm text-on-surface-variant mt-2">No preview available.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

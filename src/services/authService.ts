@@ -171,6 +171,7 @@ export const authService = {
           isWalkthroughShown: newProfile.is_walkthrough_shown,
           isMedicineWalkthroughShown: newProfile.is_medicine_walkthrough_shown,
           isPrescriptionWalkthroughShown: newProfile.is_prescription_walkthrough_shown,
+          isWellnessHealthWalkthroughShown: newProfile.is_wellness_health_walkthrough_shown,
           isSignupDone: newProfile.is_signup_done ?? false,
         };
       }
@@ -192,6 +193,7 @@ export const authService = {
         isWalkthroughShown: data.is_walkthrough_shown || false,
         isMedicineWalkthroughShown: data.is_medicine_walkthrough_shown || false,
         isPrescriptionWalkthroughShown: data.is_prescription_walkthrough_shown || false,
+        isWellnessHealthWalkthroughShown: data.is_wellness_health_walkthrough_shown || false,
         isSignupDone: data.is_signup_done ?? false,
       };
     } catch (error) {
@@ -250,6 +252,7 @@ export const authService = {
     if (profileData.isWalkthroughShown !== undefined) dbPayload.is_walkthrough_shown = profileData.isWalkthroughShown;
     if (profileData.isMedicineWalkthroughShown !== undefined) dbPayload.is_medicine_walkthrough_shown = profileData.isMedicineWalkthroughShown;
     if (profileData.isPrescriptionWalkthroughShown !== undefined) dbPayload.is_prescription_walkthrough_shown = profileData.isPrescriptionWalkthroughShown;
+    if (profileData.isWellnessHealthWalkthroughShown !== undefined) dbPayload.is_wellness_health_walkthrough_shown = profileData.isWellnessHealthWalkthroughShown;
     if (profileData.isSignupDone !== undefined) dbPayload.is_signup_done = profileData.isSignupDone;
 
 

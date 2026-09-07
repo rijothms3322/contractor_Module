@@ -24,10 +24,11 @@ export interface Profile {
   role: "user" | "admin";
   familyId?: string | null;
   email?: string;
-  isWalkthroughShown?: boolean;           
-  isMedicineWalkthroughShown?: boolean;     
-  isPrescriptionWalkthroughShown?: boolean; 
-  isSignupDone?: boolean; 
+  isWalkthroughShown?: boolean;
+  isMedicineWalkthroughShown?: boolean;
+  isPrescriptionWalkthroughShown?: boolean;
+  isWellnessHealthWalkthroughShown?: boolean;
+  isSignupDone?: boolean;
 }
 
 export interface FamilyMember {
@@ -63,9 +64,9 @@ export interface Medicine {
   isPrivate?: boolean;
   selected_days?: string[],
   repeat_every_n_days?: number;
-  interval_hours?: number;
+  remind_every?: number;
   interval_start_time?: string;
-  document_id?: string | null;   
+  document_id?: string | null;
 }
 
 export interface Reminder {
@@ -564,3 +565,11 @@ export const DEFAULT_NOTIFICATIONS: Notification[] = [
 ];
 
 export const TermsConditions = `https://medimz.com/terms`
+
+export function generateUUID(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
