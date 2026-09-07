@@ -63,7 +63,6 @@ export const HealthView: React.FC = () => {
     adherenceStreak,
     familyAdherenceStreak
   } = useApp();
-  console.log(reminders, 'remider')
   // Modals / Sub-views state
   const [activeModal, setActiveModal] = useState<"add_medicine" | "book_test" | "upload_report" | "view_history" | "tracking" | null>(null);
   const [activeTrackingBooking, setActiveTrackingBooking] = useState<Booking | null>(null);

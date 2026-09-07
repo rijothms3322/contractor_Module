@@ -1,6 +1,5 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8" ?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -8,6 +7,9 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notification" />
 
         <activity
             android:name=".MainActivity"
@@ -16,7 +18,6 @@
             android:launchMode="singleTask"
             android:exported="true"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density">
-
             <!-- Normal application launcher -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -30,12 +31,8 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
-                <data
-                    android:scheme="com.medimz.app"
-                    android:host="auth"
-                    android:path="/callback" />
+                <data android:scheme="com.medimz.app" android:host="auth" android:path="/callback" />
             </intent-filter>
-
         </activity>
 
         <provider
@@ -43,15 +40,9 @@
             android:authorities="${applicationId}.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true">
-
-            <meta-data
-                android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/file_paths" />
-
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
-
     </application>
 
     <uses-permission android:name="android.permission.INTERNET" />
-
 </manifest>
