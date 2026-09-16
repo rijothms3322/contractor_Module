@@ -29,6 +29,7 @@ export interface Profile {
   isPrescriptionWalkthroughShown?: boolean;
   isWellnessHealthWalkthroughShown?: boolean;
   isSignupDone?: boolean;
+  allowReportSharing?: boolean;
 }
 
 export interface FamilyMember {
@@ -48,6 +49,7 @@ export interface FamilyMember {
   allergies?: string[];
   existingDiseases?: string[];
   color?: string; // blue, green, purple, orange, pink, teal, grey
+  allowReportSharing?: boolean;
 }
 
 export interface Medicine {

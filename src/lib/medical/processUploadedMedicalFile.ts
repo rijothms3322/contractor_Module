@@ -14,7 +14,7 @@ export async function processUploadedMedicalFile(
   );
 
   console.log(
-    "mobile: User ID:",
+    "[userId] mobile: User ID:",
     userId
   );
 

@@ -14,7 +14,7 @@ export async function uploadMedicalDocument(
 
     console.log("================================");
     console.log("mobile: MEDICAL DOCUMENT UPLOAD START");
-    console.log("mobile: Passed User ID:", userId);
+    console.log("[userId] mobile: Passed User ID:", userId);
     console.log(
         "mobile: File:",
         file.name,

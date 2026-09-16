@@ -88,7 +88,7 @@ export const WellnessView: React.FC<{ hideHero?: boolean }> = ({ hideHero = fals
   );
 
   const renderDashboard = () => (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-24">
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-2">
       
       {/* Hero Wellness AI Banner with Animated Gradients */}
       {!hideHero && (
@@ -145,7 +145,7 @@ export const WellnessView: React.FC<{ hideHero?: boolean }> = ({ hideHero = fals
   );
 
   const renderLibrary = () => (
-    <div className="space-y-6 animate-in slide-in-from-right-8 fade-in duration-500 pb-24">
+    <div className="space-y-6 animate-in slide-in-from-right-8 fade-in duration-500 pb-2">
       {/* Header */}
       <div className="flex items-center gap-4 sticky top-0 bg-background/80 backdrop-blur-xl z-20 py-4 -mx-4 px-4 border-b border-outline-variant/10">
         <button 
