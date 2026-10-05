@@ -128,9 +128,14 @@ const STATIC_REPORT = {
 
 
 export default function WebUploader({
+    userId,
+    reportDate,
+    reportNote,
+    reportCategory,
+    isPrivate,
     onComplete,
     onError,
-    onClear, 
+    onClear,
 }: OCRUploaderProps) {
     const [loading, setLoading] = useState(false);
     console.log(loading, 'loading')
@@ -140,13 +145,14 @@ export default function WebUploader({
     const [isFullscreen, setIsFullscreen] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
     const { user } = useApp();
+    console.log(userId, '[userId] dd')
+    const effectiveUserId = userId ?? user?.id;
+    console.log(effectiveUserId, '[userId] effectiveUserId')
 
-    if (!user?.id) {
-    throw new Error("User is not authenticated.");
-}
+    if (!effectiveUserId) {
+        throw new Error("User is not authenticated.");
+    }
 
-
-    
     useEffect(() => {
         return () => {
             if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -230,10 +236,16 @@ export default function WebUploader({
             console.log('Calling processUploadedMedicalFile...');
             const medicalResult =
                 await processUploadedMedicalFile(
-                    user?.id,
+                    effectiveUserId,
                     selectedFile,
                     ocrText,
-                    ocrConfidence
+                    ocrConfidence,
+                    {
+                        reportDate,
+                        reportNote,
+                        reportCategory,
+                        isPrivate,
+                    }
                 );
             console.log('processUploadedMedicalFile returned:', medicalResult);
 

@@ -1,4 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
+import { Preferences } from "@capacitor/preferences";
+import { Capacitor } from "@capacitor/core";       
 
 // Retrieve environment keys
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -15,14 +17,57 @@ const isValidUrl = (url: string | undefined): boolean => {
   }
 };
 
-export const isSupabaseConfigured = 
-  Boolean(supabaseUrl) && 
-  Boolean(supabaseAnonKey) && 
+export const isSupabaseConfigured =
+  Boolean(supabaseUrl) &&
+  Boolean(supabaseAnonKey) &&
   isValidUrl(supabaseUrl);
+
+// ------------------------------------------------------------
+// NATIVE MOBILE STORAGE ADAPTER (iOS & Android Persistence)
+// ------------------------------------------------------------
+const capacitorStorageAdapter = {
+  getItem: async (key: string): Promise<string | null> => {
+    if (Capacitor.isNativePlatform()) {
+      const { value } = await Preferences.get({ key });
+      return value;
+    }
+    if (typeof window !== "undefined") {
+      return window.localStorage.getItem(key);
+    }
+    return null;
+  },
+  setItem: async (key: string, value: string): Promise<void> => {
+    if (Capacitor.isNativePlatform()) {
+      await Preferences.set({ key, value });
+      return;
+    }
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(key, value);
+    }
+  },
+  removeItem: async (key: string): Promise<void> => {
+    if (Capacitor.isNativePlatform()) {
+      await Preferences.remove({ key });
+      return;
+    }
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(key);
+    }
+  }
+};
 
 // Safe Client Export
 export const supabase = isSupabaseConfigured
-  ? createClient(supabaseUrl!, supabaseAnonKey!)
+  ? createClient(supabaseUrl!, supabaseAnonKey!, {
+    auth: {
+      storage: capacitorStorageAdapter,
+      storageKey: "medimz-auth-token",
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: false,
+      flowType: "pkce",
+    },
+  })
   : null as any;
 
 // Global startup notification in client consoles

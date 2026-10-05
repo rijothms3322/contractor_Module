@@ -31,6 +31,8 @@ import { WellnessCheckInModal } from "../components/views/WellnessCheckInModal";
 import { ProfileOnboarding } from "@/components/views/ProfileOnboarding";
 import { MainTour } from "@/components/tours/MainTour";
 import { requestNotificationPermission } from "@/services/notificationWeb";
+import { moodService } from "@/services/moodService";
+import NotificationPermissionModal from "@/components/views/NotificationPermissionModal";
 
 export default function Page() {
   const {
@@ -73,25 +75,42 @@ export default function Page() {
 
   // Auto-prompt wellness check-in once daily on login/mount
   useEffect(() => {
-    if (isLoggedIn && !showSplash && !showOnboarding) {
-      const tourDone = user?.isWalkthroughShown
-      if (!tourDone) return;
-      const todayStr = new Date().toISOString().split("T")[0];
-      const hasCheckedIn = wellnessLogs.some(log => log.date === todayStr);
-      if (!hasCheckedIn) {
-        const timer = setTimeout(() => setIsCheckInOpen(true), 2000);
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [isLoggedIn, showSplash, showOnboarding, wellnessLogs]);
+    if (!isLoggedIn || showSplash || showOnboarding) return;
+    if (!user?.isWalkthroughShown) return;
+    if (!user?.id) return;
 
-  // Window event listener to trigger wellness check-in modal from child components
-useEffect(() => {
-    const handleOpenCheckIn = () => {
-        setIsCheckInOpen(true);
+    let cancelled = false;
+
+    const checkMood = async () => {
+      try {
+        const shouldShow = await moodService.shouldShowMoodPopup(user.id);
+        if (cancelled) return;
+        if (shouldShow) {
+          const timer = setTimeout(() => setIsCheckInOpen(true), 2000);
+          return () => clearTimeout(timer);
+        }
+      } catch (err) {
+        console.error("Mood check failed:", err);
+      }
     };
+
+    checkMood();
+
+    return () => { cancelled = true; };
+  }, [isLoggedIn, showSplash, showOnboarding, user?.id, user?.isWalkthroughShown]);
+
+  // Open modal from child components (wellness card tap)
+  useEffect(() => {
+    const handleOpenCheckIn = () => setIsCheckInOpen(true);
     window.addEventListener("open-wellness-checkin", handleOpenCheckIn);
     return () => window.removeEventListener("open-wellness-checkin", handleOpenCheckIn);
+  }, []);
+
+  // Close modal when mood is saved
+  useEffect(() => {
+    const handleMoodUpdated = () => setIsCheckInOpen(false);
+    window.addEventListener("mood-updated", handleMoodUpdated);
+    return () => window.removeEventListener("mood-updated", handleMoodUpdated);
   }, []);
 
 
@@ -166,9 +185,9 @@ useEffect(() => {
     setShowSnoozeMenu(false);
   };
 
-  useEffect(() => {
-    requestNotificationPermission();
-  }, []);
+  // useEffect(() => {
+  //   requestNotificationPermission();
+  // }, []);
 
   // Read onboarding preference from localStorage
   useEffect(() => {
@@ -347,10 +366,10 @@ useEffect(() => {
   return (
     <div className="flex flex-col min-h-screen bg-background relative overflow-hidden">
       {/* Floating Push Notification Banner */}
-      {activeNotification && (
+      {/* {activeNotification && (
         <div className={`fixed top-4 left-4 right-4 z-[9999] max-w-[420px] mx-auto transition-all duration-300 transform translate-y-0 ${shake ? "scale-102 translate-x-1" : ""}`}>
           <div className="bg-white/95 backdrop-blur-md rounded-3xl p-4 shadow-2xl border border-outline-variant/30 text-left space-y-3">
-            {/* Header */}
+           
             <div className="flex justify-between items-center text-[10px] font-bold text-outline uppercase tracking-wider">
               <div className="flex items-center gap-1 text-primary">
                 <span className="material-symbols-outlined text-xs">medical_services</span>
@@ -359,7 +378,7 @@ useEffect(() => {
               <span>now</span>
             </div>
 
-            {/* Content Body */}
+       
             <div
               onClick={() => {
                 setActiveTab("home");
@@ -385,7 +404,7 @@ useEffect(() => {
               </p>
             </div>
 
-            {/* Notification Actions */}
+           
             {!showSnoozeMenu ? (
               <div className="flex gap-2 border-t border-outline-variant/15 pt-2">
                 <button
@@ -434,7 +453,7 @@ useEffect(() => {
             )}
           </div>
         </div>
-      )}
+      )} */}
 
       {/* Dynamic Blur Header */}
       <Header />
@@ -468,6 +487,7 @@ useEffect(() => {
           <WellnessCheckInModal isOpen={isCheckInOpen} onClose={() => setIsCheckInOpen(false)} />
         </>
       )}
+      <NotificationPermissionModal />
     </div>
   );
 }

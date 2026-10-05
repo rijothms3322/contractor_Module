@@ -9,6 +9,11 @@ import { useState, useEffect, useRef } from "react";
 import { useApp } from "@/context/AppContext";
 
 export default function MobileUploader({
+    userId,
+    reportDate,
+    reportNote,
+    reportCategory,
+    isPrivate,
     onComplete,
     onError,
     onClear,
@@ -22,8 +27,10 @@ export default function MobileUploader({
     const inputRef = useRef<HTMLInputElement>(null);
 
     const { user } = useApp();
-
-    if (!user?.id) {
+    console.log(userId, '[userId] user')
+    const effectiveUserId = userId ?? user?.id;
+    console.log(effectiveUserId, '[userId] id effectiveUserId')
+    if (!effectiveUserId) {
         throw new Error("User is not authenticated.");
     }
 
@@ -96,10 +103,16 @@ export default function MobileUploader({
             /* -------------------------------- STEP 2 Upload file + process medical data -------------------------------- */
             const medicalResult =
                 await processUploadedMedicalFile(
-                    user?.id,
+                    effectiveUserId,
                     selectedFile,
                     ocrText,
-                    ocrConfidence
+                    ocrConfidence,
+                    {
+                        reportDate,
+                        reportNote,
+                        reportCategory,
+                        isPrivate,
+                    }
                 );
             console.log('processUploadedMedicalFile returned:', medicalResult);
             console.log('processUploadedMedicalFile document Id', medicalResult.documentId)

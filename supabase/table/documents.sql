@@ -15,6 +15,14 @@ create table public.documents (
 
     document_type text not null default 'other',
 
+    report_date date,
+
+    note text,
+
+    report_category text,
+    
+    is_private boolean not null default false,
+
     ocr_text text,
 
     ocr_confidence numeric,
@@ -45,6 +53,21 @@ check (
 );
 
 alter table public.documents
+add constraint documents_report_category_check
+check (
+    report_category is null
+    or report_category in (
+        'prescription',
+        'lab_report',
+        'medical_report',
+        'discharge_summary',
+        'radiology',
+        'pathology',
+        'other'
+    )
+);
+
+alter table public.documents
 add constraint documents_status_check
 check (
     status in (
@@ -54,50 +77,3 @@ check (
         'failed'
     )
 );
-
-create policy "Users can view own documents"
-on public.documents
-for select
-to authenticated
-using (
-    user_id = (select auth.uid())
-);
-
-create policy "Users can create own documents"
-on public.documents
-for insert
-to authenticated
-with check (
-    user_id = (select auth.uid())
-);
-
-create policy "Users can update own documents"
-on public.documents
-for update
-to authenticated
-using (
-    user_id = (select auth.uid())
-)
-with check (
-    user_id = (select auth.uid())
-);
-
-create policy "Users can delete own documents"
-on public.documents
-for delete
-to authenticated
-using (
-    user_id = (select auth.uid())
-);
-
-create index idx_documents_user_id
-on public.documents(user_id);
-
-create index idx_documents_created_at
-on public.documents(created_at desc);
-
-create index idx_documents_status
-on public.documents(status);
-
-create index idx_documents_document_type
-on public.documents(document_type);

@@ -1,4 +1,4 @@
-// services/medicineNewService.ts
+// services/medicineService.ts
 
 import { FamilyMember, Medicine } from "../lib/mockData";
 import {
@@ -56,6 +56,7 @@ function mapMedicine(data: any): Medicine {
 
     document_id:
       data.document_id || undefined,
+    familyMemberId: data.family_member_id ?? null,
   };
 }
 
@@ -82,6 +83,8 @@ function medicineToPayload(
 ) {
   return {
     user_id: userId,
+
+    family_member_id: medicine.familyMemberId ?? null,
 
     name:
       medicine.name,
@@ -124,14 +127,13 @@ function medicineToPayload(
     interval_start_time:
       normalizeTime(medicine.interval_start_time),
 
-
     document_id:
       medicine.document_id ?? null,
   };
 }
 
 
-export const medicineNewService = {
+export const medicineService = {
 
   // ============================================================
   // GET ALL MEDICINES
@@ -269,6 +271,10 @@ export const medicineNewService = {
     ) {
       payload.dosage =
         updates.dosage;
+    }
+
+    if (updates.familyMemberId !== undefined) {
+      payload.family_member_id = updates.familyMemberId ?? null;
     }
 
     if (
@@ -491,24 +497,6 @@ export const medicineNewService = {
 
         let localMeta: any = {};
 
-        if (
-          typeof window !==
-          "undefined"
-        ) {
-          try {
-            const stored =
-              localStorage.getItem(
-                `medimz_fam_metadata_${f.id}`
-              );
-
-            if (stored) {
-              localMeta =
-                JSON.parse(stored);
-            }
-          } catch {
-            // Ignore local metadata errors
-          }
-        }
 
         return {
           id: f.id,
@@ -521,7 +509,7 @@ export const medicineNewService = {
             `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
               f.name
             )}`,
-
+          isCustom: true,
           relationship:
             f.relationship,
 
@@ -537,10 +525,7 @@ export const medicineNewService = {
           adherenceRate:
             100,
 
-          nickname:
-            localMeta.nickname ||
-            f.nickname ||
-            f.name,
+          nickname: localMeta.nickname || f.nick_name || f.name,
 
           dob:
             localMeta.dob ||
@@ -550,9 +535,7 @@ export const medicineNewService = {
             localMeta.bloodGroup ||
             f.blood_group,
 
-          phone:
-            localMeta.phone ||
-            f.phone,
+          phone: localMeta.phone || f.phone_number,
 
           medicalNotes:
             localMeta.medicalNotes ||
@@ -619,7 +602,7 @@ export const medicineNewService = {
       medical_conditions:
         member.medicalConditions || [],
 
-      nickname:
+      nick_name:
         member.nickname ||
         member.name,
 
@@ -629,17 +612,17 @@ export const medicineNewService = {
       blood_group:
         member.bloodGroup || null,
 
-      phone:
+      phone_number:
         member.phone || null,
 
-      medical_notes:
-        member.medicalNotes || null,
+      // medical_notes:
+      //   member.medicalNotes || null,
 
-      allergies:
-        member.allergies || null,
+      // allergies:
+      //   member.allergies || null,
 
-      existing_diseases:
-        member.existingDiseases || null,
+      // existing_diseases:
+      //   member.existingDiseases || null,
 
       color:
         member.color || "blue",
@@ -653,7 +636,7 @@ export const medicineNewService = {
       .insert(payload)
       .select()
       .single();
-
+    console.log(data, 'family member data')
     if (error) {
       console.error(
         "Family member insert failed:",
@@ -699,9 +682,7 @@ export const medicineNewService = {
       adherenceRate:
         100,
 
-      nickname:
-        data.nickname ||
-        data.name,
+      nickname: data.nick_name || data.name,
 
       dob:
         data.dob || "",
@@ -709,8 +690,7 @@ export const medicineNewService = {
       bloodGroup:
         data.blood_group || "",
 
-      phone:
-        data.phone || "",
+      phone: data.phone_number || "",
 
       medicalNotes:
         data.medical_notes || "",
@@ -763,7 +743,7 @@ export const medicineNewService = {
       payload.avatar_url =
         member.avatarUrl;
     }
-
+    
     if (
       member.relationship !== undefined
     ) {
@@ -792,60 +772,36 @@ export const medicineNewService = {
         member.medicalConditions;
     }
 
-    if (
-      member.nickname !== undefined
-    ) {
-      payload.nickname =
-        member.nickname;
+    if (member.nickname !== undefined) {
+      payload.nick_name = member.nickname || null;   
     }
 
-    if (
-      member.dob !== undefined
-    ) {
-      payload.dob =
-        member.dob || null;
+    if (member.dob !== undefined) {
+      payload.dob = member.dob || null;
     }
 
-    if (
-      member.bloodGroup !== undefined
-    ) {
-      payload.blood_group =
-        member.bloodGroup || null;
+    if (member.bloodGroup !== undefined) {
+      payload.blood_group = member.bloodGroup || null;
     }
 
-    if (
-      member.phone !== undefined
-    ) {
-      payload.phone =
-        member.phone || null;
+    if (member.phone !== undefined) {
+      payload.phone_number = member.phone || null;   
     }
 
-    if (
-      member.medicalNotes !== undefined
-    ) {
-      payload.medical_notes =
-        member.medicalNotes || null;
+    if (member.medicalNotes !== undefined) {
+      payload.medical_notes = member.medicalNotes || null;
     }
 
-    if (
-      member.allergies !== undefined
-    ) {
-      payload.allergies =
-        member.allergies || null;
+    if (member.allergies !== undefined) {
+      payload.allergies = member.allergies || null;
     }
 
-    if (
-      member.existingDiseases !== undefined
-    ) {
-      payload.existing_diseases =
-        member.existingDiseases || null;
+    if (member.existingDiseases !== undefined) {
+      payload.existing_diseases = member.existingDiseases || null;
     }
 
-    if (
-      member.color !== undefined
-    ) {
-      payload.color =
-        member.color || "blue";
+    if (member.color !== undefined) {
+      payload.color = member.color || "blue";
     }
 
     if (
@@ -911,9 +867,7 @@ export const medicineNewService = {
       adherenceRate:
         100,
 
-      nickname:
-        data.nickname ||
-        data.name,
+      nickname: data.nick_name || data.name, 
 
       dob:
         data.dob || "",
@@ -921,8 +875,7 @@ export const medicineNewService = {
       bloodGroup:
         data.blood_group || "",
 
-      phone:
-        data.phone || "",
+      phone: data.phone_number || "",
 
       medicalNotes:
         data.medical_notes || "",
@@ -932,6 +885,8 @@ export const medicineNewService = {
 
       existingDiseases:
         data.existing_diseases || [],
+
+      isCustom: true,
 
       color:
         data.color || "blue",

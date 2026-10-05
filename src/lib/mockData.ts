@@ -30,6 +30,7 @@ export interface Profile {
   isWellnessHealthWalkthroughShown?: boolean;
   isSignupDone?: boolean;
   allowReportSharing?: boolean;
+  isDeleted?: boolean;      
 }
 
 export interface FamilyMember {
@@ -50,6 +51,7 @@ export interface FamilyMember {
   existingDiseases?: string[];
   color?: string; // blue, green, purple, orange, pink, teal, grey
   allowReportSharing?: boolean;
+  isCustom: boolean;
 }
 
 export interface Medicine {
@@ -69,6 +71,7 @@ export interface Medicine {
   remind_every?: number;
   interval_start_time?: string;
   document_id?: string | null;
+  familyMemberId?: string | null; 
 }
 
 export interface Reminder {
@@ -154,6 +157,26 @@ export interface Notification {
   createdAt: string;
 }
 
+// WELLNESS MOOD CONFIG
+export type MoodKey = "great" | "okay" | "not_well" | "need_help";
+export interface MoodConfig {
+  key: MoodKey;
+  label: string;
+  emoji: string;
+}
+
+export const MOOD_CONFIG: Record<MoodKey, MoodConfig> = {
+  great:     { key: "great",     label: "Great",     emoji: "😀" },
+  okay:      { key: "okay",      label: "Okay",      emoji: "🙂" },
+  not_well:  { key: "not_well",  label: "Not Well",  emoji: "😐" },
+  need_help: { key: "need_help", label: "Need Help", emoji: "😣" },
+};
+
+export const MOOD_KEYS = Object.keys(MOOD_CONFIG) as MoodKey[];
+
+export const getMoodConfig = (mood: MoodKey): MoodConfig => MOOD_CONFIG[mood];
+
+
 // 1. DEFAULT USER PROFILE (Sarah)
 export const DEFAULT_PROFILE: Profile = {
   id: "sarah-uid-12345",
@@ -193,7 +216,8 @@ export const DEFAULT_FAMILY_MEMBERS: FamilyMember[] = [
     age: 72,
     gender: "Male",
     medicalConditions: ["Ischemic Heart Disease", "Mild Arthritis"],
-    adherenceRate: 92
+    adherenceRate: 92,
+    isCustom: false,
   },
   {
     id: "fam-mom",
@@ -203,7 +227,8 @@ export const DEFAULT_FAMILY_MEMBERS: FamilyMember[] = [
     age: 66,
     gender: "Female",
     medicalConditions: ["Thyroid Disorder", "Osteoporosis"],
-    adherenceRate: 85
+    adherenceRate: 85,
+    isCustom: false,
   }
 ];
 

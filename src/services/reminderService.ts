@@ -6,8 +6,8 @@ import {
 } from "@/lib/supabaseClient";
 
 import {
-  Reminder,
   Notification,
+  Reminder,
 } from "@/lib/mockData";
 
 // ─────────────────────────────────────────────

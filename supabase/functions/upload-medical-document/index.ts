@@ -79,6 +79,26 @@ Deno.serve(async (req) => {
         const fileBase64 =
             body?.fileBase64;
 
+        // --------------------------------------------------------
+        // Optional metadata
+        // --------------------------------------------------------
+
+        const reportDate =
+            body?.report_date ??
+            null;
+
+        const note =
+            body?.note ??
+            null;
+
+        const reportCategory =
+            body?.report_category ??
+            null;
+
+        const isPrivate =
+            body?.is_private ??
+            false;
+
         console.log(
             "UPLOAD MEDICAL DOCUMENT"
         );
@@ -278,6 +298,19 @@ Deno.serve(async (req) => {
 
             document_type:
                 "other",
+
+            // Optional metadata
+            report_date:
+                reportDate,
+
+            note:
+                note,
+
+            report_category:
+                reportCategory,
+
+            is_private:
+                isPrivate,
 
             status:
                 "uploaded",

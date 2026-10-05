@@ -1,14 +1,51 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useApp } from "../../context/AppContext";
 
 export const Header: React.FC = () => {
   const { user, notifications, markNotificationRead, clearNotifications, activeTab, setActiveTab, elderlyMode, toggleElderlyMode } = useApp();
   const [showNotifications, setShowNotifications] = useState(false);
+  const autoCloseTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const unreadNotifications = notifications.filter((n) => !n.isRead);
+  const handleToggleNotifications = () => {
+    const willOpen = !showNotifications;
+    setShowNotifications(willOpen);
 
+    // Panel khul raha hai
+    if (willOpen) {
+      // 1. Unread notifications ko 800ms baad read mark karo
+      if (unreadNotifications.length > 0) {
+        setTimeout(() => {
+          unreadNotifications.forEach((n) => markNotificationRead(n.id));
+        }, 800);
+      }
+
+      // 2. Panel ko 6 sec baad auto-close karo
+      if (autoCloseTimerRef.current) {
+        clearTimeout(autoCloseTimerRef.current);
+      }
+      autoCloseTimerRef.current = setTimeout(() => {
+        setShowNotifications(false);
+        autoCloseTimerRef.current = null;
+      }, 6000);
+    } else {
+      // Panel manually band kiya — timer clear karo
+      if (autoCloseTimerRef.current) {
+        clearTimeout(autoCloseTimerRef.current);
+        autoCloseTimerRef.current = null;
+      }
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (autoCloseTimerRef.current) {
+        clearTimeout(autoCloseTimerRef.current);
+      }
+    };
+  }, []);
   return (
     <header className="fixed top-0 left-0 right-0 z-40 max-w-container-max mx-auto h-16 px-gutter flex justify-between items-center bg-surface/80 dark:bg-surface/80 backdrop-blur-xl border-b border-outline-variant/20 shadow-sm transition-all">
       {/* User and Logo */}
@@ -45,23 +82,23 @@ export const Header: React.FC = () => {
       {/* Right side Actions */}
       <div className="flex items-center gap-stack-sm relative">
 
-        {/* Elderly Mode Toggle */}
+        {/* Easy View Mode Toggle */}
         <button
           onClick={toggleElderlyMode}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all duration-300 font-label-sm text-xs font-black shadow-sm ${
-            elderlyMode
-              ? "bg-[#ee7b4d] text-white border-[#ee7b4d] scale-102"
-              : "bg-surface-container hover:bg-surface-container-high border-outline-variant/30 text-on-surface-variant"
-          }`}
-          title="Toggle Elderly Mode Accessibility"
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all duration-300 font-label-sm text-xs font-black shadow-sm ${elderlyMode
+            ? "bg-[#ee7b4d] text-white border-[#ee7b4d] scale-102"
+            : "bg-surface-container hover:bg-surface-container-high border-outline-variant/30 text-on-surface-variant"
+            }`}
+          title="Toggle Easy View Mode"
         >
-          <span>👴 Elderly Mode</span>
+          <span>Easy View Mode</span>
           <span className={`w-2 h-2 rounded-full ${elderlyMode ? "bg-[#00b351] animate-pulse" : "bg-outline"}`} />
         </button>
 
         {/* Notifications Icon with Badge */}
         <button
-          onClick={() => setShowNotifications(!showNotifications)}
+          // onClick={() => setShowNotifications(!showNotifications)}
+          onClick={handleToggleNotifications}
           className="w-10 h-10 flex items-center justify-center rounded-full bg-surface-container hover:bg-surface-container-high transition-colors active:scale-95 relative"
         >
           <span className="material-symbols-outlined text-secondary">notifications</span>
@@ -98,9 +135,7 @@ export const Header: React.FC = () => {
                   <div
                     key={n.id}
                     onClick={() => markNotificationRead(n.id)}
-                    className={`p-3 rounded-lg flex gap-3 cursor-pointer hover:bg-surface-container/50 transition-colors ${
-                      !n.isRead ? "bg-surface-container-low border-l-4 border-primary" : "opacity-80"
-                    }`}
+                    className={`p-3 rounded-lg flex gap-3 cursor-pointer hover:bg-surface-container/50 transition-colors bg-surface-container-low border-l-4 border-primary`}
                   >
                     <div className="flex-shrink-0 mt-0.5">
                       <span className="material-symbols-outlined text-primary text-xl">

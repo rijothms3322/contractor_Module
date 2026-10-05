@@ -6,7 +6,13 @@ export async function processUploadedMedicalFile(
   userId: string,
   file: File,
   ocrText: string,
-  ocrConfidence: number
+  ocrConfidence: number,
+  metadata?: {
+    reportDate?: string;
+    reportNote?: string;
+    reportCategory?: string;
+    isPrivate?: boolean;
+  }
 ) {
   console.log("================================");
   console.log(
@@ -46,7 +52,8 @@ export async function processUploadedMedicalFile(
   const uploadResult =
     await uploadMedicalDocument(
       file,
-      userId
+      userId,
+      metadata
     );
 
   console.log(

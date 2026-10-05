@@ -9,6 +9,7 @@ import { TermsConditions } from "@/lib/mockData";
 import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { signInWithGoogle } from "@/lib/googleAuth";
+import { sendVerificationOtp, verifyOtpAndLogin } from "@/services/otpService";
 
 // OTP Input Component 
 const OtpInput = ({
@@ -18,17 +19,19 @@ const OtpInput = ({
   otp: string;
   setOtp: React.Dispatch<React.SetStateAction<string>>;
 }) => {
+  const LENGTH = 6;
+
   const handleChange = (index: number, value: string) => {
     const digits = value.replace(/\D/g, "");
     if (!digits) return;
 
     const digit = digits[0];
-    const otpArray = otp.padEnd(4, "").split("");
+    const otpArray = otp.padEnd(LENGTH, "").split("");
     otpArray[index] = digit;
-    const newOtp = otpArray.join("").slice(0, 4);
+    const newOtp = otpArray.join("").slice(0, LENGTH);
     setOtp(newOtp);
 
-    if (index < 3) {
+    if (index < LENGTH - 1) {
       const nextInput = document.querySelector(
         `[data-otp-index="${index + 1}"]`
       ) as HTMLInputElement | null;
@@ -43,7 +46,7 @@ const OtpInput = ({
     if (e.key !== "Backspace") return;
     e.preventDefault();
 
-    const otpArray = otp.padEnd(4, "").split("");
+    const otpArray = otp.padEnd(LENGTH, "").split("");
     if (otpArray[index]) {
       otpArray[index] = "";
       setOtp(otpArray.join("").replace(/\s/g, ""));
@@ -63,26 +66,24 @@ const OtpInput = ({
     const pastedOtp = e.clipboardData
       .getData("text")
       .replace(/\D/g, "")
-      .slice(0, 4);
+      .slice(0, LENGTH);
     if (!pastedOtp) return;
 
     setOtp(pastedOtp);
-    const lastIndex = Math.min(pastedOtp.length - 1, 3);
+    const lastIndex = Math.min(pastedOtp.length - 1, LENGTH - 1);
     const input = document.querySelector(
       `[data-otp-index="${lastIndex}"]`
     ) as HTMLInputElement | null;
     input?.focus();
   };
 
-
-
   return (
     <div className="space-y-2">
       <label className="block text-xs font-bold text-on-surface-variant">
-        Enter 4-Digit OTP
+        Enter 6-Digit OTP
       </label>
-      <div className="flex justify-center gap-3">
-        {Array.from({ length: 4 }).map((_, index) => (
+      <div className="flex justify-center gap-2">
+        {Array.from({ length: LENGTH }).map((_, index) => (
           <input
             key={index}
             data-otp-index={index}
@@ -96,7 +97,7 @@ const OtpInput = ({
             onKeyDown={(e) => handleKeyDown(index, e)}
             onPaste={handlePaste}
             className="
-              w-14 h-14
+              w-12 h-14
               text-center
               text-xl
               font-bold
@@ -127,7 +128,7 @@ export const AuthView: React.FC = () => {
   const [mode, setMode] = useState<"login" | "signup" | "forgot">("login");
   const [activeTab, setActiveTab] = useState<"emailLogin" | "phoneLogin">("emailLogin");
   const [signUpActiveTab, setSignUpActiveTab] = useState<"emailSignUp" | "phoneSignUp">("emailSignUp");
-  const [role, setRole] = useState<"user" | "admin">("admin");
+  const [role, setRole] = useState<"user" | "admin">("user");
 
   // Form fields
   const [email, setEmail] = useState("");
@@ -141,6 +142,8 @@ export const AuthView: React.FC = () => {
   const [otp, setOtp] = useState("");
   const [otpTimer, setOtpTimer] = useState(0);
   const [canResendOtp, setCanResendOtp] = useState(false);
+  const [verificationId, setVerificationId] = useState<string>("");
+  const [signupToken, setSignupToken] = useState<string | null>(null);
 
   // UI states
   const [loading, setLoading] = useState(false);
@@ -302,10 +305,12 @@ export const AuthView: React.FC = () => {
     setPhone("");
     setOtp("");
     setOtpSent(false);
+    setVerificationId("");
     setFullName("");
     setError("");
     setMessage("");
     setAcceptTerms(false);
+    setSignupToken(null);
   };
 
   // Resend OTP
@@ -314,14 +319,12 @@ export const AuthView: React.FC = () => {
       setError("Phone number is required.");
       return;
     }
-    const formatted = formatPhoneNumber(phone);
+    console.log("[OTP] Resend — phone:", phone);
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithOtp({
-        phone: formatted,
-        options: { shouldCreateUser: true },
-      });
-      if (error) throw error;
+      const vid = await sendVerificationOtp(phone, "91");
+      console.log("[OTP] Resend verificationId:", vid);
+      setVerificationId(vid);
       setOtp("");
       setMessage("OTP resent successfully.");
       startOtpTimer();
@@ -339,20 +342,24 @@ export const AuthView: React.FC = () => {
     setActiveTab(tab);
     setOtpSent(false);
     setOtp("");
+    setVerificationId("");
     setPhone("");
     setError("");
     setMessage("");
+    setSignupToken(null);
   };
 
   const handleSignupTabChange = (tab: "emailSignUp" | "phoneSignUp") => {
     setSignUpActiveTab(tab);
     setOtpSent(false);
     setOtp("");
+    setVerificationId("");
     setPhone("");
     setEmail("");
     setPassword("");
     setError("");
     setMessage("");
+    setSignupToken(null);
   };
 
 
@@ -390,40 +397,39 @@ export const AuthView: React.FC = () => {
     // }
 
     setError("");
-  setMessage("");
+    setMessage("");
 
-  if (!isSupabaseConfigured) {
-    // Fallback demo mode login
-    setLoading(true);
-    try {
-      if (role === "admin") {
-        await login("teams@medimz.com", "password123", "admin");
-      } else {
-        await login("google-user@medimz.com", "password123", "user");
+    if (!isSupabaseConfigured) {
+      // Fallback demo mode login
+      setLoading(true);
+      try {
+        if (role === "admin") {
+          await login("teams@medimz.com", "password123", "admin");
+        } else {
+          await login("google-user@medimz.com", "password123", "user");
+        }
+      } catch (err: any) {
+        setError(err?.message || "Google Sign-In failed.");
+      } finally {
+        setLoading(false);
       }
-    } catch (err: any) {
-      setError(err?.message || "Google Sign-In failed.");
-    } finally {
-      setLoading(false);
+      return;
     }
-    return;
-  }
 
-  setLoading(true);
-  const result = await signInWithGoogle();
-  setLoading(false);
+    setLoading(true);
+    const result = await signInWithGoogle();
+    setLoading(false);
 
-  if (result.status === "error") {
-    setError(result.message);
-  }
-  // "success" → onAuthStateChange / useAuthSession picks up the session
-  // and page.tsx routes to onboarding or home automatically
-  // "cancelled" → user backed out, do nothing
+    if (result.status === "error") {
+      setError(result.message);
+    }
+    // "success" → onAuthStateChange / useAuthSession picks up the session
+    // and page.tsx routes to onboarding or home automatically
+    // "cancelled" → user backed out, do nothing
   };
 
 
   // Main Submit Handler
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -431,7 +437,6 @@ export const AuthView: React.FC = () => {
 
     // ──────────────────────────────────────────────────────────────
     // PHONE LOGIN
-    // ──────────────────────────────────────────────────────────────
     if (mode === "login" && activeTab === "phoneLogin") {
       const formattedPhone = formatPhoneNumber(phone);
 
@@ -450,13 +455,12 @@ export const AuthView: React.FC = () => {
 
       // Send OTP
       if (!otpSent) {
+        console.log("[OTP] Login Send OTP — phone:", phone);
         setLoading(true);
         try {
-          const { error } = await supabase.auth.signInWithOtp({
-            phone: formattedPhone,
-            options: { shouldCreateUser: true },
-          });
-          if (error) throw error;
+          const vid = await sendVerificationOtp(phone, "91");
+          console.log("[OTP] Login verificationId:", vid);
+          setVerificationId(vid);
           setOtpSent(true);
           setOtp("");
           setMessage("OTP sent successfully to your phone.");
@@ -474,15 +478,40 @@ export const AuthView: React.FC = () => {
         setError("Please enter the OTP.");
         return;
       }
-      if (!/^\d{4}$/.test(otp)) {
-        setError("Please enter the complete 4-digit OTP.");
+      if (!/^\d{6}$/.test(otp)) {
+        setError("Please enter the complete 6-digit OTP.");
         return;
       }
 
       setLoading(true);
       try {
-        await loginWithPhone(formattedPhone, otp);
-        // On success, loginWithPhone will update context state → redirect
+        console.log(
+          "[OTP] Login Verify — otp:",
+          otp,
+          "verificationId:",
+          verificationId
+        );
+
+        const result = await verifyOtpAndLogin(phone,"91",verificationId,otp);
+        console.log("[OTP] Login verify result:", result);
+
+        // ── LOGIN_SUCCESS 
+        if (result.code === "LOGIN_SUCCESS") {
+          return;
+        }
+
+        // ── PHONE_NOT_REGISTERED 
+        if (result.code === "PHONE_NOT_REGISTERED") {
+          setMode("signup");
+          setSignUpActiveTab("phoneSignUp");
+          setOtpSent(false);
+          setOtp("");
+          setVerificationId("");
+          // keep `phone` and `acceptTerms` so the user doesn't retype them
+          setMessage(result.message || "");
+          return;
+        }
+        setError(result.message || "");
       } catch (err: any) {
         setError(err?.message || "Invalid OTP. Please try again.");
       } finally {
@@ -493,7 +522,6 @@ export const AuthView: React.FC = () => {
 
     // ──────────────────────────────────────────────────────────────
     // PHONE SIGNUP
-    // ──────────────────────────────────────────────────────────────
     if (mode === "signup" && signUpActiveTab === "phoneSignUp") {
       const formattedPhone = formatPhoneNumber(phone);
 
@@ -516,19 +544,12 @@ export const AuthView: React.FC = () => {
 
       // Send OTP
       if (!otpSent) {
+        console.log("[OTP] Signup Send OTP — phone:", phone);
         setLoading(true);
         try {
-          const { error } = await supabase.auth.signInWithOtp({
-            phone: formattedPhone,
-            options: {
-              shouldCreateUser: true,
-              data: {
-                full_name: fullName.trim(),
-                role: role,
-              },
-            },
-          });
-          if (error) throw error;
+          const vid = await sendVerificationOtp(phone, "91");
+          console.log("[OTP] Signup verificationId:", vid);
+          setVerificationId(vid);
           setOtpSent(true);
           setOtp("");
           setMessage("OTP sent successfully to your phone.");
@@ -546,15 +567,35 @@ export const AuthView: React.FC = () => {
         setError("Please enter the OTP.");
         return;
       }
-      if (!/^\d{4}$/.test(otp)) {
-        setError("Please enter the complete 4-digit OTP.");
+      if (!/^\d{6}$/.test(otp)) {
+        setError("Please enter the complete 6-digit OTP.");
         return;
       }
 
       setLoading(true);
       try {
-        await loginWithPhone(formattedPhone, otp);
-        // loginWithPhone will handle session and profile
+        console.log(
+          "[OTP] Signup Verify — otp:",
+          otp,
+          "verificationId:",
+          verificationId
+        );
+
+        const result = await verifyOtpAndLogin(
+          phone,
+          "91",
+          verificationId,
+          otp
+        );
+        console.log("[OTP] Signup verify result:", result);
+
+        // ── LOGIN_SUCCESS 
+        if (result.code === "LOGIN_SUCCESS") {
+          return;
+        }
+
+        // ── Every other code 
+        setError(result.message || "");
       } catch (err: any) {
         setError(err?.message || "Invalid OTP. Please try again.");
       } finally {
@@ -565,7 +606,6 @@ export const AuthView: React.FC = () => {
 
     // ──────────────────────────────────────────────────────────────
     // EMAIL VALIDATION (for login, signup, forgot)
-    // ──────────────────────────────────────────────────────────────
     if (!email.trim()) {
       setError("Please enter your email address.");
       return;
@@ -632,6 +672,7 @@ export const AuthView: React.FC = () => {
           const isSuper = normalizedEmail === "teams@medimz.com";
           let hasAssignedRole = false;
           try {
+            console.log("call 1");
             const roles = await adminService.getAllUserRoles();
             hasAssignedRole = roles.some(
               (r) => r.email?.toLowerCase().trim() === normalizedEmail
@@ -683,9 +724,6 @@ export const AuthView: React.FC = () => {
       setLoading(false);
     }
   };
-
-
-  // RENDER
 
   return (
     <div className="min-h-screen bg-background flex flex-col justify-center items-center py-8 px-gutter max-w-[440px] mx-auto relative overflow-hidden">
@@ -999,7 +1037,7 @@ export const AuthView: React.FC = () => {
           )}
 
           {/* Admin/Patient toggle */}
-          {mode !== "forgot" && (
+          {/* {mode !== "forgot" && (
             <div className="pt-2 border-t border-outline-variant/10 text-center">
               <button
                 type="button"
@@ -1009,7 +1047,7 @@ export const AuthView: React.FC = () => {
                 ⚙️ Mode: {role === "admin" ? "Admin Portal" : "Patient Portal"} (Tap to Switch)
               </button>
             </div>
-          )}
+          )} */}
         </div>
       </div>
     </div>

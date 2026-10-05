@@ -2,6 +2,20 @@ import { Reminder } from "@/lib/mockData";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { Capacitor } from "@capacitor/core";
 
+const { NativeSettings, AndroidSettings, IOSSettings } = await import(
+  "capacitor-native-settings"
+);
+
+const NOTIFICATION_WINDOW_DAYS = 7;
+const MAX_SCHEDULED_NOTIFICATIONS = 150;
+
+export type NotificationPermissionStatus =
+  | "granted"
+  | "denied"
+  | "prompt"
+  | "prompt-with-rationale"
+  | "unsupported";
+
 const getLocalNotifications = () => {
   if (typeof window === "undefined") {
     return null;
@@ -44,18 +58,34 @@ export const notificationService = {
     }
 
     try {
-      const permission = await notifications.requestPermissions();
+      if (Capacitor.getPlatform() === "android") {
+        try {
+          await notifications.createChannel({
+            id: "medicine-reminders-v2",
+            name: "Medicine Reminders",
+            description: "Reminders to take your medicine",
+            importance: 5,
+            visibility: 1,
+            sound: "notification.wav",
+            vibration: true,
+          });
+          console.log("[Notifications] Channel created successfully");
+        } catch (err) {
+          console.error("[Notifications] Channel creation FAILED :", err);
+        }
 
-      console.log(
-        "[Notifications] Permission:",
-        permission.display
-      );
+        try {
+          const { exact_alarm } =
+            await notifications.checkExactNotificationSetting();
+          console.log("[Notifications] Exact alarm status:", exact_alarm);
 
-      if (permission.display !== "granted") {
-        console.warn(
-          "[Notifications] Notification permission not granted"
-        );
-        return;
+          if (exact_alarm !== "granted") {
+            const res = await notifications.changeExactNotificationSetting();
+            console.log("[Notifications] Exact alarm change result:", res);
+          }
+        } catch (err) {
+          console.warn("[Notifications] Exact alarm check failed:", err);
+        }
       }
 
       await notifications.registerActionTypes({
@@ -63,47 +93,73 @@ export const notificationService = {
           {
             id: "MED_REMINDER_ACTIONS",
             actions: [
-              {
-                id: "taken",
-                title: "✅ Taken",
-                foreground: false,
-              },
-              {
-                id: "snooze",
-                title: "⏰ Snooze",
-                foreground: false,
-              },
-              {
-                id: "skip",
-                title: "❌ Skip",
-                foreground: false,
-              },
+              { id: "taken", title: "✅ Taken", foreground: false },
+              { id: "snooze", title: "⏰ Snooze", foreground: false },
+              { id: "skip", title: "❌ Skip", foreground: false },
             ],
           },
         ],
       });
 
-      console.log(
-        "[Notifications] Initialized successfully"
-      );
+      console.log("[Notifications] Initialized successfully");
     } catch (error) {
-      console.error(
-        "[Notifications] Initialization failed:",
-        error
-      );
+      console.error("[Notifications] Initialization failed:", error);
     }
   },
 
   /**
-   * Schedule ONE already-generated Reminder.
-   *
-   * Frequency logic should NOT live here.
-   * generateIntervalReminders / addMedicine generates the correct
-   * reminder dates and this function simply schedules them.
-   *
-   * IMPORTANT: Uses the effective time (snoozedUntil if present and future,
-   * otherwise scheduledTime).
+   * Read current permission WITHOUT prompting.
    */
+  async checkPermission(): Promise<NotificationPermissionStatus> {
+    const notifications = getLocalNotifications();
+    if (!notifications) return "unsupported";
+
+    const status = await notifications.checkPermissions();
+    return status.display as NotificationPermissionStatus;
+  },
+
+  /**
+   * Request permission.
+   *   - "granted"  → already allowed, nothing to do
+   *   - "denied"   → permanently denied, caller must go to Settings
+   *   - otherwise  → OS dialog will show
+   */
+  async requestPermission(): Promise<NotificationPermissionStatus> {
+    const notifications = getLocalNotifications();
+    if (!notifications) return "unsupported";
+
+    const current = await this.checkPermission();
+    if (current === "granted") return "granted";
+    if (current === "denied") return "denied";
+
+    const result = await notifications.requestPermissions();
+    return result.display as NotificationPermissionStatus;
+  },
+
+  /**
+   * Open OS-level app settings (Android: app detail screen).
+   */
+  async openAppSettings(): Promise<void> {
+    if (typeof window === "undefined") return;
+    if (!Capacitor.isNativePlatform()) return;
+
+    try {
+
+      if (Capacitor.getPlatform() === "android") {
+        await NativeSettings.openAndroid({
+          option: AndroidSettings.ApplicationDetails,
+        });
+      } else {
+        await NativeSettings.openIOS({
+          option: IOSSettings.App,
+        });
+      }
+      console.log("[Notifications] Opened app settings");
+    } catch (err) {
+      console.error("[Notifications] openAppSettings failed:", err);
+    }
+  },
+
   async scheduleReminder(reminder: Reminder) {
     const notifications = getLocalNotifications();
 
@@ -139,7 +195,8 @@ export const notificationService = {
     const id = getNotificationId(reminder.id);
 
     let message = "";
-    const isSnoozed = reminder.snoozedUntil && new Date(reminder.snoozedUntil) > new Date();
+    const isSnoozed =
+      reminder.snoozedUntil && new Date(reminder.snoozedUntil) > new Date();
 
     if (isSnoozed) {
       message = `Snoozed reminder: Time to take ${reminder.medicineName} ${reminder.dosage}.`;
@@ -163,37 +220,21 @@ export const notificationService = {
       }
     }
 
-    const recipient =
-      reminder.recipientNickname || "Myself";
-
-    const bodyParts = [
-      `${reminder.medicineName} (${reminder.dosage})`,
-    ];
-
-    if (reminder.instructions) {
-      bodyParts.push(reminder.instructions);
-    }
-
-    bodyParts.push(`For: ${recipient}`);
-
     try {
       await notifications.schedule({
         notifications: [
           {
             id,
             title: "💊 Medicine Reminder",
-            body: message, // now uses dynamic message
-
+            body: message,
             schedule: {
               at: effectiveTime,
+              allowWhileIdle: true,
             },
-
-            sound: "",
-
+            sound: "notification.wav",
+            channelId: "medicine-reminders-v2",
             smallIcon: "ic_notification",
-
             actionTypeId: "MED_REMINDER_ACTIONS",
-
             extra: {
               reminderId: reminder.id,
               medicineId: reminder.medicineId,
@@ -219,32 +260,42 @@ export const notificationService = {
     }
   },
 
-  /**
-   * Schedule many reminders.
-   */
   async scheduleReminders(reminders: Reminder[]) {
     const notifications = getLocalNotifications();
+    if (!notifications) return;
 
-    if (!notifications) {
-      return;
-    }
+    const now = new Date();
+    const windowEnd = new Date(
+      now.getTime() + NOTIFICATION_WINDOW_DAYS * 24 * 60 * 60 * 1000
+    );
 
-    // Filter future pending reminders using effective time
-    const futurePending = reminders.filter((r) => {
-      if (r.status !== "pending") return false;
+    const futurePending = reminders
+      .filter((r) => {
+        if (r.status !== "pending") return false;
 
-      const date = r.snoozedUntil
-        ? new Date(r.snoozedUntil)
-        : new Date(r.scheduledTime);
+        const date = r.snoozedUntil
+          ? new Date(r.snoozedUntil)
+          : new Date(r.scheduledTime);
 
-      return (
-        !Number.isNaN(date.getTime()) &&
-        date > new Date()
-      );
-    });
+        return (
+          !Number.isNaN(date.getTime()) && date > now && date <= windowEnd
+        );
+      })
+      .sort((a, b) => {
+        const aDate = a.snoozedUntil
+          ? new Date(a.snoozedUntil).getTime()
+          : new Date(a.scheduledTime).getTime();
+
+        const bDate = b.snoozedUntil
+          ? new Date(b.snoozedUntil).getTime()
+          : new Date(b.scheduledTime).getTime();
+
+        return aDate - bDate;
+      })
+      .slice(0, MAX_SCHEDULED_NOTIFICATIONS);
 
     console.log(
-      `[Notifications] Scheduling ${futurePending.length} reminders`
+      `[Notifications] Scheduling ${futurePending.length} reminders for next ${NOTIFICATION_WINDOW_DAYS} days`
     );
 
     for (const reminder of futurePending) {
@@ -252,15 +303,9 @@ export const notificationService = {
     }
   },
 
-  /**
-   * Cancel ONE reminder.
-   */
   async cancelReminder(reminderId: string) {
     const notifications = getLocalNotifications();
-
-    if (!notifications) {
-      return;
-    }
+    if (!notifications) return;
 
     const id = getNotificationId(reminderId);
 
@@ -268,15 +313,9 @@ export const notificationService = {
       await notifications.cancel({
         notifications: [{ id }],
       });
-
-      console.log(
-        `[Notifications] Cancelled reminder ${reminderId}`
-      );
+      console.log(`[Notifications] Cancelled reminder ${reminderId}`);
     } catch (error) {
-      console.error(
-        `[Notifications] Failed to cancel ${reminderId}:`,
-        error
-      );
+      console.error(`[Notifications] Failed to cancel ${reminderId}:`, error);
     }
   },
 
@@ -285,10 +324,7 @@ export const notificationService = {
    */
   async cancelReminders(reminders: Reminder[]) {
     const notifications = getLocalNotifications();
-
-    if (!notifications || reminders.length === 0) {
-      return;
-    }
+    if (!notifications || reminders.length === 0) return;
 
     try {
       await notifications.cancel({
@@ -296,15 +332,9 @@ export const notificationService = {
           id: getNotificationId(reminder.id),
         })),
       });
-
-      console.log(
-        `[Notifications] Cancelled ${reminders.length} reminders`
-      );
+      console.log(`[Notifications] Cancelled ${reminders.length} reminders`);
     } catch (error) {
-      console.error(
-        "[Notifications] Failed to cancel reminders:",
-        error
-      );
+      console.error("[Notifications] Failed to cancel reminders:", error);
     }
   },
 
@@ -313,10 +343,7 @@ export const notificationService = {
    */
   async rescheduleAll(reminders: Reminder[]) {
     const notifications = getLocalNotifications();
-
-    if (!notifications) {
-      return;
-    }
+    if (!notifications) return;
 
     try {
       /*
@@ -330,9 +357,7 @@ export const notificationService = {
       }));
 
       if (ids.length > 0) {
-        await notifications.cancel({
-          notifications: ids,
-        });
+        await notifications.cancel({ notifications: ids });
       }
 
       const now = new Date();
@@ -345,10 +370,7 @@ export const notificationService = {
           ? new Date(r.snoozedUntil)
           : new Date(r.scheduledTime);
 
-        return (
-          !Number.isNaN(date.getTime()) &&
-          date > now
-        );
+        return !Number.isNaN(date.getTime()) && date > now;
       });
 
       await this.scheduleReminders(futurePending);
@@ -357,10 +379,7 @@ export const notificationService = {
         `[Notifications] Rescheduled ${futurePending.length} future reminders`
       );
     } catch (error) {
-      console.error(
-        "[Notifications] Failed to reschedule reminders:",
-        error
-      );
+      console.error("[Notifications] Failed to reschedule reminders:", error);
     }
   },
 
@@ -370,10 +389,7 @@ export const notificationService = {
     onSkip: (reminderId: string, medicineId: string) => void;
   }) {
     const notifications = getLocalNotifications();
-
-    if (!notifications) {
-      return;
-    }
+    if (!notifications) return;
 
     await notifications.addListener(
       "localNotificationActionPerformed",
@@ -383,10 +399,8 @@ export const notificationService = {
         const extra = notification?.extra;
 
         if (!extra?.reminderId) return;
+        if (!extra?.medicineId) return;
 
-        if (!extra?.medicineId) {
-          return;
-        }
         const reminderId = extra.reminderId;
         const medicineId = extra.medicineId;
 
@@ -405,5 +419,36 @@ export const notificationService = {
         }
       }
     );
+  },
+
+  // cancel all notification  
+  async cancelAllScheduledReminders() {
+    const notifications = getLocalNotifications();
+    if (!notifications) return;
+
+    try {
+      const { notifications: pending } =
+        await notifications.getPending();
+
+      if (pending.length === 0) {
+        console.log("[Notifications] No pending notifications to cancel");
+        return;
+      }
+
+      await notifications.cancel({
+        notifications: pending.map((notification) => ({
+          id: notification.id,
+        })),
+      });
+
+      console.log(
+        `[Notifications] Cancelled ${pending.length} pending notifications`
+      );
+    } catch (error) {
+      console.error(
+        "[Notifications] Failed to cancel all pending notifications:",
+        error
+      );
+    }
   },
 };

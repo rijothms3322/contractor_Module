@@ -80,3 +80,82 @@ CREATE POLICY "Allow users view family reminders" ON public.reminders
               AND NOT m.is_private
         )
     );
+
+-- ============================================================
+-- REMOVE FAMILY MEMBER SECURELY
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.remove_family_member(
+    target_member_id UUID
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    current_family_id UUID;
+    target_family_id UUID;
+BEGIN
+
+    -- Get the family belonging to the currently authenticated user.
+    SELECT family_id
+    INTO current_family_id
+    FROM public.profiles
+    WHERE id = auth.uid();
+
+    -- User must belong to a family.
+    IF current_family_id IS NULL THEN
+        RAISE EXCEPTION 'You are not part of a family.';
+    END IF;
+
+
+    -- Verify that the current user is the admin of that family.
+    IF NOT EXISTS (
+        SELECT 1
+        FROM public.families
+        WHERE id = current_family_id
+          AND admin_id = auth.uid()
+    ) THEN
+        RAISE EXCEPTION 'Only the family admin can remove members.';
+    END IF;
+
+
+    -- Get the target member's current family.
+    SELECT family_id
+    INTO target_family_id
+    FROM public.profiles
+    WHERE id = target_member_id;
+
+
+    -- Target profile must exist.
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Family member not found.';
+    END IF;
+
+
+    -- Target must actually belong to the admin's family.
+    IF target_family_id IS DISTINCT FROM current_family_id THEN
+        RAISE EXCEPTION 'This user is not a member of your family.';
+    END IF;
+
+
+    -- Admin cannot remove themselves using this function.
+    IF target_member_id = auth.uid() THEN
+        RAISE EXCEPTION 'The family admin cannot remove themselves.';
+    END IF;
+
+
+    -- Remove member from family.
+    UPDATE public.profiles
+    SET
+        family_id = NULL,
+        updated_at = NOW()
+    WHERE id = target_member_id
+      AND family_id = current_family_id;
+
+
+    RETURN TRUE;
+
+END;
+$$;
