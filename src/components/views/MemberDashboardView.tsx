@@ -744,14 +744,6 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
 
       {/* 2. PROFILE HERO HEADER */}
       <div className="glass-card bg-gradient-to-br from-secondary-container/20 to-white border border-outline-variant/20 rounded-3xl p-5 shadow-sm relative overflow-hidden">
-        {/* Left Member Badge */}
-        {!member.isCustom && (
-          <div className="absolute left-4 top-4">
-            <span className="bg-primary/10 text-primary text-[8px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
-              {"Family Sync"}
-            </span>
-          </div>
-        )}
         {/* Accent Color Badge */}
         <div className="absolute right-4 top-4 flex gap-2 items-center">
           <span className="bg-primary/10 text-primary text-[8px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">

@@ -5,14 +5,17 @@ interface MedicineBoxProps {
   onEditMed?: (medId: string, familyMemberId: string | null) => void;
   onDeleteMed?: (medId: string) => void;
   loadingDelete?: string | null;
+  nicknameMap?: Record<string, string>;
 }
 
 export const MedicineBox: React.FC<MedicineBoxProps> = ({
   onEditMed,
   onDeleteMed,
   loadingDelete,
+  nicknameMap,
 }) => {
   const { medicines, reminders } = useApp();
+
   return (
     <section className="glass-card w-full min-w-0 max-w-full rounded-2xl p-4 sm:p-6 shadow-sm border border-outline-variant/20 space-y-4 overflow-hidden animate-in fade-in duration-300">
       <div className="flex justify-between items-center pb-2 border-b border-b-outline-variant/20 mb-4 min-w-0">
@@ -37,9 +40,12 @@ export const MedicineBox: React.FC<MedicineBoxProps> = ({
             );
 
             const recipient =
-              matchingRem?.recipientNickname || "Myself";
+              (matchingRem?.familyMemberId &&
+                nicknameMap?.[matchingRem.familyMemberId]) ||
+              matchingRem?.recipientNickname ||
+              "Myself";
 
-            const isMe = recipient === "Myself";
+            const isMe = !matchingRem?.familyMemberId;
 
             return (
               <div
@@ -51,25 +57,25 @@ export const MedicineBox: React.FC<MedicineBoxProps> = ({
                   )
                 }
                 className="
-              grid
-              grid-cols-[minmax(0,1fr)_auto]
-              items-center
-              gap-2
-              w-full
-              min-w-0
-              bg-surface-container-low
-              hover:bg-surface-container/60
-              hover:border-primary/30
-              cursor-pointer
-              rounded-xl
-              p-3
-              border
-              border-outline-variant/10
-              transition-all
-              duration-200
-              group
-              active:scale-[0.99]
-            "
+                  grid
+                  grid-cols-[minmax(0,1fr)_auto]
+                  items-center
+                  gap-2
+                  w-full
+                  min-w-0
+                  bg-surface-container-low
+                  hover:bg-surface-container/60
+                  hover:border-primary/30
+                  cursor-pointer
+                  rounded-xl
+                  p-3
+                  border
+                  border-outline-variant/10
+                  transition-all
+                  duration-200
+                  group
+                  active:scale-[0.99]
+                "
                 title="Click to Edit Medication"
               >
                 {/* LEFT CONTENT */}
@@ -86,20 +92,20 @@ export const MedicineBox: React.FC<MedicineBoxProps> = ({
 
                       <span
                         className={`
-                      text-[9px]
-                      px-1.5
-                      py-0.5
-                      rounded
-                      font-bold
-                      uppercase
-                      tracking-wider
-                      flex-shrink-0
-                      whitespace-nowrap
-                      ${isMe
+                          text-[9px]
+                          px-1.5
+                          py-0.5
+                          rounded
+                          font-bold
+                          uppercase
+                          tracking-wider
+                          flex-shrink-0
+                          whitespace-nowrap
+                          ${isMe
                             ? "bg-orange-50 text-orange-700"
                             : "bg-blue-50 text-blue-700"
                           }
-                    `}
+                        `}
                       >
                         👤 {recipient}
                       </span>
@@ -143,19 +149,19 @@ export const MedicineBox: React.FC<MedicineBoxProps> = ({
                     }}
                     disabled={loadingDelete === med.id}
                     className="
-                  w-7
-                  h-7
-                  rounded-full
-                  hover:bg-red-50
-                  flex
-                  items-center
-                  justify-center
-                  text-outline
-                  hover:text-red-500
-                  transition-colors
-                  flex-shrink-0
-                  disabled:opacity-50
-                "
+                      w-7
+                      h-7
+                      rounded-full
+                      hover:bg-red-50
+                      flex
+                      items-center
+                      justify-center
+                      text-outline
+                      hover:text-red-500
+                      transition-colors
+                      flex-shrink-0
+                      disabled:opacity-50
+                    "
                     title="Delete Medicine"
                   >
                     {loadingDelete === med.id ? (

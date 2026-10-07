@@ -9,7 +9,13 @@ export type UploadMedicalDocumentResult = {
 
 export async function uploadMedicalDocument(
     file: File,
-    userId: string
+    userId: string,
+    metadata?: {
+        reportDate?: string;
+        reportNote?: string;
+        reportCategory?: string;
+        isPrivate?: boolean;
+    }
 ): Promise<UploadMedicalDocumentResult> {
 
     console.log("================================");
@@ -107,19 +113,14 @@ export async function uploadMedicalDocument(
 
                 body: JSON.stringify({
                     userId,
-
-                    fileName:
-                        file.name,
-
-                    mimeType:
-                        file.type ||
-                        "application/octet-stream",
-
-                    fileSize:
-                        file.size,
-
-                    fileBase64:
-                        base64,
+                    fileName: file.name,
+                    mimeType: file.type || "application/octet-stream",
+                    fileSize: file.size,
+                    fileBase64: base64,
+                    report_date: metadata?.reportDate,
+                    note: metadata?.reportNote,
+                    report_category: metadata?.reportCategory,
+                    is_private: metadata?.isPrivate ?? false,
                 }),
             }
         );

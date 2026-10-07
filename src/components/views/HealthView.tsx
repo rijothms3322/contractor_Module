@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useApp, TabType } from "../../context/AppContext";
 import { Medicine, Reminder, Lab, DiagnosticTest, Booking, HealthReport, DEFAULT_MEDICINES } from "../../lib/mockData";
 import { InsightsView } from "./InsightsView";
@@ -40,6 +40,8 @@ const allTimeOptions = getAllTimeOptions();
 export const HealthView: React.FC = () => {
   const {
     reminders,
+    calculateDailyScore,
+    medicationLogs,
     toggleReminderStatus,
     addMedicine,
     editMedicine,
@@ -127,6 +129,74 @@ export const HealthView: React.FC = () => {
 
   // Walkthrough tour
   const [showAdherenceTour, setShowAdherenceTour] = useState(false);
+
+  // ADHERENCE FORECAST — dynamic Daily / Weekly / Monthly calculation
+  const forecast = useMemo(() => {
+    const avg = (days: number, offset: number): number => {
+      let sum = 0;
+      let count = 0;
+
+      for (let i = offset; i < offset + days; i++) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const dayStr = d.toISOString().split("T")[0];
+
+        // Does the user have ANY reminder scheduled on this day?
+        const hasAnyReminderThatDay = reminders.some(
+          r =>
+            !r.familyMemberId &&
+            r.scheduledTime?.split("T")[0] === dayStr
+        );
+        if (!hasAnyReminderThatDay) continue;
+
+        // Reuse the score engine already in AppContext
+        sum += calculateDailyScore(dayStr, reminders, medicationLogs, null);
+        count++;
+      }
+
+      return count > 0 ? Math.round((sum / count) * 10) / 10 : 0;
+    };
+
+    // Build a trend badge from a numeric delta
+    const trend = (diff: number) => {
+      if (diff > 0.1)
+        return {
+          icon: "trending_up",
+          color: "text-emerald-600",
+          label: `+${diff.toFixed(1)} increase`,
+        };
+      if (diff < -0.1)
+        return {
+          icon: "trending_down",
+          color: "text-red-600",
+          label: `${diff.toFixed(1)} decrease`,
+        };
+      return {
+        icon: "trending_flat",
+        color: "text-amber-600",
+        label: "Stable",
+      };
+    };
+
+    // Compute the three windows + their comparison windows
+    const daily = avg(1, 0);   // today
+    const dailyPrev = avg(1, 1);   // yesterday
+
+    const weekly = avg(7, 0);   // last 7 days
+    const weeklyPrev = avg(7, 7); // previous 7 days
+
+    const monthly = avg(30, 0);  // last 30 days
+    const monthlyPrev = avg(30, 30); // previous 30 days
+
+    return {
+      daily,
+      weekly,
+      monthly,
+      dailyTrend: trend(daily - dailyPrev),
+      weeklyTrend: trend(weekly - weeklyPrev),
+      monthlyTrend: trend(monthly - monthlyPrev),
+    };
+  }, [reminders, medicationLogs, calculateDailyScore]);
 
   const handleRowClick = async (r: Reminder) => {
     const med = medicines.find(m => m.id === r.medicineId);
@@ -817,41 +887,48 @@ export const HealthView: React.FC = () => {
 
           {/* Daily, Weekly, Monthly Trends Indicators */}
           <div id="adherence-forecast" className="bg-white/40 p-3.5 rounded-2xl border border-outline-variant/10 space-y-2.5">
-            <span className="text-[10px] font-bold text-outline uppercase tracking-wider block">Adherence Forecast & Trends</span>
+            <span className="text-[10px] font-bold text-outline uppercase tracking-wider block">
+              Adherence Forecast & Trends
+            </span>
+
             <div className="grid grid-cols-3 gap-2 text-center text-xs">
-              {/* Daily Trend */}
+
+              {/* Daily Average */}
               <div className="bg-white/60 p-2.5 rounded-xl border border-outline-variant/5">
                 <span className="text-[9px] text-outline font-medium block">Daily Average</span>
-                <span className="text-base font-extrabold text-secondary block mt-0.5">{wellnessScore}</span>
-                <div className="flex items-center justify-center gap-0.5 text-[8px] font-bold text-emerald-600 mt-1">
-                  <span className="material-symbols-outlined text-[8px]">trending_up</span>
-                  <span>Stable</span>
+                <span className="text-base font-extrabold text-secondary block mt-0.5">
+                  {forecast.daily ? forecast.daily.toFixed(1) : "—"}
+                </span>
+                <div className={`flex items-center justify-center gap-0.5 text-[8px] font-bold mt-1 ${forecast.dailyTrend.color}`}>
+                  <span className="material-symbols-outlined text-[8px]">{forecast.dailyTrend.icon}</span>
+                  <span>{forecast.dailyTrend.label}</span>
                 </div>
               </div>
 
-              {/* Weekly Trend */}
+              {/* Weekly Average */}
               <div className="bg-white/60 p-2.5 rounded-xl border border-outline-variant/5">
                 <span className="text-[9px] text-outline font-medium block">Weekly Average</span>
                 <span className="text-base font-extrabold text-secondary block mt-0.5">
-                  {Math.round(wellnessScore * 0.96 * 10) / 10}
+                  {forecast.weekly ? forecast.weekly.toFixed(1) : "—"}
                 </span>
-                <div className="flex items-center justify-center gap-0.5 text-[8px] font-bold text-emerald-600 mt-1">
-                  <span className="material-symbols-outlined text-[8px]">trending_up</span>
-                  <span>+0.4 increase</span>
+                <div className={`flex items-center justify-center gap-0.5 text-[8px] font-bold mt-1 ${forecast.weeklyTrend.color}`}>
+                  <span className="material-symbols-outlined text-[8px]">{forecast.weeklyTrend.icon}</span>
+                  <span>{forecast.weeklyTrend.label}</span>
                 </div>
               </div>
 
-              {/* Monthly Trend */}
+              {/* Monthly Average */}
               <div className="bg-white/60 p-2.5 rounded-xl border border-outline-variant/5">
                 <span className="text-[9px] text-outline font-medium block">Monthly Average</span>
                 <span className="text-base font-extrabold text-secondary block mt-0.5">
-                  {Math.round(wellnessScore * 0.92 * 10) / 10}
+                  {forecast.monthly ? forecast.monthly.toFixed(1) : "—"}
                 </span>
-                <div className="flex items-center justify-center gap-0.5 text-[8px] font-bold text-amber-600 mt-1">
-                  <span className="material-symbols-outlined text-[8px]">trending_flat</span>
-                  <span>Baseline standard</span>
+                <div className={`flex items-center justify-center gap-0.5 text-[8px] font-bold mt-1 ${forecast.monthlyTrend.color}`}>
+                  <span className="material-symbols-outlined text-[8px]">{forecast.monthlyTrend.icon}</span>
+                  <span>{forecast.monthlyTrend.label}</span>
                 </div>
               </div>
+
             </div>
           </div>
 
@@ -916,7 +993,7 @@ export const HealthView: React.FC = () => {
                   localStorage.removeItem("lifestyle_has_logged");
                 }}
                 className="text-[10px] font-bold text-outline hover:text-primary transition-colors flex items-center gap-1 border border-outline-variant/20 px-2 py-1 rounded-lg"
-                title="Reset data to see empty state"
+                title="Reset lifestyle data"
               >
                 <span className="material-symbols-outlined text-[10px]">restart_alt</span>
                 Reset Data
@@ -924,311 +1001,285 @@ export const HealthView: React.FC = () => {
             )}
           </div>
 
-          {!hasLoggedAny ? (
-            /* Empty State Illustration Card */
-            <div className="p-8 text-center bg-white border border-outline-variant/25 rounded-3xl shadow-sm flex flex-col items-center justify-center gap-4 animate-in fade-in duration-300">
-              <div className="w-16 h-16 rounded-full bg-orange-50/80 border border-orange-100 flex items-center justify-center text-primary shadow-inner">
-                <span className="material-symbols-outlined text-3xl">spa</span>
-              </div>
-              <div className="space-y-1.5 max-w-sm">
-                <h4 className="font-headline-md text-sm text-secondary font-bold">No Lifestyle Data Yet</h4>
-                <p className="font-body-md text-xs text-on-surface-variant leading-relaxed">
-                  Start logging your daily habits to unlock personalized health insights and medicine correlations.
-                </p>
-              </div>
-              <button
-                onClick={() => {
-                  setHasLoggedAny(true);
-                  setActiveLogType("water");
+          {/* Lifestyle Cards Grid — always visible */}
+          <div className="space-y-4 animate-in fade-in duration-300">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+
+              {/* Card 1: Water Intake */}
+              <div
+                onClick={(e) => {
+                  // Only expand if clicking the card body, not buttons
+                  const target = e.target as HTMLElement;
+                  if (!target.closest("button")) {
+                    setExpandedCard(expandedCard === "water" ? null : "water");
+                  }
                 }}
-                className="px-5 py-2.5 bg-primary text-white font-bold rounded-xl text-xs shadow-md hover:opacity-90 active:scale-98 transition-all"
+                className="relative overflow-hidden bg-white p-5 rounded-3xl border border-outline-variant/15 shadow-sm space-y-4 flex flex-col justify-between hover:border-primary/20 transition-all min-h-[190px] cursor-pointer"
               >
-                Log First Entry
-              </button>
-            </div>
-          ) : (
-            /* Lifestyle Cards Grid */
-            <div className="space-y-4 animate-in fade-in duration-300">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-
-                {/* Card 1: Water Intake */}
-                <div
-                  onClick={(e) => {
-                    // Only expand if clicking the card body, not buttons
-                    const target = e.target as HTMLElement;
-                    if (!target.closest("button")) {
-                      setExpandedCard(expandedCard === "water" ? null : "water");
-                    }
-                  }}
-                  className="relative overflow-hidden bg-white p-5 rounded-3xl border border-outline-variant/15 shadow-sm space-y-4 flex flex-col justify-between hover:border-primary/20 transition-all min-h-[190px] cursor-pointer"
-                >
-                  {!lifestyleLoggedToday.water && (
-                    <div
-                      onClick={() => setActiveLogType("water")}
-                      className="absolute inset-0 rounded-3xl backdrop-blur-md bg-white/40 border border-white/10 flex flex-col items-center justify-center p-4 text-center z-10 cursor-pointer hover:bg-white/50 transition-all duration-300 group"
-                    >
-                      <span className="material-symbols-outlined text-blue-600 text-2xl mb-1.5 animate-pulse">water_drop</span>
-                      <span className="text-secondary font-black text-xs">Hydration Locked</span>
-                      <p className="text-[10px] text-on-surface-variant font-medium mt-1 max-w-[150px]">Log today's water to unlock details</p>
-                      <button className="mt-3 px-3 py-1.5 bg-primary text-white text-[10px] font-bold rounded-lg shadow-sm group-hover:scale-105 transition-transform">
-                        Log Water
-                      </button>
-                    </div>
-                  )}
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-start">
-                      <div className="flex gap-2.5 items-center">
-                        <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
-                          <span className="material-symbols-outlined text-lg">water_drop</span>
-                        </div>
-                        <div className="text-left">
-                          <h4 className="font-headline-md text-xs text-secondary font-black">Water Intake</h4>
-                          <span className="text-[8px] text-outline font-bold uppercase tracking-wider block">Today</span>
-                        </div>
-                      </div>
-                      <span className="text-[9px] bg-surface-container-high/65 px-2 py-0.5 rounded-full text-outline font-bold">
-                        {expandedCard === "water" ? "Hide Graph" : "Tap to Expand"}
-                      </span>
-                    </div>
-
-                    <div className="text-left pt-1">
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-xl font-extrabold text-secondary">{lifestyleWater.today}</span>
-                        <span className="text-[10px] text-outline">/ {lifestyleWater.goal} ml</span>
-                      </div>
-                      <div className="w-full h-1.5 bg-surface-container-high rounded-full mt-1.5 overflow-hidden">
-                        <div
-                          className="h-full bg-blue-500 rounded-full transition-all duration-300"
-                          style={{ width: `${Math.min((lifestyleWater.today / lifestyleWater.goal) * 100, 100)}%` }}
-                        />
-                      </div>
-                      <div className="flex justify-between items-center text-[9px] text-outline font-semibold mt-2">
-                        <span>🔥 Streak: {lifestyleWater.streak} Days</span>
-                        <span>Target: {lifestyleWater.goal} ml</span>
-                      </div>
-                    </div>
-
-                    {/* Expandable trend graph */}
-                    {expandedCard === "water" && (
-                      <div className="pt-2 animate-in slide-in-from-top-1 duration-200">
-                        {renderTrendGraph(lifestyleWater.history, "#096490")}
-                      </div>
-                    )}
-                  </div>
-
-                  <button
+                {!lifestyleLoggedToday.water && (
+                  <div
                     onClick={() => setActiveLogType("water")}
-                    className="w-full mt-3 py-2 bg-blue-50/50 hover:bg-blue-50 text-blue-700 font-bold text-xs rounded-xl transition-all border border-blue-100/35"
+                    className="absolute inset-0 rounded-3xl backdrop-blur-md bg-white/40 border border-white/10 flex flex-col items-center justify-center p-4 text-center z-10 cursor-pointer hover:bg-white/50 transition-all duration-300 group"
                   >
-                    Log Water
-                  </button>
-                </div>
-
-                {/* Card 2: Sleep Quality */}
-                <div
-                  onClick={(e) => {
-                    const target = e.target as HTMLElement;
-                    if (!target.closest("button")) {
-                      setExpandedCard(expandedCard === "sleep" ? null : "sleep");
-                    }
-                  }}
-                  className="relative overflow-hidden bg-white p-5 rounded-3xl border border-outline-variant/15 shadow-sm space-y-4 flex flex-col justify-between hover:border-primary/20 transition-all min-h-[190px] cursor-pointer"
-                >
-                  {!lifestyleLoggedToday.sleep && (
-                    <div
-                      onClick={() => setActiveLogType("sleep")}
-                      className="absolute inset-0 rounded-3xl backdrop-blur-md bg-white/40 border border-white/10 flex flex-col items-center justify-center p-4 text-center z-10 cursor-pointer hover:bg-white/50 transition-all duration-300 group"
-                    >
-                      <span className="material-symbols-outlined text-purple-600 text-2xl mb-1.5 animate-pulse">bedtime</span>
-                      <span className="text-secondary font-black text-xs">Sleep Tracking Locked</span>
-                      <p className="text-[10px] text-on-surface-variant font-medium mt-1 max-w-[150px]">Log today's sleep to unlock details</p>
-                      <button className="mt-3 px-3 py-1.5 bg-primary text-white text-[10px] font-bold rounded-lg shadow-sm group-hover:scale-105 transition-transform">
-                        Log Sleep
-                      </button>
-                    </div>
-                  )}
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-start">
-                      <div className="flex gap-2.5 items-center">
-                        <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center flex-shrink-0">
-                          <span className="material-symbols-outlined text-lg">bedtime</span>
-                        </div>
-                        <div className="text-left">
-                          <h4 className="font-headline-md text-xs text-secondary font-black">Sleep Quality</h4>
-                          <span className="text-[8px] text-outline font-bold uppercase tracking-wider block">Last Night</span>
-                        </div>
+                    <span className="material-symbols-outlined text-blue-600 text-2xl mb-1.5 animate-pulse">water_drop</span>
+                    <span className="text-secondary font-black text-xs">Hydration Locked</span>
+                    <p className="text-[10px] text-on-surface-variant font-medium mt-1 max-w-[150px]">Log today's water to unlock details</p>
+                    <button className="mt-3 px-3 py-1.5 bg-primary text-white text-[10px] font-bold rounded-lg shadow-sm group-hover:scale-105 transition-transform">
+                      Log Water
+                    </button>
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <div className="flex justify-between items-start">
+                    <div className="flex gap-2.5 items-center">
+                      <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
+                        <span className="material-symbols-outlined text-lg">water_drop</span>
                       </div>
-                      <span className="text-[9px] bg-surface-container-high/65 px-2 py-0.5 rounded-full text-outline font-bold">
-                        {expandedCard === "sleep" ? "Hide Graph" : "Tap to Expand"}
-                      </span>
-                    </div>
-
-                    <div className="text-left pt-1">
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-xl font-extrabold text-secondary">{lifestyleSleep.hours}</span>
-                        <span className="text-[10px] text-outline">hours</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 mt-2">
-                        <span className="bg-purple-100 text-purple-800 text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
-                          {lifestyleSleep.quality}
-                        </span>
-                        <span className="text-[9px] text-outline font-semibold">Restful cycles</span>
-                      </div>
-                      <div className="flex justify-between items-center text-[9px] text-outline font-semibold mt-3">
-                        <span>Daily goal: 8.0 hrs</span>
-                        <span>Quality status: {lifestyleSleep.quality}</span>
+                      <div className="text-left">
+                        <h4 className="font-headline-md text-xs text-secondary font-black">Water Intake</h4>
+                        <span className="text-[8px] text-outline font-bold uppercase tracking-wider block">Today</span>
                       </div>
                     </div>
-
-                    {/* Expandable trend graph */}
-                    {expandedCard === "sleep" && (
-                      <div className="pt-2 animate-in slide-in-from-top-1 duration-200">
-                        {renderTrendGraph(lifestyleSleep.history, "#7c3aed")}
-                      </div>
-                    )}
+                    <span className="text-[9px] bg-surface-container-high/65 px-2 py-0.5 rounded-full text-outline font-bold">
+                      {expandedCard === "water" ? "Hide Graph" : "Tap to Expand"}
+                    </span>
                   </div>
 
-                  <button
-                    onClick={() => setActiveLogType("sleep")}
-                    className="w-full mt-3 py-2 bg-purple-50/50 hover:bg-purple-50 text-purple-700 font-bold text-xs rounded-xl transition-all border border-purple-100/35"
-                  >
-                    Log Sleep
-                  </button>
-                </div>
-
-                {/* Card 3: BMI Tracker */}
-                <div
-                  onClick={(e) => {
-                    const target = e.target as HTMLElement;
-                    if (!target.closest("button")) {
-                      setExpandedCard(expandedCard === "bmi" ? null : "bmi");
-                    }
-                  }}
-                  className="relative overflow-hidden bg-white p-5 rounded-3xl border border-outline-variant/15 shadow-sm space-y-4 flex flex-col justify-between hover:border-primary/20 transition-all min-h-[190px] cursor-pointer"
-                >
-                  {!lifestyleLoggedToday.bmi && (
-                    <div
-                      onClick={() => setActiveLogType("bmi")}
-                      className="absolute inset-0 rounded-3xl backdrop-blur-md bg-white/40 border border-white/10 flex flex-col items-center justify-center p-4 text-center z-10 cursor-pointer hover:bg-white/50 transition-all duration-300 group"
-                    >
-                      <span className="material-symbols-outlined text-emerald-600 text-2xl mb-1.5 animate-pulse">scale</span>
-                      <span className="text-secondary font-black text-xs">BMI Locked</span>
-                      <p className="text-[10px] text-on-surface-variant font-medium mt-1 max-w-[150px]">Log today's weight & height to unlock details</p>
-                      <button className="mt-3 px-3 py-1.5 bg-primary text-white text-[10px] font-bold rounded-lg shadow-sm group-hover:scale-105 transition-transform">
-                        Log BMI
-                      </button>
+                  <div className="text-left pt-1">
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-xl font-extrabold text-secondary">{lifestyleWater.today}</span>
+                      <span className="text-[10px] text-outline">/ {lifestyleWater.goal} ml</span>
                     </div>
-                  )}
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-start">
-                      <div className="flex gap-2.5 items-center">
-                        <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
-                          <span className="material-symbols-outlined text-lg">scale</span>
-                        </div>
-                        <div className="text-left">
-                          <h4 className="font-headline-md text-xs text-secondary font-black">BMI Index</h4>
-                          <span className="text-[8px] text-outline font-bold uppercase tracking-wider block">Body Mass Index</span>
-                        </div>
-                      </div>
-                      <span className="text-[9px] bg-surface-container-high/65 px-2 py-0.5 rounded-full text-outline font-bold">
-                        {expandedCard === "bmi" ? "Hide Graph" : "Tap to Expand"}
-                      </span>
+                    <div className="w-full h-1.5 bg-surface-container-high rounded-full mt-1.5 overflow-hidden">
+                      <div
+                        className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                        style={{ width: `${Math.min((lifestyleWater.today / lifestyleWater.goal) * 100, 100)}%` }}
+                      />
                     </div>
-
-                    <div className="text-left pt-1">
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-xl font-extrabold text-secondary">{lifestyleBmi.value}</span>
-                        <span className="text-[10px] text-outline">kg/m²</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 mt-2">
-                        <span className="bg-emerald-100 text-emerald-800 text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
-                          {lifestyleBmi.category}
-                        </span>
-                        <span className="text-[9px] text-outline font-semibold">Weight Category</span>
-                      </div>
-                      <div className="flex justify-between items-center text-[9px] text-outline font-semibold mt-3">
-                        <span>Normal target: 18.5 - 24.9</span>
-                        <span>Logs count: {lifestyleBmi.history.length}</span>
-                      </div>
+                    <div className="flex justify-between items-center text-[9px] text-outline font-semibold mt-2">
+                      <span>🔥 Streak: {lifestyleWater.streak} Days</span>
+                      <span>Target: {lifestyleWater.goal} ml</span>
                     </div>
-
-                    {/* Expandable trend graph */}
-                    {expandedCard === "bmi" && (
-                      <div className="pt-2 animate-in slide-in-from-top-1 duration-200">
-                        {renderTrendGraph(lifestyleBmi.history, "#006E2F")}
-                      </div>
-                    )}
                   </div>
 
-                  <button
-                    onClick={() => setActiveLogType("bmi")}
-                    className="w-full mt-3 py-2 bg-emerald-50/50 hover:bg-emerald-50 text-emerald-700 font-bold text-xs rounded-xl transition-all border border-emerald-100/35"
-                  >
-                    Log BMI
-                  </button>
+                  {/* Expandable trend graph */}
+                  {expandedCard === "water" && (
+                    <div className="pt-2 animate-in slide-in-from-top-1 duration-200">
+                      {renderTrendGraph(lifestyleWater.history, "#096490")}
+                    </div>
+                  )}
                 </div>
 
+                <button
+                  onClick={() => setActiveLogType("water")}
+                  className="w-full mt-3 py-2 bg-blue-50/50 hover:bg-blue-50 text-blue-700 font-bold text-xs rounded-xl transition-all border border-blue-100/35"
+                >
+                  Log Water
+                </button>
               </div>
 
-              {/* AI Summary Premium Insight Card */}
-              <section className="bg-gradient-to-br from-primary-container/10 via-white to-secondary-container/10 rounded-3xl p-6 border border-outline-variant/20 shadow-sm space-y-4">
-                <div className="flex items-center gap-3 text-left">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-secondary text-white flex items-center justify-center flex-shrink-0 shadow-sm">
-                    <span className="material-symbols-outlined text-lg">psychology</span>
-                  </div>
-                  <div>
-                    <h4 className="font-headline-md text-sm text-secondary font-bold">Lifestyle Summary</h4>
-                    <p className="text-[10px] text-outline uppercase tracking-wider font-bold">AI observations & health patterns</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-left">
-                  <div className="space-y-2 bg-white/70 p-3.5 rounded-2xl border border-outline-variant/10">
-                    <p className="text-xs text-secondary font-medium leading-relaxed flex items-start gap-2">
-                      <span className="text-base flex-shrink-0">💧</span>
-                      <span>Your hydration records are building. Keep logging water daily to track improvements.</span>
-                    </p>
-                    <p className="text-xs text-secondary font-medium leading-relaxed flex items-start gap-2 pt-2 border-t border-outline-variant/5">
-                      <span className="text-base flex-shrink-0">😴</span>
-                      <span>Consistently logging sleep timings reveals correlations with daytime alertness metrics.</span>
-                    </p>
-                  </div>
-
-                  <div className="space-y-2 bg-white/70 p-3.5 rounded-2xl border border-outline-variant/10">
-                    <p className="text-xs text-secondary font-medium leading-relaxed flex items-start gap-2">
-                      <span className="text-base flex-shrink-0">⏱️</span>
-                      <span>Consistent lifestyle routines directly improve overall medicine adherence levels.</span>
-                    </p>
-                    <p className="text-xs text-secondary font-medium leading-relaxed flex items-start gap-2 pt-2 border-t border-outline-variant/5">
-                      <span className="text-base flex-shrink-0">⚖️</span>
-                      <span>Tracking BMI changes regularly assists in maintaining ideal weight ranges.</span>
-                    </p>
-                  </div>
-                </div>
-              </section>
-
-              {/* Correlation Chips Section */}
-              <div className="space-y-2">
-                <span className="text-[10px] font-bold text-outline uppercase tracking-wider block text-left">💡 Correlation Explorer</span>
-                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none -mx-gutter px-gutter">
-                  {[
-                    { label: "Water ↔ Energy", icon: "bolt" },
-                    { label: "Sleep ↔ BMI", icon: "fitness_center" },
-                    { label: "Sleep ↔ Medicine Adherence", icon: "alarm" }
-                  ].map((chip, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => setSelectedCorrelation(chip.label)}
-                      className="flex items-center gap-1.5 bg-white border border-outline-variant/20 hover:border-primary/40 px-3.5 py-2 rounded-full font-label-md text-xs font-bold text-secondary shadow-sm transition-all whitespace-nowrap active:scale-95 flex-shrink-0"
-                    >
-                      <span className="material-symbols-outlined text-xs text-outline">{chip.icon}</span>
-                      <span>{chip.label}</span>
+              {/* Card 2: Sleep Quality */}
+              <div
+                onClick={(e) => {
+                  const target = e.target as HTMLElement;
+                  if (!target.closest("button")) {
+                    setExpandedCard(expandedCard === "sleep" ? null : "sleep");
+                  }
+                }}
+                className="relative overflow-hidden bg-white p-5 rounded-3xl border border-outline-variant/15 shadow-sm space-y-4 flex flex-col justify-between hover:border-primary/20 transition-all min-h-[190px] cursor-pointer"
+              >
+                {!lifestyleLoggedToday.sleep && (
+                  <div
+                    onClick={() => setActiveLogType("sleep")}
+                    className="absolute inset-0 rounded-3xl backdrop-blur-md bg-white/40 border border-white/10 flex flex-col items-center justify-center p-4 text-center z-10 cursor-pointer hover:bg-white/50 transition-all duration-300 group"
+                  >
+                    <span className="material-symbols-outlined text-purple-600 text-2xl mb-1.5 animate-pulse">bedtime</span>
+                    <span className="text-secondary font-black text-xs">Sleep Tracking Locked</span>
+                    <p className="text-[10px] text-on-surface-variant font-medium mt-1 max-w-[150px]">Log today's sleep to unlock details</p>
+                    <button className="mt-3 px-3 py-1.5 bg-primary text-white text-[10px] font-bold rounded-lg shadow-sm group-hover:scale-105 transition-transform">
+                      Log Sleep
                     </button>
-                  ))}
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <div className="flex justify-between items-start">
+                    <div className="flex gap-2.5 items-center">
+                      <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center flex-shrink-0">
+                        <span className="material-symbols-outlined text-lg">bedtime</span>
+                      </div>
+                      <div className="text-left">
+                        <h4 className="font-headline-md text-xs text-secondary font-black">Sleep Quality</h4>
+                        <span className="text-[8px] text-outline font-bold uppercase tracking-wider block">Last Night</span>
+                      </div>
+                    </div>
+                    <span className="text-[9px] bg-surface-container-high/65 px-2 py-0.5 rounded-full text-outline font-bold">
+                      {expandedCard === "sleep" ? "Hide Graph" : "Tap to Expand"}
+                    </span>
+                  </div>
+
+                  <div className="text-left pt-1">
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-xl font-extrabold text-secondary">{lifestyleSleep.hours}</span>
+                      <span className="text-[10px] text-outline">hours</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-2">
+                      <span className="bg-purple-100 text-purple-800 text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                        {lifestyleSleep.quality}
+                      </span>
+                      <span className="text-[9px] text-outline font-semibold">Restful cycles</span>
+                    </div>
+                    <div className="flex justify-between items-center text-[9px] text-outline font-semibold mt-3">
+                      <span>Daily goal: 8.0 hrs</span>
+                      <span>Quality status: {lifestyleSleep.quality}</span>
+                    </div>
+                  </div>
+
+                  {expandedCard === "sleep" && (
+                    <div className="pt-2 animate-in slide-in-from-top-1 duration-200">
+                      {renderTrendGraph(lifestyleSleep.history, "#7c3aed")}
+                    </div>
+                  )}
                 </div>
+
+                <button
+                  onClick={() => setActiveLogType("sleep")}
+                  className="w-full mt-3 py-2 bg-purple-50/50 hover:bg-purple-50 text-purple-700 font-bold text-xs rounded-xl transition-all border border-purple-100/35"
+                >
+                  Log Sleep
+                </button>
+              </div>
+
+              {/* Card 3: BMI Tracker */}
+              <div
+                onClick={(e) => {
+                  const target = e.target as HTMLElement;
+                  if (!target.closest("button")) {
+                    setExpandedCard(expandedCard === "bmi" ? null : "bmi");
+                  }
+                }}
+                className="relative overflow-hidden bg-white p-5 rounded-3xl border border-outline-variant/15 shadow-sm space-y-4 flex flex-col justify-between hover:border-primary/20 transition-all min-h-[190px] cursor-pointer"
+              >
+                {!lifestyleLoggedToday.bmi && (
+                  <div
+                    onClick={() => setActiveLogType("bmi")}
+                    className="absolute inset-0 rounded-3xl backdrop-blur-md bg-white/40 border border-white/10 flex flex-col items-center justify-center p-4 text-center z-10 cursor-pointer hover:bg-white/50 transition-all duration-300 group"
+                  >
+                    <span className="material-symbols-outlined text-emerald-600 text-2xl mb-1.5 animate-pulse">scale</span>
+                    <span className="text-secondary font-black text-xs">BMI Locked</span>
+                    <p className="text-[10px] text-on-surface-variant font-medium mt-1 max-w-[150px]">Log today's weight & height to unlock details</p>
+                    <button className="mt-3 px-3 py-1.5 bg-primary text-white text-[10px] font-bold rounded-lg shadow-sm group-hover:scale-105 transition-transform">
+                      Log BMI
+                    </button>
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <div className="flex justify-between items-start">
+                    <div className="flex gap-2.5 items-center">
+                      <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
+                        <span className="material-symbols-outlined text-lg">scale</span>
+                      </div>
+                      <div className="text-left">
+                        <h4 className="font-headline-md text-xs text-secondary font-black">BMI Index</h4>
+                        <span className="text-[8px] text-outline font-bold uppercase tracking-wider block">Body Mass Index</span>
+                      </div>
+                    </div>
+                    <span className="text-[9px] bg-surface-container-high/65 px-2 py-0.5 rounded-full text-outline font-bold">
+                      {expandedCard === "bmi" ? "Hide Graph" : "Tap to Expand"}
+                    </span>
+                  </div>
+
+                  <div className="text-left pt-1">
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-xl font-extrabold text-secondary">{lifestyleBmi.value}</span>
+                      <span className="text-[10px] text-outline">kg/m²</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-2">
+                      <span className="bg-emerald-100 text-emerald-800 text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                        {lifestyleBmi.category}
+                      </span>
+                      <span className="text-[9px] text-outline font-semibold">Weight Category</span>
+                    </div>
+                    <div className="flex justify-between items-center text-[9px] text-outline font-semibold mt-3">
+                      <span>Normal target: 18.5 - 24.9</span>
+                      <span>Logs count: {lifestyleBmi.history.length}</span>
+                    </div>
+                  </div>
+
+                  {expandedCard === "bmi" && (
+                    <div className="pt-2 animate-in slide-in-from-top-1 duration-200">
+                      {renderTrendGraph(lifestyleBmi.history, "#006E2F")}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => setActiveLogType("bmi")}
+                  className="w-full mt-3 py-2 bg-emerald-50/50 hover:bg-emerald-50 text-emerald-700 font-bold text-xs rounded-xl transition-all border border-emerald-100/35"
+                >
+                  Log BMI
+                </button>
+              </div>
+
+            </div>
+
+            {/* AI Summary Premium Insight Card */}
+            <section className="bg-gradient-to-br from-primary-container/10 via-white to-secondary-container/10 rounded-3xl p-6 border border-outline-variant/20 shadow-sm space-y-4">
+              <div className="flex items-center gap-3 text-left">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-secondary text-white flex items-center justify-center flex-shrink-0 shadow-sm">
+                  <span className="material-symbols-outlined text-lg">psychology</span>
+                </div>
+                <div>
+                  <h4 className="font-headline-md text-sm text-secondary font-bold">Lifestyle Summary</h4>
+                  <p className="text-[10px] text-outline uppercase tracking-wider font-bold">AI observations & health patterns</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-left">
+                <div className="space-y-2 bg-white/70 p-3.5 rounded-2xl border border-outline-variant/10">
+                  <p className="text-xs text-secondary font-medium leading-relaxed flex items-start gap-2">
+                    <span className="text-base flex-shrink-0">💧</span>
+                    <span>Your hydration records are building. Keep logging water daily to track improvements.</span>
+                  </p>
+                  <p className="text-xs text-secondary font-medium leading-relaxed flex items-start gap-2 pt-2 border-t border-outline-variant/5">
+                    <span className="text-base flex-shrink-0">😴</span>
+                    <span>Consistently logging sleep timings reveals correlations with daytime alertness metrics.</span>
+                  </p>
+                </div>
+
+                <div className="space-y-2 bg-white/70 p-3.5 rounded-2xl border border-outline-variant/10">
+                  <p className="text-xs text-secondary font-medium leading-relaxed flex items-start gap-2">
+                    <span className="text-base flex-shrink-0">⏱️</span>
+                    <span>Consistent lifestyle routines directly improve overall medicine adherence levels.</span>
+                  </p>
+                  <p className="text-xs text-secondary font-medium leading-relaxed flex items-start gap-2 pt-2 border-t border-outline-variant/5">
+                    <span className="text-base flex-shrink-0">⚖️</span>
+                    <span>Tracking BMI changes regularly assists in maintaining ideal weight ranges.</span>
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            {/* Correlation Chips Section */}
+            <div className="space-y-2">
+              <span className="text-[10px] font-bold text-outline uppercase tracking-wider block text-left">💡 Correlation Explorer</span>
+              <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none -mx-gutter px-gutter">
+                {[
+                  { label: "Water ↔ Energy", icon: "bolt" },
+                  { label: "Sleep ↔ BMI", icon: "fitness_center" },
+                  { label: "Sleep ↔ Medicine Adherence", icon: "alarm" }
+                ].map((chip, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setSelectedCorrelation(chip.label)}
+                    className="flex items-center gap-1.5 bg-white border border-outline-variant/20 hover:border-primary/40 px-3.5 py-2 rounded-full font-label-md text-xs font-bold text-secondary shadow-sm transition-all whitespace-nowrap active:scale-95 flex-shrink-0"
+                  >
+                    <span className="material-symbols-outlined text-xs text-outline">{chip.icon}</span>
+                    <span>{chip.label}</span>
+                  </button>
+                ))}
               </div>
             </div>
-          )}
+          </div>
         </section>
 
         {/* QUICK LOG DIALOG MODALS OVERLAY */}
@@ -1466,7 +1517,7 @@ export const HealthView: React.FC = () => {
 
 
         {/* 3. TODAY'S TIMELINE */}
-        <section className="space-y-3">
+        {/* <section className="space-y-3">
           <h3 className="font-headline-md text-base text-secondary font-bold">Today's Timeline</h3>
 
           {timelineItems.length === 0 ? (
@@ -1476,27 +1527,23 @@ export const HealthView: React.FC = () => {
             </div>
           ) : (
             <div className="relative pl-6 space-y-4">
-              {/* Horizontal-centered vertical line indicator */}
               <div className="absolute left-2.5 top-2 bottom-2 w-0.5 bg-outline-variant/30 rounded-full" />
 
               {timelineItems.map((item) => {
                 const isMedicine = item.type === "medicine";
                 const isCompleted = item.status === "taken" || item.status === "completed";
-
                 return (
                   <div key={item.id} className="relative flex gap-3.5 items-start w-full min-w-0 animate-in fade-in duration-300">
-                    {/* Circle indicator on timeline */}
+                    
                     <div className={`absolute -left-[27px] top-1.5 w-4 h-4 rounded-full border-4 border-background flex items-center justify-center ${isCompleted
                       ? "bg-tertiary shadow-[0_0_8px_rgba(0,110,47,0.4)]"
                       : "bg-primary"
                       }`} />
 
-                    {/* Scheduled time */}
                     <div className="w-14 flex-shrink-0 pt-0.5">
                       <span className="font-label-sm text-[11px] text-outline font-bold uppercase tracking-wider block leading-none">{item.time}</span>
                     </div>
 
-                    {/* Card Content */}
                     <div className={`flex-grow p-4 rounded-2xl border transition-all duration-300 flex justify-between items-center gap-3 min-w-0 ${isCompleted
                       ? "bg-surface-container-low/50 border-outline-variant/15 opacity-75"
                       : "bg-white border-outline-variant/30 hover:border-primary/20 shadow-sm"
@@ -1516,7 +1563,6 @@ export const HealthView: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* Action Button */}
                       {isMedicine ? (
                         <button
                           onClick={() => toggleReminderStatus(item.raw.id, isCompleted ? "pending" : "taken")}
@@ -1546,7 +1592,7 @@ export const HealthView: React.FC = () => {
               })}
             </div>
           )}
-        </section>
+        </section> */}
 
         {/* 4. MEDICINES SECTION */}
         <section className="bg-white border border-outline-variant/20 rounded-3xl p-5 space-y-4 shadow-sm">
@@ -1555,12 +1601,12 @@ export const HealthView: React.FC = () => {
               <span className="material-symbols-outlined text-primary text-xl">pill</span>
               <h3 className="font-headline-md text-sm text-base text-secondary font-bold">Your Medicine Reminder</h3>
             </div>
-            <button
+            {/* <button
               onClick={() => setActiveModal("add_medicine")}
               className="text-xs font-bold text-primary flex items-center gap-1 hover:underline"
             >
               <span className="material-symbols-outlined text-sm">shopping_cart</span> Order
-            </button>
+            </button> */}
           </div>
 
           <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
@@ -1578,7 +1624,7 @@ export const HealthView: React.FC = () => {
                   if (medRems.length === 0) return null;
                   // Sort by scheduledTime (earliest first)
                   const sorted = medRems.sort((a, b) => new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime());
-                  return sorted[0]; 
+                  return sorted[0];
                 }).filter(Boolean) as Reminder[];
 
                 // Show up to 4 medicines
@@ -1614,29 +1660,29 @@ export const HealthView: React.FC = () => {
           </div>
 
           {/* Medicine Orders Delivery Tracking */}
-          {bookings.filter(b => b.type === "medicine").length > 0 && (
-            <div className="border-t border-outline-variant/20 pt-3 space-y-2">
-              <p className="text-[10px] uppercase font-bold text-primary tracking-wider">Active Deliveries</p>
-              <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
-                {bookings.filter(b => b.type === "medicine").map((b) => (
-                  <div
-                    key={b.id}
-                    onClick={() => {
-                      setActiveTrackingBooking(b);
-                      setActiveModal("tracking");
-                    }}
-                    className="p-3 bg-primary-container/5 border border-primary/20 rounded-xl flex justify-between items-center text-xs cursor-pointer hover:bg-primary-container/10 transition-colors animate-pulse"
-                  >
-                    <div className="min-w-0">
-                      <span className="font-label-md text-xs text-secondary font-bold block truncate">{b.testNames.join(", ")}</span>
-                      <p className="font-body-md text-[9px] text-outline mt-0.5 uppercase tracking-wide">📦 {b.labName} • {b.status.replace("_", " ")}</p>
-                    </div>
-                    <span className="font-label-sm text-[10px] text-primary font-bold">Track &gt;</span>
+          {/* {bookings.filter(b => b.type === "medicine").length > 0 && (
+          <div className="border-t border-outline-variant/20 pt-3 space-y-2">
+            <p className="text-[10px] uppercase font-bold text-primary tracking-wider">Active Deliveries</p>
+            <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
+              {bookings.filter(b => b.type === "medicine").map((b) => (
+                <div
+                  key={b.id}
+                  onClick={() => {
+                    setActiveTrackingBooking(b);
+                    setActiveModal("tracking");
+                  }}
+                  className="p-3 bg-primary-container/5 border border-primary/20 rounded-xl flex justify-between items-center text-xs cursor-pointer hover:bg-primary-container/10 transition-colors animate-pulse"
+                >
+                  <div className="min-w-0">
+                    <span className="font-label-md text-xs text-secondary font-bold block truncate">{b.testNames.join(", ")}</span>
+                    <p className="font-body-md text-[9px] text-outline mt-0.5 uppercase tracking-wide">📦 {b.labName} • {b.status.replace("_", " ")}</p>
                   </div>
-                ))}
-              </div>
+                  <span className="font-label-sm text-[10px] text-primary font-bold">Track &gt;</span>
+                </div>
+              ))}
             </div>
-          )}
+          </div>
+        )} */}
         </section>
 
 

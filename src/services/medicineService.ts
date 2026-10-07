@@ -703,6 +703,7 @@ export const medicineService = {
 
       color:
         data.color || "blue",
+      isCustom: true,
     };
   },
 

@@ -57,6 +57,7 @@ CREATE TABLE public.medical_reports (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    family_member_id UUID NOT NULL,
 
     -- One medical report per document
     CONSTRAINT medical_reports_document_unique
