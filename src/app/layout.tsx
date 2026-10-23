@@ -1,7 +1,8 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Manrope, Hanken_Grotesk } from "next/font/google";
 import { AppProvider } from "../context/AppContext";
 import "./globals.css";
+import IOSSafeArea from "../components/layout/IOSSafeArea";
 
 const manrope = Manrope({
   subsets: ["latin"],
@@ -17,8 +18,21 @@ const hankenGrotesk = Hanken_Grotesk({
 
 export const metadata: Metadata = {
   title: "Medimz | Your Health, Our World",
-  description: "A premium AI-powered healthcare companion focusing on medication adherence, home diagnostics collection, and proactive wellness habits.",
+  description:
+    "A premium AI-powered healthcare companion focusing on medication adherence, home diagnostics collection, and proactive wellness habits.",
 };
+
+export const viewport: Viewport = {
+      width: "device-width",
+      initialScale: 1,
+      viewportFit: "cover",
+};
+// export const viewport: Viewport = {
+//   width: "device-width",
+//   initialScale: 1,
+//   maximumScale: 1,
+//   userScalable: false,
+// };
 
 export default function RootLayout({
   children,
@@ -36,10 +50,12 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="min-h-full flex flex-col bg-background text-on-background" suppressHydrationWarning>
-        <AppProvider>
-          {children}
-        </AppProvider>
+      <body
+        className="min-h-full flex flex-col bg-background text-on-background"
+        suppressHydrationWarning
+      >
+        <IOSSafeArea />
+        <AppProvider>{children}</AppProvider>
       </body>
     </html>
   );

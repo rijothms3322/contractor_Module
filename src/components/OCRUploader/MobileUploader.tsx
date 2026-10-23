@@ -1,12 +1,12 @@
 "use client";
 
-import { getOCRService } from "@/services/ocr";
+import { useApp } from "@/context/AppContext";
 import {
     processUploadedMedicalFile
 } from "@/lib/medical/processUploadedMedicalFile";
+import { getOCRService } from "@/services/ocr";
+import { useEffect, useRef, useState } from "react";
 import type { OCRUploaderProps } from "./types";
-import { useState, useEffect, useRef } from "react";
-import { useApp } from "@/context/AppContext";
 
 export default function MobileUploader({
     userId,

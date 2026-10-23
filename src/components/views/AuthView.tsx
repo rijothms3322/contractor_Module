@@ -1,17 +1,16 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useApp } from "../../context/AppContext";
-import { useRouter } from "next/navigation";
-import { isSupabaseConfigured, supabase } from "../../lib/supabaseClient";
-import { adminService } from "../../services/adminService";
+import { signInWithGoogle, signOutGoogle } from "@/lib/googleAuth";
 import { TermsConditions } from "@/lib/mockData";
-import { Capacitor } from "@capacitor/core";
-import { App } from "@capacitor/app";
-import { signInWithGoogle } from "@/lib/googleAuth";
+import { authService } from "@/services/authService";
 import { sendVerificationOtp, verifyOtpAndLogin } from "@/services/otpService";
+import { useRouter } from "next/navigation";
+import React, { useState } from "react";
+import { useApp } from "../../context/AppContext";
+import { isSupabaseConfigured } from "../../lib/supabaseClient";
+import { adminService } from "../../services/adminService";
 
-// OTP Input Component 
+// OTP Input Component
 const OtpInput = ({
   otp,
   setOtp,
@@ -33,7 +32,7 @@ const OtpInput = ({
 
     if (index < LENGTH - 1) {
       const nextInput = document.querySelector(
-        `[data-otp-index="${index + 1}"]`
+        `[data-otp-index="${index + 1}"]`,
       ) as HTMLInputElement | null;
       nextInput?.focus();
     }
@@ -41,7 +40,7 @@ const OtpInput = ({
 
   const handleKeyDown = (
     index: number,
-    e: React.KeyboardEvent<HTMLInputElement>
+    e: React.KeyboardEvent<HTMLInputElement>,
   ) => {
     if (e.key !== "Backspace") return;
     e.preventDefault();
@@ -55,7 +54,7 @@ const OtpInput = ({
 
     if (index > 0) {
       const previousInput = document.querySelector(
-        `[data-otp-index="${index - 1}"]`
+        `[data-otp-index="${index - 1}"]`,
       ) as HTMLInputElement | null;
       previousInput?.focus();
     }
@@ -72,7 +71,7 @@ const OtpInput = ({
     setOtp(pastedOtp);
     const lastIndex = Math.min(pastedOtp.length - 1, LENGTH - 1);
     const input = document.querySelector(
-      `[data-otp-index="${lastIndex}"]`
+      `[data-otp-index="${lastIndex}"]`,
     ) as HTMLInputElement | null;
     input?.focus();
   };
@@ -82,7 +81,7 @@ const OtpInput = ({
       <label className="block text-xs font-bold text-on-surface-variant">
         Enter 6-Digit OTP
       </label>
-      <div className="flex justify-center gap-2">
+      <div className="flex justify-center gap-1">
         {Array.from({ length: LENGTH }).map((_, index) => (
           <input
             key={index}
@@ -126,8 +125,13 @@ export const AuthView: React.FC = () => {
 
   // Mode & Tabs
   const [mode, setMode] = useState<"login" | "signup" | "forgot">("login");
-  const [activeTab, setActiveTab] = useState<"emailLogin" | "phoneLogin">("emailLogin");
-  const [signUpActiveTab, setSignUpActiveTab] = useState<"emailSignUp" | "phoneSignUp">("emailSignUp");
+  const [activeTab, setActiveTab] = useState<"emailLogin" | "phoneLogin">(
+    "phoneLogin",
+  );
+  const [signUpActiveTab, setSignUpActiveTab] = useState<
+    "emailSignUp" | "phoneSignUp"
+  >("phoneSignUp");
+  const [phoneAlreadyVerified, setPhoneAlreadyVerified] = useState(false);
   const [role, setRole] = useState<"user" | "admin">("user");
 
   // Form fields
@@ -149,7 +153,6 @@ export const AuthView: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-
 
   // useEffect(() => {
   //   if (!Capacitor.isNativePlatform()) {
@@ -335,7 +338,6 @@ export const AuthView: React.FC = () => {
     }
   };
 
-
   // Tab Handlers
 
   const handleLoginTabChange = (tab: "emailLogin" | "phoneLogin") => {
@@ -361,7 +363,6 @@ export const AuthView: React.FC = () => {
     setMessage("");
     setSignupToken(null);
   };
-
 
   // Google Sign In
 
@@ -395,39 +396,55 @@ export const AuthView: React.FC = () => {
     // } finally {
     //   setLoading(false);
     // }
-
     setError("");
     setMessage("");
+    setLoading(true);
 
-    if (!isSupabaseConfigured) {
-      // Fallback demo mode login
-      setLoading(true);
-      try {
+    try {
+      // 1️⃣ First logout any existing Google/Supabase session
+      console.log("[Auth] Signing out existing Google session...");
+
+      await signOutGoogle();
+
+      console.log("[Auth] Existing session cleared");
+
+      // 2️⃣ Now start a fresh Google Sign-In
+      console.log("[Auth] Starting fresh Google Sign-In...");
+
+      if (!isSupabaseConfigured) {
         if (role === "admin") {
           await login("teams@medimz.com", "password123", "admin");
         } else {
           await login("google-user@medimz.com", "password123", "user");
         }
-      } catch (err: any) {
-        setError(err?.message || "Google Sign-In failed.");
-      } finally {
-        setLoading(false);
+
+        return;
       }
-      return;
-    }
 
-    setLoading(true);
-    const result = await signInWithGoogle();
-    setLoading(false);
+      const result = await signInWithGoogle();
 
-    if (result.status === "error") {
-      setError(result.message);
+      if (result.status === "error") {
+        setError(result.message);
+        return;
+      }
+
+      if (result.status === "cancelled") {
+        console.log("[Auth] Google Sign-In cancelled");
+        return;
+      }
+
+      console.log("[Auth] Google Sign-In successful");
+    } catch (err: any) {
+      console.error("[Auth] Google Sign-In failed:", err);
+
+      setError(err?.message || "Google Sign-In failed. Please try again.");
+    } finally {
+      setLoading(false);
     }
     // "success" → onAuthStateChange / useAuthSession picks up the session
     // and page.tsx routes to onboarding or home automatically
     // "cancelled" → user backed out, do nothing
   };
-
 
   // Main Submit Handler
   const handleSubmit = async (e: React.FormEvent) => {
@@ -437,6 +454,8 @@ export const AuthView: React.FC = () => {
 
     // ──────────────────────────────────────────────────────────────
     // PHONE LOGIN
+    // ──────────────────────────────────────────────────────────────
+
     if (mode === "login" && activeTab === "phoneLogin") {
       const formattedPhone = formatPhoneNumber(phone);
 
@@ -444,163 +463,357 @@ export const AuthView: React.FC = () => {
         setError("Please enter your mobile number.");
         return;
       }
+
       if (!validatePhone(phone)) {
         setError("Please enter a valid 10-digit Indian mobile number.");
         return;
       }
+
       if (!acceptTerms) {
         setError("Please accept the Terms & Conditions.");
         return;
       }
 
-      // Send OTP
+      // ----------------------------------------------------------
+      // STEP 1: SEND OTP
+      // ----------------------------------------------------------
+
       if (!otpSent) {
-        console.log("[OTP] Login Send OTP — phone:", phone);
         setLoading(true);
+
         try {
-          const vid = await sendVerificationOtp(phone, "91");
-          console.log("[OTP] Login verificationId:", vid);
+          console.log("[OTP] Login Send OTP — phone:", formattedPhone);
+
+          const vid = await sendVerificationOtp(formattedPhone, "91");
+
           setVerificationId(vid);
           setOtpSent(true);
           setOtp("");
           setMessage("OTP sent successfully to your phone.");
+
           startOtpTimer();
         } catch (err: any) {
           setError(err?.message || "Failed to send OTP.");
         } finally {
           setLoading(false);
         }
+
         return;
       }
 
-      // Verify OTP
+      // ----------------------------------------------------------
+      // STEP 2: VALIDATE OTP
+      // ----------------------------------------------------------
+
       if (!otp.trim()) {
         setError("Please enter the OTP.");
         return;
       }
+
       if (!/^\d{6}$/.test(otp)) {
         setError("Please enter the complete 6-digit OTP.");
         return;
       }
 
+      if (!verificationId) {
+        setError("Verification session is missing. Please request a new OTP.");
+        return;
+      }
+
+      // ----------------------------------------------------------
+      // STEP 3: VERIFY OTP
+      // ----------------------------------------------------------
+
       setLoading(true);
+
       try {
-        console.log(
-          "[OTP] Login Verify — otp:",
+        const result = await verifyOtpAndLogin(
+          formattedPhone,
+          "91",
+          verificationId,
           otp,
-          "verificationId:",
-          verificationId
         );
 
-        const result = await verifyOtpAndLogin(phone,"91",verificationId,otp);
         console.log("[OTP] Login verify result:", result);
 
-        // ── LOGIN_SUCCESS 
+        // Existing user
         if (result.code === "LOGIN_SUCCESS") {
           return;
         }
 
-        // ── PHONE_NOT_REGISTERED 
-        if (result.code === "PHONE_NOT_REGISTERED") {
+        // New user → move to signup UI
+        if (result.code === "PHONE_VERIFIED_SIGNUP_REQUIRED") {
           setMode("signup");
           setSignUpActiveTab("phoneSignUp");
+
+          // Prefill verified phone
+          setPhone(result.phone || phone);
+
+          // Keep the verification session
+          setVerificationId(result.verificationId || verificationId);
+
+          // Tell signup UI that OTP is already verified
+          setPhoneAlreadyVerified(true);
+
+          // No OTP screen anymore
           setOtpSent(false);
           setOtp("");
-          setVerificationId("");
-          // keep `phone` and `acceptTerms` so the user doesn't retype them
-          setMessage(result.message || "");
+
+          setError("");
+          setMessage("");
+
           return;
         }
-        setError(result.message || "");
+
+        setError(result.message || "Unable to verify OTP.");
       } catch (err: any) {
+        console.error("[OTP] Login verification error:", err);
+
         setError(err?.message || "Invalid OTP. Please try again.");
       } finally {
         setLoading(false);
       }
+
       return;
     }
 
     // ──────────────────────────────────────────────────────────────
     // PHONE SIGNUP
+    // ──────────────────────────────────────────────────────────────
+    // PHONE SIGNUP
+    // ──────────────────────────────────────────────────────────────
+
     if (mode === "signup" && signUpActiveTab === "phoneSignUp") {
       const formattedPhone = formatPhoneNumber(phone);
+
+      // ----------------------------------------------------------
+      // VALIDATE FULL NAME
+      // ----------------------------------------------------------
 
       if (!fullName.trim() || fullName.trim().length < 2) {
         setError("Please enter a valid full name (at least 2 characters).");
         return;
       }
+
+      // ----------------------------------------------------------
+      // VALIDATE PHONE
+      // ----------------------------------------------------------
+
       if (!phone.trim()) {
         setError("Please enter your mobile number.");
         return;
       }
+
       if (!validatePhone(phone)) {
         setError("Please enter a valid 10-digit Indian mobile number.");
         return;
       }
+
+      // ----------------------------------------------------------
+      // VALIDATE EMAIL
+      // ----------------------------------------------------------
+
+      const normalizedEmail = email.trim().toLowerCase();
+
+      if (!normalizedEmail) {
+        setError("Please enter your email address.");
+        return;
+      }
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+      if (!emailRegex.test(normalizedEmail)) {
+        setError("Please enter a valid email address.");
+        return;
+      }
+
+      // ----------------------------------------------------------
+      // VALIDATE TERMS
+      // ----------------------------------------------------------
+
       if (!acceptTerms) {
         setError("Please accept the Terms & Conditions.");
         return;
       }
 
-      // Send OTP
-      if (!otpSent) {
-        console.log("[OTP] Signup Send OTP — phone:", phone);
+      // ==========================================================
+      // CASE 1
+      // PHONE WAS ALREADY VERIFIED DURING LOGIN
+      //
+      // Login → OTP verified → user not registered
+      // → signup screen → Complete Sign Up
+      // ==========================================================
+
+      if (phoneAlreadyVerified) {
+        if (!verificationId) {
+          setError(
+            "Phone verification session is missing. Please verify your phone again.",
+          );
+          return;
+        }
+
         setLoading(true);
+
         try {
-          const vid = await sendVerificationOtp(phone, "91");
+          console.log(
+            "[SIGNUP] Completing signup with already verified phone:",
+            {
+              phone: formattedPhone,
+              email: normalizedEmail,
+              verificationId,
+            },
+          );
+
+          const profile = await authService.signUpWithPhone(
+            formattedPhone,
+            fullName.trim(),
+            normalizedEmail,
+            role,
+            verificationId,
+          );
+
+          console.log("[SIGNUP] Phone signup completed:", profile);
+
+          // ------------------------------------------------------
+          // SUCCESS
+          // ------------------------------------------------------
+
+          // Your existing auth/profile handling here.
+          // Example:
+          //
+          // setProfile(profile);
+          // navigateToOnboarding(profile);
+
+          return;
+        } catch (err: any) {
+          console.error("[SIGNUP] Complete phone signup failed:", err);
+
+          setError(
+            err?.message || "Failed to complete signup. Please try again.",
+          );
+        } finally {
+          setLoading(false);
+        }
+
+        return;
+      }
+
+      // ==========================================================
+      // CASE 2
+      // NORMAL PHONE SIGNUP
+      //
+      // Signup → Send OTP → Verify OTP
+      // ==========================================================
+
+      // ----------------------------------------------------------
+      // SEND OTP
+      // ----------------------------------------------------------
+
+      if (!otpSent) {
+        console.log("[OTP] Signup Send OTP:", formattedPhone);
+
+        setLoading(true);
+
+        try {
+          const vid = await sendVerificationOtp(formattedPhone, "91");
+
           console.log("[OTP] Signup verificationId:", vid);
+
           setVerificationId(vid);
           setOtpSent(true);
           setOtp("");
+
           setMessage("OTP sent successfully to your phone.");
+
           startOtpTimer();
         } catch (err: any) {
+          console.error("[OTP] Signup send failed:", err);
+
           setError(err?.message || "Failed to send OTP.");
         } finally {
           setLoading(false);
         }
+
         return;
       }
 
-      // Verify OTP
+      // ----------------------------------------------------------
+      // VERIFY OTP
+      // ----------------------------------------------------------
+
       if (!otp.trim()) {
         setError("Please enter the OTP.");
         return;
       }
+
       if (!/^\d{6}$/.test(otp)) {
         setError("Please enter the complete 6-digit OTP.");
         return;
       }
 
+      if (!verificationId) {
+        setError("Verification session is missing. Please request a new OTP.");
+        return;
+      }
+
       setLoading(true);
+
       try {
-        console.log(
-          "[OTP] Signup Verify — otp:",
-          otp,
-          "verificationId:",
-          verificationId
-        );
+        console.log("[OTP] Signup Verify:", {
+          phone: formattedPhone,
+          verificationId,
+        });
 
         const result = await verifyOtpAndLogin(
-          phone,
+          formattedPhone,
           "91",
           verificationId,
-          otp
+          otp,
         );
+
         console.log("[OTP] Signup verify result:", result);
 
-        // ── LOGIN_SUCCESS 
+        // --------------------------------------------------------
+        // NEW USER
+        // --------------------------------------------------------
+
+        if (result.code === "PHONE_VERIFIED_SIGNUP_REQUIRED") {
+          setVerificationId(result.verificationId || verificationId);
+
+          setPhone(result.phone || phone);
+
+          setPhoneAlreadyVerified(true);
+
+          setOtpSent(false);
+          setOtp("");
+
+          setError("");
+          setMessage("Phone verified. Please complete your signup.");
+
+          return;
+        }
+
+        // --------------------------------------------------------
+        // EXISTING ACCOUNT
+        // --------------------------------------------------------
+
         if (result.code === "LOGIN_SUCCESS") {
           return;
         }
 
-        // ── Every other code 
-        setError(result.message || "");
+        // --------------------------------------------------------
+        // UNEXPECTED
+        // --------------------------------------------------------
+
+        setError(result.message || "Unable to verify OTP.");
       } catch (err: any) {
+        console.error("[OTP] Signup verification failed:", err);
+
         setError(err?.message || "Invalid OTP. Please try again.");
       } finally {
         setLoading(false);
       }
+
       return;
     }
 
@@ -675,14 +888,14 @@ export const AuthView: React.FC = () => {
             console.log("call 1");
             const roles = await adminService.getAllUserRoles();
             hasAssignedRole = roles.some(
-              (r) => r.email?.toLowerCase().trim() === normalizedEmail
+              (r) => r.email?.toLowerCase().trim() === normalizedEmail,
             );
           } catch {
             console.log("Offline mode: skipping admin role check.");
           }
           if (!isSuper && !hasAssignedRole && isSupabaseConfigured) {
             throw new Error(
-              "Access Denied: Only authorized administrative accounts can access the Admin Portal."
+              "Access Denied: Only authorized administrative accounts can access the Admin Portal.",
             );
           }
         }
@@ -696,7 +909,7 @@ export const AuthView: React.FC = () => {
         const isSuper = normalizedEmail === "teams@medimz.com";
         if (role === "admin" && !isSuper) {
           throw new Error(
-            "Access Denied: Unauthorized admin registration. Administrators must be promoted by a Super Admin."
+            "Access Denied: Unauthorized admin registration. Administrators must be promoted by a Super Admin.",
           );
         }
         await signup(normalizedEmail, password, fullName.trim(), role);
@@ -709,7 +922,7 @@ export const AuthView: React.FC = () => {
         if (res) {
           setMode("login");
           setMessage(
-            "A password recovery link has been sent to your registered email address."
+            "A password recovery link has been sent to your registered email address.",
           );
           setEmail("");
           setPassword("");
@@ -719,27 +932,57 @@ export const AuthView: React.FC = () => {
         }
       }
     } catch (err: any) {
-      setError(err?.message || "Something went wrong. Please check your details.");
+      setError(
+        err?.message || "Something went wrong. Please check your details.",
+      );
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col justify-center items-center py-8 px-gutter max-w-[440px] mx-auto relative overflow-hidden">
+    <div className="min-h-screen bg-background flex flex-col justify-center items-center px-gutter max-w-full relative overflow-hidden">
       {/* Background blurs */}
+      <div className="relative flex items-center justify-center mb-2">
+        {/* Blurred background logo */}
+        <img
+          src="/logo.png"
+          alt=""
+          aria-hidden="true"
+          className="absolute h-72 w-auto object-contain opacity-50 blur-lg scale-110 select-none pointer-events-none"
+        />
+
+        {/* Main logo */}
+        <img
+          src="/logo.png"
+          alt="MEDIMZ Logo"
+          className="relative z-10 h-48 w-auto object-contain select-none"
+        />
+      </div>
+      <div className="text-center mb-2 flex flex-col items-center">
+        <p className="font-label-sm text-2xl uppercase tracking-widest font-bold mt-1 bg-gradient-to-r from-[#D98262]  via-[#A96555] to-[#8B4F43] bg-clip-text text-transparent">
+          {mode === "login"
+            ? "Welcome"
+            : mode === "signup"
+              ? "Create Account"
+              : "Recover Password"}
+        </p>
+      </div>
+      <div className="text-center mb-4 flex flex-col items-center">
+        <p className="font-label-sm text-[12px] tracking-widest font-bold text-secondary">
+          {mode === "login"
+            ? "Manage your family's health in one place"
+            : mode === "signup"
+              ? "Join Medimz to manage your family's health in one place"
+              : " "}
+        </p>
+      </div>
       <div className="absolute -top-24 -right-24 w-64 h-64 bg-primary/5 rounded-full filter blur-2xl pointer-events-none" />
       <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-secondary/5 rounded-full filter blur-2xl pointer-events-none" />
 
       {/* Main Card */}
-      <div className="w-full glass-card rounded-3xl p-8 shadow-2xl relative z-10 border border-outline-variant/35 animate-in zoom-in-95 duration-300">
+      <div className="w-full glass-card rounded-3xl py-6 px-8  shadow-2xl relative z-10 border border-outline-variant/35 animate-in zoom-in-95 duration-300">
         {/* Logo & Title */}
-        <div className="text-center mb-6 flex flex-col items-center">
-          <img src="/logo.png" alt="MEDIMZ Logo" className="h-16 w-auto object-contain mb-2 select-none" />
-          <p className="font-label-sm text-xs text-on-surface-variant uppercase tracking-widest mt-1">
-            {mode === "login" ? "Welcome Back" : mode === "signup" ? "Create Account" : "Recover Password"}
-          </p>
-        </div>
 
         {/* Error / Success Banners */}
         {error && (
@@ -750,13 +993,15 @@ export const AuthView: React.FC = () => {
         )}
         {message && (
           <div className="mb-4 p-3 bg-tertiary-container/10 text-tertiary text-xs rounded-xl flex items-center gap-2 border border-tertiary/20">
-            <span className="material-symbols-outlined text-sm">check_circle</span>
+            <span className="material-symbols-outlined text-sm">
+              check_circle
+            </span>
             <span>{message}</span>
           </div>
         )}
 
         {/* Tabs for Login */}
-        {mode === "login" && (
+        {/* {mode === "login" && (
           <div className="flex bg-surface-container rounded-md p-1 mb-6">
             <button
               type="button"
@@ -779,10 +1024,10 @@ export const AuthView: React.FC = () => {
               Phone Login
             </button>
           </div>
-        )}
+        )} */}
 
         {/* Tabs for Signup */}
-        {mode === "signup" && (
+        {/* {mode === "signup" && (
           <div className="flex bg-surface-container rounded-md p-1 mb-6">
             <button
               type="button"
@@ -805,16 +1050,20 @@ export const AuthView: React.FC = () => {
               Phone Sign Up
             </button>
           </div>
-        )}
+        )} */}
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-[10px]">
           {/* Full Name (only for signup) */}
           {mode === "signup" && (
             <div className="space-y-1">
-              <label className="block font-label-md text-xs text-on-surface-variant font-bold">Full Name</label>
+              <label className="block font-label-md text-xs text-on-surface-variant font-bold">
+                Full Name
+              </label>
               <div className="relative flex items-center">
-                <span className="material-symbols-outlined absolute left-3 text-secondary text-lg">person</span>
+                <span className="material-symbols-outlined absolute left-3 text-secondary text-lg">
+                  person
+                </span>
                 <input
                   type="text"
                   placeholder="e.g. Sarah D'Souza"
@@ -827,16 +1076,18 @@ export const AuthView: React.FC = () => {
           )}
 
           {/* Email & Password fields (for email flows) */}
-          {(
-            mode === "forgot" ||
+          {(mode === "forgot" ||
             (mode === "login" && activeTab === "emailLogin") ||
-            (mode === "signup" && signUpActiveTab === "emailSignUp")
-          ) && (
+            (mode === "signup" && signUpActiveTab === "emailSignUp")) && (
               <>
                 <div className="space-y-1">
-                  <label className="block font-label-md text-xs text-on-surface-variant font-bold">Email Address</label>
+                  <label className="block font-label-md text-xs text-on-surface-variant font-bold">
+                    Email Address
+                  </label>
                   <div className="relative flex items-center">
-                    <span className="material-symbols-outlined absolute left-3 text-secondary text-lg">mail</span>
+                    <span className="material-symbols-outlined absolute left-3 text-secondary text-lg">
+                      mail
+                    </span>
                     <input
                       type="email"
                       placeholder="sarah@medimz.com"
@@ -849,9 +1100,13 @@ export const AuthView: React.FC = () => {
 
                 {mode !== "forgot" && (
                   <div className="space-y-1">
-                    <label className="block font-label-md text-xs text-on-surface-variant font-bold">Password</label>
+                    <label className="block font-label-md text-xs text-on-surface-variant font-bold">
+                      Password
+                    </label>
                     <div className="relative flex items-center">
-                      <span className="material-symbols-outlined absolute left-3 text-secondary text-lg">lock</span>
+                      <span className="material-symbols-outlined absolute left-3 text-secondary text-lg">
+                        lock
+                      </span>
                       <input
                         type="password"
                         placeholder="••••••••"
@@ -865,35 +1120,91 @@ export const AuthView: React.FC = () => {
               </>
             )}
 
+          {mode === "signup" && signUpActiveTab === "phoneSignUp" && (
+            <div className="space-y-1">
+              <label className="block font-label-md text-xs text-on-surface-variant font-bold">
+                Email Address
+              </label>
+              <div className="relative flex items-center">
+                <span className="material-symbols-outlined absolute left-3 text-secondary text-lg">
+                  mail
+                </span>
+                <input
+                  type="email"
+                  placeholder="sarah@medimz.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 bg-surface-container/40 border border-outline-variant/40 rounded-xl font-body-md text-sm text-on-surface placeholder:text-outline focus:outline-none focus:border-primary transition-all"
+                />
+              </div>
+            </div>
+          )}
+
           {/* Phone & OTP fields (for phone flows) */}
           {((mode === "login" && activeTab === "phoneLogin") ||
             (mode === "signup" && signUpActiveTab === "phoneSignUp")) && (
-              <div className="space-y-4">
-                <div className="space-y-1">
-                  <label className="block text-xs font-bold">Mobile Number</label>
-                  <div className="relative flex items-center">
-                    <span className="material-symbols-outlined absolute left-3 text-secondary text-lg">call</span>
-                    <input
-                      type="tel"
-                      inputMode="numeric"
-                      value={phone}
-                      maxLength={10}
-                      onChange={(e) => {
-                        const val = e.target.value.replace(/\D/g, "").slice(0, 10);
-                        setPhone(val);
-                      }}
-                      placeholder="9876543210"
-                      className="w-full pl-10 pr-4 py-3 bg-surface-container/40 border border-outline-variant/40 rounded-xl font-body-md text-sm text-on-surface placeholder:text-outline focus:outline-none focus:border-primary transition-all"
-                    />
+              <div className="space-y-1">
+                <label className="block font-label-md text-xs text-on-surface-variant font-bold">
+                  Mobile Phone Number
+                </label>
+
+                <div
+                  className={`flex items-center w-full h-14 bg-white border border-outline-variant/40 rounded-xl overflow-hidden transition-all ${phoneAlreadyVerified
+                      ? "bg-surface-container/70 cursor-not-allowed opacity-80"
+                      : "focus-within:border-primary"
+                    }`}
+                >
+                  {/* Country flag */}
+                  <div className="flex items-center justify-center pl-4 pr-3">
+                    <span className="text-lg leading-none">🇮🇳</span>
                   </div>
+
+                  {/* Country code */}
+                  <div className="flex items-center h-7 pr-3 border-r border-outline-variant/50">
+                    <span className="text-sm text-on-surface font-medium whitespace-nowrap">
+                      +91
+                    </span>
+                  </div>
+
+                  {/* Phone number */}
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    value={phone}
+                    maxLength={10}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, "").slice(0, 10);
+
+                      setPhone(val);
+                    }}
+                    disabled={
+                      mode === "signup" &&
+                      signUpActiveTab === "phoneSignUp" &&
+                      phoneAlreadyVerified
+                    }
+                    placeholder="0123456789"
+                    className="flex-1 min-w-0 h-full px-3 bg-transparent border-0 outline-none font-body-md text-sm text-on-surface placeholder:text-outline"
+                  />
                 </div>
 
-                {/* Show OTP input only after OTP sent */}
-                {otpSent && <OtpInput otp={otp} setOtp={setOtp} />}
+                {/* Verified status */}
+                {mode === "signup" &&
+                  signUpActiveTab === "phoneSignUp" &&
+                  phoneAlreadyVerified && (
+                    <p className="text-xs text-green-600 mt-1">
+                      ✓ Phone number verified
+                    </p>
+                  )}
+                {/* OTP Input */}
+                {otpSent && !phoneAlreadyVerified && (
+                  <div className="mt-4">
+                    <OtpInput otp={otp} setOtp={setOtp} />
+                  </div>
+                )}
 
                 {/* Resend OTP */}
-                {otpSent && (
-                  <div className="flex justify-between items-center">
+                {otpSent && !phoneAlreadyVerified && (
+                  <div className="flex justify-between items-center mt-2">
                     <button
                       type="button"
                       disabled={!canResendOtp || loading}
@@ -903,6 +1214,7 @@ export const AuthView: React.FC = () => {
                     >
                       Resend OTP
                     </button>
+
                     <span className="text-[13px] text-gray-500">
                       {canResendOtp ? "You can resend" : `${otpTimer}s`}
                     </span>
@@ -913,7 +1225,7 @@ export const AuthView: React.FC = () => {
 
           {/* Terms & Conditions */}
           {mode !== "forgot" && (
-            <div className="flex items-center justify-center gap-3">
+            <div className="flex items-center justify-start gap-3">
               <input
                 id="terms"
                 type="checkbox"
@@ -921,16 +1233,44 @@ export const AuthView: React.FC = () => {
                 onChange={(e) => setAcceptTerms(e.target.checked)}
                 className="h-4 w-4 rounded border-outline-variant/50 text-primary accent-primary"
               />
-              <label htmlFor="terms" className="text-xs text-on-surface-variant leading-5 cursor-pointer">
+
+              <label
+                htmlFor="terms"
+                className="text-xs text-on-surface-variant leading-5 cursor-pointer"
+              >
                 I agree to the{" "}
-                <a
-                  href={TermsConditions}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary font-semibold hover:underline"
-                >
-                  Terms & Conditions.
-                </a>
+                {mode === "signup" ? (
+                  <span>
+                    <a
+                      href="https://medimz.com/terms"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-secondary font-bold hover:underline"
+                    >
+                      Terms & Conditions
+                    </a>
+
+                    <span className="text-on-surface-variant mx-1">and</span>
+
+                    <a
+                      href="https://medimz.com/privacy"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-secondary font-bold hover:underline"
+                    >
+                      Privacy Policy
+                    </a>
+                  </span>
+                ) : (
+                  <a
+                    href="https://medimz.com/terms"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-secondary font-semibold hover:underline"
+                  >
+                    Terms & Conditions
+                  </a>
+                )}
               </label>
             </div>
           )}
@@ -960,13 +1300,27 @@ export const AuthView: React.FC = () => {
             {loading ? (
               <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
             ) : mode === "login" ? (
-              activeTab === "phoneLogin"
-                ? otpSent ? "Verify OTP" : "Send OTP"
-                : "Login"
+              activeTab === "phoneLogin" ? (
+                otpSent ? (
+                  "Verify OTP"
+                ) : (
+                  "Get Secure OTP"
+                )
+              ) : (
+                "Login"
+              )
             ) : mode === "signup" ? (
-              signUpActiveTab === "phoneSignUp"
-                ? otpSent ? "Verify OTP" : "Send OTP"
-                : "Create Account"
+              signUpActiveTab === "phoneSignUp" ? (
+                phoneAlreadyVerified ? (
+                  "Complete Signup"
+                ) : otpSent ? (
+                  "Verify OTP"
+                ) : (
+                  "Send OTP"
+                )
+              ) : (
+                "Create Account"
+              )
             ) : (
               "Send Reset Link"
             )}
@@ -974,9 +1328,11 @@ export const AuthView: React.FC = () => {
         </form>
 
         {/* Divider */}
-        <div className="flex items-center my-5">
+        <div className="flex items-center my-3">
           <div className="flex-grow h-px bg-outline-variant/30" />
-          <span className="px-3 font-label-sm text-[10px] text-outline uppercase tracking-wider font-bold">Or continue with</span>
+          <span className="px-3 font-label-sm text-[10px] text-outline uppercase tracking-wider font-bold">
+            Or continue with
+          </span>
           <div className="flex-grow h-px bg-outline-variant/30" />
         </div>
 
@@ -986,58 +1342,102 @@ export const AuthView: React.FC = () => {
           disabled={loading}
           className="w-full py-3 bg-surface-container-lowest border border-outline-variant/30 hover:bg-surface-container-low font-label-md text-sm text-on-surface rounded-xl flex items-center justify-center gap-2 active:scale-98 transition-all disabled:opacity-50"
         >
-          <svg className="w-5 h-5 object-contain" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05" />
-            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335" />
+          <svg
+            className="w-5 h-5 object-contain"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+              fill="#4285F4"
+            />
+            <path
+              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+              fill="#34A853"
+            />
+            <path
+              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+              fill="#FBBC05"
+            />
+            <path
+              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+              fill="#EA4335"
+            />
           </svg>
           <span>Sign In with Google</span>
         </button>
 
         {/* Mode Switcher */}
-        <div className="text-center mt-6 space-y-4">
-          {mode === "login" ? (
-            <p className="font-label-md text-xs text-on-surface-variant">
+      </div>
+      <div className="text-center mt-6 space-y-4">
+        {mode === "login" ? (
+          <div className="flex flex-col gap-2">
+            <p className=" text-xs text-on-surface-variant">
               Don't have an account?{" "}
               <button
                 onClick={() => {
                   resetForm();
                   setMode("signup");
+                  setPhoneAlreadyVerified(false);
                 }}
-                className="text-primary hover:underline font-bold"
+                className="text-secondary hover:underline font-bold"
               >
                 Sign Up
               </button>
             </p>
-          ) : mode === "signup" ? (
-            <p className="font-label-md text-xs text-on-surface-variant">
-              Already have an account?{" "}
-              <button
-                onClick={() => {
-                  resetForm();
-                  setMode("login");
-                }}
-                className="text-primary hover:underline font-bold"
+            <div className="flex items-center justify-center gap-1 text-xs">
+              <a
+                href="https://medimz.com/terms"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-secondary font-bold hover:underline"
               >
-                Log In
-              </button>
-            </p>
-          ) : (
+                Terms & Conditions
+              </a>
+
+              <span className="text-on-surface">and</span>
+
+              <a
+                href="https://medimz.com/privacy"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-secondary font-bold hover:underline"
+              >
+                Privacy Policy
+              </a>
+            </div>
+          </div>
+        ) : mode === "signup" ? (
+          <p className="text-xs ">
+            Already have an account?{" "}
             <button
               onClick={() => {
                 resetForm();
                 setMode("login");
               }}
-              className="font-label-md text-xs text-primary hover:underline font-bold flex items-center justify-center gap-1 mx-auto"
+              className="text-secondary font-bold hover:underline font-bold"
             >
-              <span className="material-symbols-outlined text-sm">arrow_back</span>
-              <span>Back to Log In</span>
+              Log In
             </button>
-          )}
+          </p>
+        ) : (
+          <button
+            onClick={() => {
+              resetForm();
+              setMode("login");
+            }}
+            className="font-label-md text-xs text-primary hover:underline font-bold flex items-center justify-center gap-1 mx-auto"
+          >
+            <span className="material-symbols-outlined text-sm">
+              arrow_back
+            </span>
+            <span>Back to Log In</span>
+          </button>
+        )}
 
-          {/* Admin/Patient toggle */}
-          {/* {mode !== "forgot" && (
+        {/* Admin/Patient toggle */}
+        {/* {mode !== "forgot" && (
             <div className="pt-2 border-t border-outline-variant/10 text-center">
               <button
                 type="button"
@@ -1048,7 +1448,6 @@ export const AuthView: React.FC = () => {
               </button>
             </div>
           )} */}
-        </div>
       </div>
     </div>
   );

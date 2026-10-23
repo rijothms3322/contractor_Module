@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useApp } from "../context/AppContext";
+import { useEffect, useState } from "react";
+import { Footer } from "../components/layout/Footer";
 import { Header } from "../components/layout/Header";
 import { Navbar } from "../components/layout/Navbar";
-import { Footer } from "../components/layout/Footer";
+import { useApp } from "../context/AppContext";
 
 // Views
 import dynamic from "next/dynamic";
@@ -19,20 +19,20 @@ const OnboardingView = dynamic(
   { ssr: false }
 );
 
-import { SplashScreen } from "../components/views/SplashScreen";
+import NotificationPermissionModal from "@/components/views/NotificationPermissionModal";
+import { ProfileOnboarding } from "@/components/views/ProfileOnboarding";
+import { moodService } from "@/services/moodService";
+import { AdminView } from "../components/views/AdminView";
 import { DashboardView } from "../components/views/DashboardView";
+import { EmergencySosModal } from "../components/views/EmergencySosModal";
 import { HealthView } from "../components/views/HealthView";
 import { InsightsView } from "../components/views/InsightsView";
 import { ProfileView } from "../components/views/ProfileView";
-import { AdminView } from "../components/views/AdminView";
-import { WellnessView } from "../components/views/WellnessView";
-import { EmergencySosModal } from "../components/views/EmergencySosModal";
+import ProfileSetting from "../components/views/ProfileSetting";
+import { SplashScreen } from "../components/views/SplashScreen";
 import { WellnessCheckInModal } from "../components/views/WellnessCheckInModal";
-import { ProfileOnboarding } from "@/components/views/ProfileOnboarding";
-import { MainTour } from "@/components/tours/MainTour";
-import { requestNotificationPermission } from "@/services/notificationWeb";
-import { moodService } from "@/services/moodService";
-import NotificationPermissionModal from "@/components/views/NotificationPermissionModal";
+import { WellnessView } from "../components/views/WellnessView";
+import { trackEvent } from "@/lib/analytics";
 
 export default function Page() {
   const {
@@ -247,6 +247,7 @@ export default function Page() {
         isSignupDone: true,
       });
       console.log(res, 'res ProfileOnboarding')
+      await trackEvent('onboarding_completed');
 
       setShowPostLoginOnboarding(false);
     } catch (error) {
@@ -350,6 +351,8 @@ export default function Page() {
         return <WellnessView />;
       case "profile":
         return <ProfileView />;
+      case "profile-setting":
+        return <ProfileSetting />;
       case "admin":
       case "admin-operations":
       case "admin-analytics":

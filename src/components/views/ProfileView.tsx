@@ -1,14 +1,22 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { useApp } from "../../context/AppContext";
-import { AVATAR_CATEGORIES, AVATAR_ITEMS, AvatarItem } from "../../lib/avatarLibrary";
-import { MemberDashboardView } from "./MemberDashboardView";
-import OCRUploader from "../OCRUploader";
-import { documentService } from "@/services/documentService";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
-import { nicknameService } from "@/services/nicknameService";
 import { authService } from "@/services/authService";
+import { documentService } from "@/services/documentService";
+import { nicknameService } from "@/services/nicknameService";
+import React, { useEffect, useRef, useState } from "react";
+import { useApp } from "../../context/AppContext";
+import {
+  AVATAR_CATEGORIES,
+  AVATAR_ITEMS,
+  AvatarItem,
+} from "../../lib/avatarLibrary";
+import OCRUploader from "../OCRUploader";
+import { MemberDashboardView } from "./MemberDashboardView";
+import PdfViewer from "./PdfViewer";
+import ZoomableDocumentImage from "./ZoomableDocumentImage";
+import dynamic from "next/dynamic";
+import { trackEvent } from "@/lib/analytics";
 
 const TEST_CATEGORY = [
   { key: "lab_report", label: "Lab Report" },
@@ -21,16 +29,606 @@ const TEST_CATEGORY = [
 ];
 
 export const ProfileView: React.FC = () => {
-  const { user, familyMembers, addFamilyMember, leaveFamily, activeFamily, adherencePercentage, familyWellnessScore, joinFamily, renameFamily, removeFamilyMember, transferAdminRights, regenerateFamilyCode, createFamily, disbandFamily, deleteFamilyMember, updateUserProfile, logout } = useApp();
+  const {
+    user,
+    familyMembers,
+    addFamilyMember,
+    leaveFamily,
+    activeFamily,
+    adherencePercentage,
+    familyWellnessScore,
+    joinFamily,
+    renameFamily,
+    removeFamilyMember,
+    transferAdminRights,
+    regenerateFamilyCode,
+    createFamily,
+    disbandFamily,
+    deleteFamilyMember,
+    updateUserProfile,
+    activeTab,
+    logout,
+    elderlyMode,
+  } = useApp();
   // console.log(familyMembers, 'familyMembers')
   const [showAddMember, setShowAddMember] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+  const [isPinchZoomEnabled, setIsPinchZoomEnabled] = useState(true);
+
+  //local states
+  const [profileFamilyMembers, setProfileFamilyMembers] = useState<any[]>([]);
+  const [loadingFamilyMembers, setLoadingFamilyMembers] = useState(false);
   // console.log(user, 'user data')
   // Documents state
   const [documents, setDocuments] = useState<any[]>([]);
-  console.log(documents, 'documents')
+  console.log(documents, "documents");
   const [loadingDocuments, setLoadingDocuments] = useState<boolean>(false);
   const [selectedDocument, setSelectedDocument] = useState<any | null>(null);
+
+  const [zoom, setZoom] = useState(1);
+  const [imagePosition, setImagePosition] = useState({
+    x: 0,
+    y: 0,
+  });
+  const activePointersRef = useRef(new Map<number, { x: number; y: number }>());
+
+  const imageContainerRef = useRef<HTMLDivElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
+  const pinchStartDistanceRef = useRef<number | null>(null);
+  const pinchStartZoomRef = useRef(1);
+  const imagePositionRef = useRef({ x: 0, y: 0 });
+  const pinchStartPositionRef = useRef({ x: 0, y: 0 });
+
+  const lastTouchPositionRef = useRef({
+    x: 0,
+    y: 0,
+  });
+  const isPanningRef = useRef(false);
+  const isMouseDraggingRef = useRef(false);
+  const lastMousePositionRef = useRef({
+    x: 0,
+    y: 0,
+  });
+  const zoomRef = useRef(1);
+
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+
+  const getTouchDistance = (touch1: React.Touch, touch2: React.Touch) => {
+    const dx = touch1.clientX - touch2.clientX;
+    const dy = touch1.clientY - touch2.clientY;
+
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  const clampImagePosition = (x: number, y: number, currentZoom: number) => {
+    if (currentZoom <= 1) {
+      return {
+        x: 0,
+        y: 0,
+      };
+    }
+
+    const container = imageContainerRef.current;
+    const image = imageRef.current;
+
+    if (!container || !image) {
+      return {
+        x,
+        y,
+      };
+    }
+
+    const baseWidth = image.offsetWidth;
+    const baseHeight = image.offsetHeight;
+
+    const containerWidth = container.clientWidth;
+    const containerHeight = container.clientHeight;
+
+    const scaledWidth = baseWidth * currentZoom;
+    const scaledHeight = baseHeight * currentZoom;
+
+    const maxX = Math.max(0, (scaledWidth - containerWidth) / 2);
+
+    const maxY = Math.max(0, (scaledHeight - containerHeight) / 2);
+
+    return {
+      x: Math.min(Math.max(x, -maxX), maxX),
+      y: Math.min(Math.max(y, -maxY), maxY),
+    };
+  };
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLImageElement>) => {
+    if (!isPinchZoomEnabled) return;
+
+    activePointersRef.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+
+    // Two fingers = start pinch
+    if (activePointersRef.current.size === 2) {
+      isPanningRef.current = false;
+
+      const pointers = Array.from(activePointersRef.current.values());
+
+      const dx = pointers[0].x - pointers[1].x;
+      const dy = pointers[0].y - pointers[1].y;
+
+      pinchStartDistanceRef.current = Math.sqrt(dx * dx + dy * dy);
+
+      pinchStartZoomRef.current = zoomRef.current;
+
+      pinchStartPositionRef.current = {
+        x: imagePositionRef.current.x,
+        y: imagePositionRef.current.y,
+      };
+
+      return;
+    }
+
+    // One finger = pan only when already zoomed
+    if (activePointersRef.current.size === 1 && zoomRef.current > 1) {
+      isPanningRef.current = true;
+
+      lastTouchPositionRef.current = {
+        x: event.clientX,
+        y: event.clientY,
+      };
+    }
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLImageElement>) => {
+    if (!isPinchZoomEnabled) return;
+
+    if (!activePointersRef.current.has(event.pointerId)) {
+      return;
+    }
+
+    activePointersRef.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+
+    // -----------------------------
+    // PINCH ZOOM
+    // -----------------------------
+    if (
+      activePointersRef.current.size === 2 &&
+      pinchStartDistanceRef.current !== null
+    ) {
+      event.preventDefault();
+
+      const pointers = Array.from(activePointersRef.current.values());
+
+      const dx = pointers[0].x - pointers[1].x;
+      const dy = pointers[0].y - pointers[1].y;
+
+      const currentDistance = Math.sqrt(dx * dx + dy * dy);
+
+      if (currentDistance <= 0) return;
+
+      const scale = currentDistance / pinchStartDistanceRef.current;
+
+      const nextZoom = Math.min(
+        Math.max(pinchStartZoomRef.current * scale, 1),
+        4,
+      );
+
+      const startZoom = pinchStartZoomRef.current;
+      const startPosition = pinchStartPositionRef.current;
+
+      const ratio = nextZoom / startZoom;
+
+      const nextPosition = clampImagePosition(
+        startPosition.x * ratio,
+        startPosition.y * ratio,
+        nextZoom,
+      );
+
+      zoomRef.current = nextZoom;
+      imagePositionRef.current = nextPosition;
+
+      setZoom(nextZoom);
+      setImagePosition(nextPosition);
+
+      return;
+    }
+
+    // -----------------------------
+    // IMAGE PAN
+    // -----------------------------
+    if (
+      activePointersRef.current.size === 1 &&
+      isPanningRef.current &&
+      zoomRef.current > 1
+    ) {
+      event.preventDefault();
+
+      const deltaX = event.clientX - lastTouchPositionRef.current.x;
+
+      const deltaY = event.clientY - lastTouchPositionRef.current.y;
+
+      const nextPosition = clampImagePosition(
+        imagePositionRef.current.x + deltaX,
+        imagePositionRef.current.y + deltaY,
+        zoomRef.current,
+      );
+
+      imagePositionRef.current = nextPosition;
+
+      setImagePosition(nextPosition);
+
+      lastTouchPositionRef.current = {
+        x: event.clientX,
+        y: event.clientY,
+      };
+    }
+  };
+
+  const handlePointerUp = (event: React.PointerEvent<HTMLImageElement>) => {
+    activePointersRef.current.delete(event.pointerId);
+
+    if (activePointersRef.current.size < 2) {
+      pinchStartDistanceRef.current = null;
+    }
+
+    // One finger remains after pinch
+    if (activePointersRef.current.size === 1 && zoomRef.current > 1) {
+      const remainingPointer = Array.from(
+        activePointersRef.current.values(),
+      )[0];
+
+      isPanningRef.current = true;
+
+      lastTouchPositionRef.current = {
+        x: remainingPointer.x,
+        y: remainingPointer.y,
+      };
+
+      return;
+    }
+
+    if (activePointersRef.current.size === 0) {
+      isPanningRef.current = false;
+    }
+  };
+
+  const handlePointerCancel = (event: React.PointerEvent<HTMLImageElement>) => {
+    activePointersRef.current.delete(event.pointerId);
+
+    if (activePointersRef.current.size === 0) {
+      pinchStartDistanceRef.current = null;
+      isPanningRef.current = false;
+    }
+  };
+
+  const updateImageZoom = (nextZoom: number, preservePosition = true) => {
+    const clampedZoom = Math.min(Math.max(nextZoom, 0.5), 4);
+
+    const previousZoom = zoomRef.current;
+
+    if (clampedZoom <= 1) {
+      zoomRef.current = 1;
+
+      setZoom(1);
+
+      setImagePosition({
+        x: 0,
+        y: 0,
+      });
+
+      return;
+    }
+
+    let nextX = imagePosition.x;
+    let nextY = imagePosition.y;
+
+    if (preservePosition && previousZoom > 0) {
+      /*
+       * Scale the existing pan position together with zoom.
+       * This prevents the image from jumping when zooming.
+       */
+      const ratio = clampedZoom / previousZoom;
+
+      nextX *= ratio;
+      nextY *= ratio;
+    } else {
+      nextX = 0;
+      nextY = 0;
+    }
+
+    const clampedPosition = clampImagePosition(nextX, nextY, clampedZoom);
+
+    zoomRef.current = clampedZoom;
+
+    setZoom(clampedZoom);
+
+    setImagePosition(clampedPosition);
+  };
+
+  // ------------------------------------
+  // TOUCH START
+  // ------------------------------------
+
+  const handleTouchStart = (event: React.TouchEvent<HTMLImageElement>) => {
+    if (!isPinchZoomEnabled) {
+      return;
+    }
+
+    // ---------------------------------------------
+    // Two fingers = pinch zoom
+    // ---------------------------------------------
+    if (event.touches.length === 2) {
+      isPanningRef.current = false;
+
+      pinchStartDistanceRef.current = getTouchDistance(
+        event.touches[0],
+        event.touches[1],
+      );
+
+      pinchStartZoomRef.current = zoomRef.current;
+
+      // Keep the latest position available synchronously.
+      imagePositionRef.current = {
+        x: imagePosition.x,
+        y: imagePosition.y,
+      };
+
+      return;
+    }
+
+    // ---------------------------------------------
+    // One finger = pan
+    // ---------------------------------------------
+    if (event.touches.length === 1 && zoomRef.current > 1) {
+      pinchStartDistanceRef.current = null;
+
+      isPanningRef.current = true;
+
+      lastTouchPositionRef.current = {
+        x: event.touches[0].clientX,
+        y: event.touches[0].clientY,
+      };
+    }
+  };
+
+  // ------------------------------------
+  // TOUCH MOVE
+  // ------------------------------------
+
+  const handleTouchMove = (event: React.TouchEvent<HTMLImageElement>) => {
+    if (!isPinchZoomEnabled) {
+      return;
+    }
+
+    // ---------------------------------------------
+    // Two fingers = pinch zoom
+    // ---------------------------------------------
+    if (event.touches.length === 2 && pinchStartDistanceRef.current !== null) {
+      event.preventDefault();
+
+      const currentDistance = getTouchDistance(
+        event.touches[0],
+        event.touches[1],
+      );
+
+      if (currentDistance <= 0) {
+        return;
+      }
+
+      const scale = currentDistance / pinchStartDistanceRef.current;
+
+      const nextZoom = Math.min(
+        Math.max(pinchStartZoomRef.current * scale, 0.5),
+        4,
+      );
+
+      const startZoom = pinchStartZoomRef.current;
+
+      const startPosition = imagePositionRef.current;
+
+      let nextX = startPosition.x;
+      let nextY = startPosition.y;
+
+      if (startZoom > 0) {
+        const ratio = nextZoom / startZoom;
+
+        nextX = startPosition.x * ratio;
+        nextY = startPosition.y * ratio;
+      }
+
+      const clampedPosition = clampImagePosition(nextX, nextY, nextZoom);
+
+      zoomRef.current = nextZoom;
+
+      imagePositionRef.current = clampedPosition;
+
+      setZoom(nextZoom);
+      setImagePosition(clampedPosition);
+
+      return;
+    }
+
+    // ---------------------------------------------
+    // One finger = pan
+    // ---------------------------------------------
+    if (
+      event.touches.length === 1 &&
+      isPanningRef.current &&
+      zoomRef.current > 1
+    ) {
+      event.preventDefault();
+
+      const currentX = event.touches[0].clientX;
+      const currentY = event.touches[0].clientY;
+
+      const deltaX = currentX - lastTouchPositionRef.current.x;
+
+      const deltaY = currentY - lastTouchPositionRef.current.y;
+
+      const nextPosition = clampImagePosition(
+        imagePositionRef.current.x + deltaX,
+        imagePositionRef.current.y + deltaY,
+        zoomRef.current,
+      );
+
+      imagePositionRef.current = nextPosition;
+
+      setImagePosition(nextPosition);
+
+      lastTouchPositionRef.current = {
+        x: currentX,
+        y: currentY,
+      };
+    }
+  };
+
+  // ------------------------------------
+  // TOUCH END
+  // ------------------------------------
+
+  const handleTouchEnd = (event: React.TouchEvent<HTMLImageElement>) => {
+    // ---------------------------------------------
+    // Pinch finished but one finger remains
+    // ---------------------------------------------
+
+    if (event.touches.length === 1) {
+      pinchStartDistanceRef.current = null;
+
+      if (zoomRef.current > 1) {
+        isPanningRef.current = true;
+
+        lastTouchPositionRef.current = {
+          x: event.touches[0].clientX,
+          y: event.touches[0].clientY,
+        };
+      }
+
+      return;
+    }
+
+    // ---------------------------------------------
+    // All fingers released
+    // ---------------------------------------------
+
+    if (event.touches.length === 0) {
+      pinchStartDistanceRef.current = null;
+
+      isPanningRef.current = false;
+    }
+  };
+
+  const handleMouseDown = (event: React.MouseEvent<HTMLImageElement>) => {
+    if (zoomRef.current <= 1) {
+      return;
+    }
+
+    event.preventDefault();
+
+    isMouseDraggingRef.current = true;
+
+    lastMousePositionRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+    };
+  };
+
+  const handleMouseMove = (event: React.MouseEvent<HTMLImageElement>) => {
+    if (!isMouseDraggingRef.current || zoomRef.current <= 1) {
+      return;
+    }
+
+    const deltaX = event.clientX - lastMousePositionRef.current.x;
+
+    const deltaY = event.clientY - lastMousePositionRef.current.y;
+
+    setImagePosition((previous) => {
+      const nextPosition = clampImagePosition(
+        previous.x + deltaX,
+        previous.y + deltaY,
+        zoomRef.current,
+      );
+
+      imagePositionRef.current = nextPosition;
+
+      return nextPosition;
+    });
+
+    lastMousePositionRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+    };
+  };
+
+  const handleMouseUp = () => {
+    isMouseDraggingRef.current = false;
+  };
+
+  const handleWheel = (event: React.WheelEvent<HTMLImageElement>) => {
+    /*
+     * Ctrl/Cmd + wheel is treated as zoom.
+     * Normal wheel is left alone.
+     */
+    if (!event.ctrlKey && !event.metaKey) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const direction = event.deltaY > 0 ? -0.25 : 0.25;
+
+    updateImageZoom(zoomRef.current + direction, true);
+  };
+
+  // -------------------------
+  // BUTTON ZOOM
+  // -------------------------
+  const zoomIn = () => {
+    updateImageZoom(zoomRef.current + 0.25, true);
+  };
+
+  const zoomOut = () => {
+    updateImageZoom(zoomRef.current - 0.25, true);
+  };
+
+  const resetImageView = () => {
+    zoomRef.current = 1;
+
+    imagePositionRef.current = {
+      x: 0,
+      y: 0,
+    };
+
+    setZoom(1);
+    setImagePosition({
+      x: 0,
+      y: 0,
+    });
+  };
+
+  const PdfViewer = dynamic(() => import("./PdfViewer"), {
+    ssr: false,
+  });
+
+  useEffect(() => {
+    if (selectedDocument) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+  }, [selectedDocument]);
+  // Reset zoom when modal closes
+  useEffect(() => {
+    if (!selectedDocument) {
+      setZoom(1);
+      setImagePosition({
+        x: 0,
+        y: 0,
+      });
+    }
+  }, [selectedDocument]);
 
   const [previewLoading, setPreviewLoading] = useState<boolean>(false);
   const [previewError, setPreviewError] = useState<boolean>(false);
@@ -42,25 +640,32 @@ export const ProfileView: React.FC = () => {
 
   const [showAddReport, setShowAddReport] = useState(false);
   const [reportPatient, setReportPatient] = useState("Myself");
-  const [reportTestCategory, setReportTestCategory] = useState<string>("lab_report");
-  const [reportDate, setReportDate] = useState(new Date().toISOString().split("T")[0]);
+  const [reportTestCategory, setReportTestCategory] =
+    useState<string>("lab_report");
+  const [reportDate, setReportDate] = useState(
+    new Date().toISOString().split("T")[0],
+  );
   const [isPrivateReport, setIsPrivateReport] = useState(false);
   const [reportNote, setReportNote] = useState("");
   const [isUploading, setIsUploading] = useState(false);
 
-
   // Profile edit fields
   const [isEditing, setIsEditing] = useState(false);
   const [fullName, setFullName] = useState(user?.fullName || "-");
-  const [age, setAge] = useState(user?.age || '-');
+  const [age, setAge] = useState(user?.age || "-");
   const [gender, setGender] = useState(user?.gender ?? "");
   const [userNickname, setUserNickname] = useState(user?.nickname || "");
   const [userDob, setUserDob] = useState(user?.dob || "");
   const [userBloodGroup, setUserBloodGroup] = useState(user?.bloodGroup ?? "");
   const [userPhone, setUserPhone] = useState(user?.phone_number || "");
-  const [userConditions, setUserConditions] = useState(user?.medicalConditions.join(", ") || "");
-  const [userAvatarUrl, setUserAvatarUrl] = useState(user?.avatarUrl || "/avatars/senior-01.png");
-  const [activeUserAvatarCategory, setActiveUserAvatarCategory] = useState<AvatarItem["category"]>("senior");
+  const [userConditions, setUserConditions] = useState(
+    user?.medicalConditions.join(", ") || "",
+  );
+  const [userAvatarUrl, setUserAvatarUrl] = useState(
+    user?.avatarUrl || "/avatars/senior-01.png",
+  );
+  const [activeUserAvatarCategory, setActiveUserAvatarCategory] =
+    useState<AvatarItem["category"]>("senior");
 
   // Address add fields
   const [showAddAddress, setShowAddAddress] = useState(false);
@@ -81,14 +686,21 @@ export const ProfileView: React.FC = () => {
   const [famConditions, setFamConditions] = useState("");
   const [famColor, setFamColor] = useState("blue");
   const [famAvatarUrl, setFamAvatarUrl] = useState("/avatars/senior-01.png");
-  const [activeAvatarCategory, setActiveAvatarCategory] = useState<AvatarItem["category"]>("senior");
-
+  const [activeAvatarCategory, setActiveAvatarCategory] =
+    useState<AvatarItem["category"]>("senior");
 
   // Family Sync Hub states
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [newFamilyName, setNewFamilyName] = useState("");
   const [joinFamilyId, setJoinFamilyId] = useState("");
-  const [verificationFamily, setVerificationFamily] = useState<{ id: string; name: string; memberCount: number; adminName: string; familyCode: string; adminId: string } | null>(null);
+  const [verificationFamily, setVerificationFamily] = useState<{
+    id: string;
+    name: string;
+    memberCount: number;
+    adminName: string;
+    familyCode: string;
+    adminId: string;
+  } | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isJoiningFamily, setIsJoiningFamily] = useState(false);
   const [isCreatingFamily, setIsCreatingFamily] = useState(false);
@@ -96,7 +708,9 @@ export const ProfileView: React.FC = () => {
   const [editedFamilyName, setEditedFamilyName] = useState("");
   const [isRenamingFamily, setIsRenamingFamily] = useState(false);
   const [isRegeneratingCode, setIsRegeneratingCode] = useState(false);
-  const [isTransferringAdmin, setIsTransferringAdmin] = useState<string | null>(null);
+  const [isTransferringAdmin, setIsTransferringAdmin] = useState<string | null>(
+    null,
+  );
   const [isRemovingMember, setIsRemovingMember] = useState<string | null>(null);
   const [isDisbanding, setIsDisbanding] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
@@ -104,12 +718,201 @@ export const ProfileView: React.FC = () => {
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [dontShareMedicalRecords, setDontShareMedicalRecords] = useState(false);
   const [copiedFamilyCode, setCopiedFamilyCode] = useState(false);
-  const [editingNicknameMemberId, setEditingNicknameMemberId] = useState<string | null>(null);
+  const [editingNicknameMemberId, setEditingNicknameMemberId] = useState<
+    string | null
+  >(null);
   const [editingNicknameValue, setEditingNicknameValue] = useState<string>("");
 
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+
+  const madeFamilyMembers = (familyMembers || []).filter(
+    (member) => member?.isCustom,
+  );
+
+  const mergedFamilyMembers = [
+    ...profileFamilyMembers,
+    ...madeFamilyMembers.filter(
+      (customMember) =>
+        !profileFamilyMembers.some(
+          (profileMember) => profileMember.id === customMember.id,
+        ),
+    ),
+  ];
+
+  // const fetchLatestFamilyMembers = async () => {
+  //   if (!user?.id || !isSupabaseConfigured) return;
+
+  //   setLoadingFamilyMembers(true);
+
+  //   try {
+  //     // First get the current user's family_id
+  //     const { data: currentProfile, error: profileError } = await supabase
+  //       .from("profiles")
+  //       .select("family_id")
+  //       .eq("id", user.id)
+  //       .single();
+
+  //     if (profileError) {
+  //       throw profileError;
+  //     }
+
+  //     // User doesn't belong to a family
+  //     if (!currentProfile?.family_id) {
+  //       setProfileFamilyMembers([]);
+  //       return;
+  //     }
+
+  //     // Get latest family members from API
+  //     const { data: latestMembers, error: membersError } = await supabase
+  //       .from("profiles")
+  //       .select("*")
+  //       .eq("family_id", currentProfile.family_id)
+  //       .neq("id", user.id);
+
+  //     if (membersError) {
+  //       throw membersError;
+  //     }
+
+  //     setProfileFamilyMembers(latestMembers || []);
+  //   } catch (error) {
+  //     console.error("Failed to fetch latest family members:", error);
+
+  //     // Keep existing context data as fallback
+  //     setProfileFamilyMembers(familyMembers || []);
+  //   } finally {
+  //     setLoadingFamilyMembers(false);
+  //   }
+  // };
+
+  const fetchLatestFamilyMembers = async () => {
+    if (!user?.id || !isSupabaseConfigured) {
+      setProfileFamilyMembers([]);
+      return;
+    }
+
+    setLoadingFamilyMembers(true);
+
+    try {
+      // 1. Get current user's family_id
+      const { data: currentProfile, error: profileError } = await supabase
+        .from("profiles")
+        .select("family_id")
+        .eq("id", user.id)
+        .single();
+
+      if (profileError) {
+        throw profileError;
+      }
+
+      // 2. User doesn't belong to a family
+      if (!currentProfile?.family_id) {
+        setProfileFamilyMembers([]);
+        return;
+      }
+
+      // 3. Get latest family members
+      const { data: latestMembers, error: membersError } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("family_id", currentProfile.family_id)
+        .neq("id", user.id);
+
+      console.log(latestMembers, "latestMemberslatestMemberslatestMembers");
+
+      if (membersError) {
+        throw membersError;
+      }
+
+      // 4. Normalize Supabase data to the shape expected by ProfileView
+      const normalizedMembers = (latestMembers || []).map((member: any) => ({
+        id: member.id,
+
+        // Name
+        name: member.full_name || member.name || "Unknown",
+        fullName: member.full_name || member.name || "Unknown",
+
+        // Basic profile
+        nickname: member.nickname || "",
+        relationship: member.relationship || "Family Member",
+        age: member.age ?? null,
+        gender: member.gender || "",
+        dob: member.dob || "",
+
+        // Contact
+        phone: member.phone_number || member.phone || "",
+        phone_number: member.phone_number || member.phone || "",
+        email: member.email || "",
+
+        // Medical
+        bloodGroup: member.blood_group || member.bloodGroup || "",
+        medicalConditions: Array.isArray(member.medical_conditions)
+          ? member.medical_conditions
+          : Array.isArray(member.medicalConditions)
+            ? member.medicalConditions
+            : member.medical_conditions
+              ? [member.medical_conditions]
+              : member.medicalConditions
+                ? [member.medicalConditions]
+                : [],
+
+        medicalNotes: member.medical_notes || member.medicalNotes || "",
+
+        allergies: Array.isArray(member.allergies) ? member.allergies : [],
+
+        existingDiseases: Array.isArray(member.existing_diseases)
+          ? member.existing_diseases
+          : Array.isArray(member.existingDiseases)
+            ? member.existingDiseases
+            : [],
+
+        // UI
+        avatarUrl:
+          member.avatar_url || member.avatarUrl || "/avatars/senior-01.png",
+
+        color: member.color || "blue",
+
+        // Family/adherence
+        adherenceRate: member.adherence_rate ?? member.adherenceRate ?? 100,
+
+        // Keep these if your UI uses them
+        isCustom: member.is_custom ?? member.isCustom ?? false,
+      }));
+
+      console.log("Latest family members:", normalizedMembers);
+
+      setProfileFamilyMembers(normalizedMembers);
+    } catch (error) {
+      console.error("Failed to fetch latest family members:", error);
+
+      // Fallback to existing context data, but normalize it too
+      const fallbackMembers = (familyMembers || []).map((member: any) => ({
+        ...member,
+        medicalConditions: Array.isArray(member.medicalConditions)
+          ? member.medicalConditions
+          : [],
+        allergies: Array.isArray(member.allergies) ? member.allergies : [],
+        existingDiseases: Array.isArray(member.existingDiseases)
+          ? member.existingDiseases
+          : [],
+        avatarUrl: member.avatarUrl || "/avatars/senior-01.png",
+        color: member.color || "blue",
+        adherenceRate: member.adherenceRate ?? 100,
+      }));
+
+      setProfileFamilyMembers(fallbackMembers);
+    } finally {
+      setLoadingFamilyMembers(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab !== "profile") return;
+    if (!user?.id) return;
+
+    fetchLatestFamilyMembers();
+  }, [activeTab, user?.id]);
 
   // --- Profile handlers ---
   const handleProfileSave = (e: React.FormEvent) => {
@@ -131,8 +934,10 @@ export const ProfileView: React.FC = () => {
       gender,
       bloodGroup: userBloodGroup,
       phone_number: userPhone,
-      medicalConditions: userConditions ? userConditions.split(",").map((s) => s.trim()) : [],
-      avatarUrl: userAvatarUrl
+      medicalConditions: userConditions
+        ? userConditions.split(",").map((s) => s.trim())
+        : [],
+      avatarUrl: userAvatarUrl,
     });
 
     setIsEditing(false);
@@ -156,7 +961,9 @@ export const ProfileView: React.FC = () => {
       age: calculatedAge,
       gender: famGender,
       avatarUrl: famAvatarUrl,
-      medicalConditions: famConditions ? famConditions.split(",").map(s => s.trim()) : [],
+      medicalConditions: famConditions
+        ? famConditions.split(",").map((s) => s.trim())
+        : [],
       nickname: famNickname || famName,
       dob: famDob,
       bloodGroup: famBloodGroup,
@@ -164,8 +971,10 @@ export const ProfileView: React.FC = () => {
       medicalNotes: famConditions,
       color: famColor,
       allergies: [],
-      existingDiseases: famConditions ? famConditions.split(",").map(s => s.trim()) : [],
-      isCustom: true
+      existingDiseases: famConditions
+        ? famConditions.split(",").map((s) => s.trim())
+        : [],
+      isCustom: true,
     });
 
     setFamName("");
@@ -181,7 +990,6 @@ export const ProfileView: React.FC = () => {
     setFamAvatarUrl("/avatars/senior-01.png");
     setShowAddMember(false);
   };
-
   // --- Address handlers ---
   const handleAddressSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -193,7 +1001,7 @@ export const ProfileView: React.FC = () => {
       line1: addressLine1,
       city: addressArea,
       area: addressArea,
-      pincode: addressPincode
+      pincode: addressPincode,
     };
 
     const updatedAddresses = [...(user?.addresses || []), newAddress];
@@ -207,11 +1015,17 @@ export const ProfileView: React.FC = () => {
   };
 
   const handleDeleteAddress = (id: string) => {
-    const updatedAddresses = (user?.addresses || []).filter((addr) => addr.id !== id);
+    const updatedAddresses = (user?.addresses || []).filter(
+      (addr) => addr.id !== id,
+    );
     updateUserProfile({ addresses: updatedAddresses });
   };
 
-  // 
+  const handleFamilyMemberClick = (memberId: string) => {
+    setSelectedMemberId(memberId);
+  };
+
+  //
   const handleCopyFamilyCode = async (code: string) => {
     if (!code) return;
     try {
@@ -258,11 +1072,7 @@ export const ProfileView: React.FC = () => {
   useEffect(() => {
     const handleChange = (e: Event) => {
       const target = e.target as HTMLInputElement;
-      if (
-        target?.type === "file" &&
-        target.files &&
-        target.files.length > 0
-      ) {
+      if (target?.type === "file" && target.files && target.files.length > 0) {
         setIsUploading(true);
       }
     };
@@ -279,7 +1089,7 @@ export const ProfileView: React.FC = () => {
     if (selectedDocument) {
       setPreviewLoading(true);
       setPreviewError(false);
-      console.log('🔍 Preview URL:', selectedDocument.previewUrl);
+      console.log("🔍 Preview URL:", selectedDocument.previewUrl);
     }
   }, [selectedDocument]);
 
@@ -287,7 +1097,7 @@ export const ProfileView: React.FC = () => {
   useEffect(() => {
     const ownerId = user?.id;
     if (!ownerId || !isSupabaseConfigured) return;
-    if (familyMembers.length === 0) return;
+    if (profileFamilyMembers.length === 0) return;
 
     let cancelled = false;
 
@@ -306,29 +1116,79 @@ export const ProfileView: React.FC = () => {
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, familyMembers.length]);
+  }, [user?.id, profileFamilyMembers.length]);
 
   // --- Delete document (placeholder – implement real deletion if needed) ---
   const handleDeleteDocument = async (documentId: string) => {
     if (!confirm("Are you sure you want to delete this document?")) return;
     try {
       await documentService.deleteDocument(documentId);
-      fetchDocuments()
+      fetchDocuments();
     } catch (error) {
       console.error("Delete failed:", error);
       alert("Failed to delete document.");
     }
   };
 
-  const selectedMember = familyMembers.find(f => f.id === selectedMemberId);
+  // const selectedMember = familyMembers.find(f => f.id === selectedMemberId);
+
+  // if (selectedMember) {
+  //   const memberWithNickname = {
+  //     ...selectedMember,
+  //     nickname: nicknameMap[selectedMember.id] || selectedMember.nickname || selectedMember.name,
+  //   };
+
+  //   return (
+  //     <MemberDashboardView
+  //       member={memberWithNickname}
+  //       onBack={() => setSelectedMemberId(null)}
+  //     />
+  //   );
+  // }
+
+  // Find the selected member.
+  // It can be either the logged-in user or a family member.
+  const selectedMember = selectedMemberId
+    ? selectedMemberId === user?.id
+      ? {
+        id: user.id,
+        name: user.fullName || "User",
+        nickname: user.nickname || user.fullName || "User",
+        age: user.age,
+        gender: user.gender,
+        dob: user.dob,
+        bloodGroup: user.bloodGroup,
+        phone: user.phone_number,
+        email: user.email,
+        avatarUrl: user.avatarUrl || "/avatars/senior-01.png",
+        medicalConditions: user.medicalConditions || [],
+        medicalNotes: user.medicalConditions?.join(", ") || "",
+        relationship: "Self",
+        color: "blue",
+        allergies: [],
+        existingDiseases: user.medicalConditions || [],
+        isCustom: false,
+      }
+      : mergedFamilyMembers.find((member) => member.id === selectedMemberId)
+    : null;
 
   if (selectedMember) {
     const memberWithNickname = {
       ...selectedMember,
-      nickname: nicknameMap[selectedMember.id] || selectedMember.nickname || selectedMember.name,
+      nickname:
+        nicknameMap[selectedMember.id] ||
+        selectedMember.nickname ||
+        selectedMember.name,
     };
+
+    console.log(
+      memberWithNickname,
+      "memberWithNicknamememberWithNicknamememberWithNickname",
+    );
 
     return (
       <MemberDashboardView
@@ -340,101 +1200,116 @@ export const ProfileView: React.FC = () => {
 
   return (
     <div className="space-y-stack-lg animate-in fade-in duration-300">
-
       {/* 1. Profile Card */}
       <section className="flex flex-col gap-3 glass-card rounded-2xl p-6 shadow-sm border border-outline-variant/20">
-
-        <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+        <div
+          onClick={() => {
+            console.log(user?.id, "iddddd");
+            if (user?.id) {
+              setSelectedMemberId(user.id);
+            }
+          }}
+          className="flex flex-col md:flex-row justify-between items-center gap-4"
+        >
           <div className="flex justify-between gap-4 items-center text-left">
             <img
               alt={user?.fullName || "User Profile"}
               className="w-16 h-16 rounded-2xl object-cover border-2 border-primary-container shadow-md"
-              src={user?.avatarUrl || "https://lh3.googleusercontent.com/aida-public/AB6AXuBCs_YGgPk7VOsahsNOdDGaNvTVuV8ZJljMuiD4GSAvQV802koXWwDy1aqg24M8w4jkBOlONbu5i26SUif3gi5LPSJdJTIs"}
+              src={
+                user?.avatarUrl ||
+                "https://lh3.googleusercontent.com/aida-public/AB6AXuBCs_YGgPk7VOsahsNOdDGaNvTVuV8ZJljMuiD4GSAvQV802koXWwDy1aqg24M8w4jkBOlONbu5i26SUif3gi5LPSJdJTIs"
+              }
             />
             <div>
               <div className="flex items-center gap-2 min-w-0">
-                <h2 className="font-headline-md text-xl text-secondary font-bold leading-tight truncate">
+                <h2
+                  className={`text-secondary font-bold leading-tight truncate ${elderlyMode ? "text-[24px]" : "text-xl"
+                    }`}
+                >
                   {user?.fullName || "-"}
                 </h2>
 
                 {user?.nickname && user.nickname !== user?.fullName && (
-                  <span className="shrink-0 bg-primary/5 text-primary text-[8px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                  <span
+                    className={`shrink-0 bg-primary/5 text-primary  px-2 py-0.5 rounded font-bold uppercase tracking-wider ${elderlyMode ? "text-[12px]" : "text-[8px]"
+                      }`}
+                  >
                     {user.nickname}
                   </span>
                 )}
               </div>
-              <div className="flex flex-col gap-0.5 font-body-md text-xs text-on-surface-variant mt-0.5">
+              <div
+                className={`flex flex-col gap-0.5 text-on-surface-variant mt-0.5 ${elderlyMode ? "text-[16px]" : "text-xs"
+                  }`}
+              >
                 {user?.age && <span>• Age: {user?.age}</span>}
                 {user?.gender && <span>• Gender: {user?.gender}</span>}
-                {userBloodGroup && <span>• Blood Type: <span className="font-bold text-secondary">{userBloodGroup}</span></span>}
+                {userBloodGroup && (
+                  <span>
+                    • Blood Type:{" "}
+                    <span className="font-bold text-secondary">
+                      {userBloodGroup}
+                    </span>
+                  </span>
+                )}
               </div>
               {user?.email && (
-                <div className="font-body-md text-[11px] text-primary mt-1 flex items-center gap-1 min-w-0">
-                  <span className="material-symbols-outlined text-[13px] shrink-0">mail</span>
-                  <span className="truncate" title={user.email}>{user.email}</span>
+                <div
+                  className={`font-body-md text-primary mt-1 flex items-center gap-1 min-w-0 ${elderlyMode ? "text-[15px]" : "text-[11px]"
+                    }`}
+                >
+                  <span
+                    className={`material-symbols-outlined shrink-0 ${elderlyMode ? "text-[17px]" : "text-[13px]"
+                      }`}
+                  >
+                    mail
+                  </span>
+                  <span className="truncate" title={user.email}>
+                    {user.email}
+                  </span>
                 </div>
               )}
               {user?.phone_number && (
-                <div className="font-body-md text-[11px] text-primary mt-1 flex items-center gap-1 min-w-0">
-                  <span className="material-symbols-outlined text-[13px] shrink-0">phone</span>
-                  <span className="truncate" title={user.phone_number}>{user.phone_number}</span>
+                <div
+                  className={`font-body-md text-primary mt-1 flex items-center gap-1 min-w-0 ${elderlyMode ? "text-[15px]" : "text-[11px]"
+                    }`}
+                >
+                  <span
+                    className={`material-symbols-outlined shrink-0 ${elderlyMode ? "text-[17px]" : "text-[13px]"
+                      }`}
+                  >
+                    phone
+                  </span>
+                  <span className="truncate" title={user.phone_number}>
+                    {user.phone_number}
+                  </span>
                 </div>
               )}
               <div className="flex gap-1.5 flex-wrap mt-2">
                 {user?.medicalConditions.map((condition, idx) => (
-                  <span key={`${condition}-${idx}`} className="bg-primary/10 text-primary text-[8px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                  <span
+                    key={`${condition}-${idx}`}
+                    className={`bg-primary/10 text-primary  px-2 py-0.5 rounded font-bold uppercase tracking-wider ${elderlyMode ? "text-[12px]" : "text-[8px]"
+                      }`}
+                  >
                     {condition}
                   </span>
                 ))}
               </div>
             </div>
           </div>
-
-          <div className="flex gap-2">
-            <button
-              onClick={() => {
-                setFullName(user?.fullName || "");
-                setAge(user?.age || '');
-                setGender(user?.gender || '');
-                setUserNickname(user?.nickname || '');
-                setUserDob(user?.dob || "");
-                setUserBloodGroup(user?.bloodGroup || "");
-                setUserPhone(user?.phone_number || "");
-                setUserConditions(user?.medicalConditions.join(", ") || "");
-                setUserAvatarUrl(user?.avatarUrl || "/avatars/senior-01.png");
-                setIsEditing(true);
-              }}
-              className="px-4 py-2 bg-secondary text-white font-bold rounded-xl text-xs hover:bg-opacity-95 active:scale-95 transition-all flex items-center gap-1 shadow-sm"
-            >
-              <span className="material-symbols-outlined text-sm">edit</span> Edit Profile
-            </button>
-            <button
-              onClick={logout}
-              className="px-3.5 py-2 bg-surface-container text-primary font-bold rounded-xl text-xs hover:bg-surface-container-high transition-colors"
-            >
-              Log Out
-            </button>
-          </div>
-        </div>
-
-        <div className="flex justify-center mt-3">
-          <button
-            onClick={() => {
-              setDeleteConfirmText("");
-              setShowDeleteAccount(true);
-            }}
-            className="px-8 py-2 bg-red-100 text-red-500 font-bold rounded-xl text-sm hover:bg-opacity-95 active:scale-95 transition-all flex items-center gap-1 shadow-sm"
-          >
-            <span className="material-symbols-outlined text-[14px]">delete</span>
-            <span>Delete Account</span>
-          </button>
         </div>
       </section>
 
       {/* 2. Family Sync Dashboard */}
       <section className="space-y-3">
         <div className="flex justify-between items-center">
-          <h3 className="font-headline-md text-base text-secondary font-bold">Family Synchronization Hub</h3>
+          <h3
+            className={`text-secondary font-bold ${elderlyMode ? "text-[20px]" : "text-base"
+              }`}
+          >
+            Family Synchronization Hub
+          </h3>
           {/* <button
             onClick={() => setShowAddMember(true)}
             className="text-xs text-primary font-bold hover:underline flex items-center gap-0.5"
@@ -443,14 +1318,21 @@ export const ProfileView: React.FC = () => {
           </button> */}
           <button
             onClick={() => setShowSyncModal(true)}
-            className="text-xs text-secondary font-bold hover:underline flex items-center gap-0.5"
+            className={`text-secondary font-bold hover:underline flex items-center gap-0.5 ${elderlyMode ? "text-[16px]" : "text-xs"
+              }`}
           >
-            <span className="material-symbols-outlined text-sm font-bold">diversity_1</span> Family Sync
+            <span
+              className={`material-symbols-outlined text-sm font-bold ${elderlyMode ? "text-[18px]" : "text-sm"
+                }`}
+            >
+              diversity_1
+            </span>{" "}
+            Family Sync
           </button>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-stack-md">
-          {familyMembers.map((fam) => {
+          {mergedFamilyMembers.map((fam) => {
             const BORDER_COLORS: Record<string, string> = {
               blue: "border-l-blue-500",
               green: "border-l-emerald-500",
@@ -458,27 +1340,36 @@ export const ProfileView: React.FC = () => {
               orange: "border-l-orange-500",
               pink: "border-l-pink-500",
               teal: "border-l-teal-500",
-              grey: "border-l-slate-500"
+              grey: "border-l-slate-500",
             };
+
             return (
               <div
                 key={fam.id}
-                onClick={() => setSelectedMemberId(fam.id)}
-                className={`p-5 glass-card rounded-2xl border border-outline-variant/20 border-l-4 ${BORDER_COLORS[fam.color || "blue"] || "border-l-blue-500"} flex flex-col justify-between gap-4 hover:border-secondary/35 cursor-pointer hover:scale-[1.01] transition-all shadow-sm relative group`}
+                onClick={() => handleFamilyMemberClick(fam.id)}
+                className={`p-5 glass-card rounded-2xl border border-outline-variant/20 border-l-4 ${BORDER_COLORS[fam.color || "blue"] || "border-l-blue-500"
+                  } flex flex-col justify-between gap-4 hover:border-secondary/35 cursor-pointer hover:scale-[1.01] transition-all shadow-sm relative group`}
               >
                 {/* Delete Local Profile Card option */}
                 {fam.isCustom && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (confirm(`Are you sure you want to delete ${fam.name}?`)) {
+                      if (
+                        confirm(`Are you sure you want to delete ${fam.name}?`)
+                      ) {
                         deleteFamilyMember(fam.id);
                       }
                     }}
                     className="absolute top-4 right-4 w-7 h-7 rounded-full bg-white/80 hover:bg-red-50 hover:text-red-600 border border-outline-variant/20 flex items-center justify-center text-outline transition-colors z-20"
                     title="Delete Family Member"
                   >
-                    <span className="material-symbols-outlined text-xs">delete</span>
+                    <span
+                      className={`material-symbols-outlined text-xs ${elderlyMode ? "text-[16px]" : "text-xs"
+                        }`}
+                    >
+                      delete
+                    </span>
                   </button>
                 )}
                 <div className="flex gap-3 items-start">
@@ -489,32 +1380,59 @@ export const ProfileView: React.FC = () => {
                   />
                   <div>
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <h4 className="font-label-md text-sm text-secondary font-bold leading-tight">
+                      <h4
+                        className={`text-secondary font-bold leading-tight ${elderlyMode ? "text-[18px]" : "text-sm"
+                          }`}
+                      >
                         {nicknameMap[fam.id] || fam.nickname || fam.name}
                       </h4>
-                      <span className="bg-secondary-container/10 text-on-secondary-container text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
+                      <span
+                        className={`bg-secondary-container/10 text-on-secondary-container px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${elderlyMode ? "text-[12px]" : "text-[8px]"
+                          }`}
+                      >
                         {fam.relationship}
                       </span>
-                      {!fam.isCustom && (<span className="bg-primary/10 text-primary text-[8px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
-                        {"Family Sync"}
-                      </span>)}
+                      {!fam.isCustom && (
+                        <span
+                          className={`bg-primary/10 text-primary px-2 py-0.5 rounded font-bold uppercase tracking-wider ${elderlyMode ? "text-[12px]" : "text-[8px]"
+                            }`}
+                        >
+                          {"Family Sync"}
+                        </span>
+                      )}
                     </div>
-                    <p className="font-body-md text-[10px] text-on-surface-variant mt-0.5">
+                    <p
+                      className={`text-on-surface-variant mt-0.5 ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                        }`}
+                    >
                       Age: {fam.age} • {fam.gender}
                     </p>
                     <div className="flex gap-1 flex-wrap mt-2">
-                      {fam.medicalConditions.map((cond, idx) => (
-                        <span key={idx} className="bg-surface-container text-outline text-[8px] px-1.5 py-0.5 rounded font-bold">
-                          {cond}
-                        </span>
-                      ))}
+                      {fam.medicalConditions.map(
+                        (cond: string, idx: number) => (
+                          <span
+                            key={idx}
+                            className={`bg-surface-container text-outline px-1.5 py-0.5 rounded font-bold ${elderlyMode ? "text-[12px]" : "text-[8px]"
+                              }`}
+                          >
+                            {cond}
+                          </span>
+                        ),
+                      )}
                     </div>
                   </div>
                 </div>
                 <div className="space-y-1">
-                  <div className="flex justify-between items-center text-[10px] font-bold">
-                    <span className="text-on-surface-variant font-label-sm">Dosing Compliance</span>
-                    <span className="text-tertiary">{fam.adherenceRate || 100}%</span>
+                  <div
+                    className={`flex justify-between items-center font-bold ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                      }`}
+                  >
+                    <span className="text-on-surface-variant font-label-sm">
+                      Dosing Compliance
+                    </span>
+                    <span className="text-tertiary">
+                      {fam.adherenceRate || 100}%
+                    </span>
                   </div>
                   <div className="h-2 bg-surface-container rounded-full overflow-hidden">
                     <div
@@ -532,32 +1450,61 @@ export const ProfileView: React.FC = () => {
       {/* 3. Saved Address Book */}
       <section className="glass-card rounded-2xl p-6 shadow-sm border border-outline-variant/20 space-y-4 pb-16">
         <div className="flex justify-between items-center">
-          <h3 className="font-headline-md text-base text-secondary font-bold">Saved Home & Office Addresses</h3>
+          <h3
+            className={` ${elderlyMode ? "text-[20px]" : "text-base"
+              }  text-secondary font-bold`}
+          >
+            Saved Home & Office Addresses
+          </h3>
           <button
             onClick={() => setShowAddAddress(true)}
-            className="text-xs text-primary font-bold hover:underline flex items-center gap-0.5"
+            className={`text-xs text-primary font-bold hover:underline flex items-center gap-0.5 ${elderlyMode ? "text-[16px]" : "text-xs"
+              }`}
           >
-            <span className="material-symbols-outlined text-sm font-bold">add_location</span> Add Address
+            <span
+              className={`material-symbols-outlined ${elderlyMode ? "text-[18px]" : "text-sm"
+                } font-bold`}
+            >
+              add_location
+            </span>{" "}
+            Add Address
           </button>
         </div>
 
         <div className="space-y-2">
           {user?.addresses.map((addr) => (
-            <div key={addr.id} className="p-3.5 bg-surface-container-low rounded-xl flex gap-3 border border-outline-variant/15 hover:bg-surface-container transition-colors items-center justify-between">
+            <div
+              key={addr.id}
+              className="p-3.5 bg-surface-container-low rounded-xl flex gap-3 border border-outline-variant/15 hover:bg-surface-container transition-colors items-center justify-between"
+            >
               <div className="flex gap-3">
                 <div className="w-9 h-9 bg-secondary-container/20 text-secondary rounded-lg flex items-center justify-center flex-shrink-0">
-                  <span className="material-symbols-outlined text-lg">
+                  <span
+                    className={`material-symbols-outlined ${elderlyMode ? "text-[22px]" : "text-lg"
+                      } font-bold`}
+                  >
                     {addr.label === "Home" ? "home" : "business"}
                   </span>
                 </div>
                 <div className="text-left">
                   <div className="flex items-center gap-1.5">
-                    <h4 className="font-label-md text-xs text-secondary font-bold leading-none">{addr.label}</h4>
-                    <span className="bg-primary/5 text-primary text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
+                    <h4
+                      className={`font-label-md ${elderlyMode ? "text-[16px]" : "text-xs"
+                        } text-secondary font-bold leading-none`}
+                    >
+                      {addr.label}
+                    </h4>
+                    <span
+                      className={`bg-primary/5 text-primary ${elderlyMode ? "text-[12px]" : "text-[8px]"
+                        } px-1.5 py-0.5 rounded font-bold uppercase tracking-wider`}
+                    >
                       {addr.area}
                     </span>
                   </div>
-                  <p className="font-body-md text-[10px] text-on-surface-variant mt-1 leading-relaxed">
+                  <p
+                    className={`font-body-md ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                      } text-on-surface-variant mt-1 leading-relaxed`}
+                  >
                     {addr.line1}, {addr.area}, Pincode: {addr.pincode}
                   </p>
                 </div>
@@ -568,7 +1515,12 @@ export const ProfileView: React.FC = () => {
                 className="text-on-surface-variant/40 hover:text-red-500 transition-colors p-1"
                 title="Delete Address"
               >
-                <span className="material-symbols-outlined text-base">delete</span>
+                <span
+                  className={`material-symbols-outlined ${elderlyMode ? "text-[20px]" : "text-base"
+                    } font-bold`}
+                >
+                  delete
+                </span>
               </button>
             </div>
           ))}
@@ -580,21 +1532,34 @@ export const ProfileView: React.FC = () => {
         <div className="flex flex-col gap-1">
           {/* Row 1: Title + Action button */}
           <div className="flex justify-between items-start gap-3">
-            <h3 className="font-headline-md text-base text-secondary font-bold">
+            <h3
+              className={`${elderlyMode ? "text-[20px]" : "text-base"
+                } text-secondary font-bold`}
+            >
               My Health Records
             </h3>
             <button
               onClick={() => setShowAddReport(true)}
-              className="text-xs text-primary font-bold hover:underline flex items-center gap-0.5 shrink-0"
+              className={`text-xs text-primary font-bold hover:underline flex items-center gap-0.5 shrink-0 ${elderlyMode ? "text-[16px]" : "text-xs"
+                }`}
             >
-              <span className="material-symbols-outlined text-sm font-bold">upload_file</span>
+              <span
+                className={`material-symbols-outlined ${elderlyMode ? "text-[18px]" : "text-sm"
+                  } font-bold`}
+              >
+                upload_file
+              </span>
               <span>Add Report</span>
             </button>
           </div>
 
           {/* Row 2: Subtitle */}
-          <p className="text-[11px] text-on-surface-variant leading-relaxed">
-            Keep your personal and shared medical documents safe and organized here.
+          <p
+            className={`text-on-surface-variant leading-relaxed ${elderlyMode ? "text-[16px]" : "text-[11px]"
+              }`}
+          >
+            Keep your personal and shared medical documents safe and organized
+            here.
           </p>
         </div>
 
@@ -602,16 +1567,27 @@ export const ProfileView: React.FC = () => {
           {loadingDocuments ? (
             <div className="text-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-primary mx-auto" />
-              <p className="text-xs text-outline mt-2">Loading documents...</p>
+              <p
+                className={`text-xs text-outline mt-2 ${elderlyMode ? "text-[16px]" : "text-xs"
+                  }`}
+              >
+                Loading documents...
+              </p>
             </div>
           ) : documents.length === 0 ? (
-            <p className="text-xs text-outline italic text-center py-4 w-full">No documents uploaded yet.</p>
+            <p
+              className={`text-xs text-outline italic text-center py-4 w-full ${elderlyMode ? "text-[16px]" : "text-xs"
+                }`}
+            >
+              No documents uploaded yet.
+            </p>
           ) : (
             documents.map((doc) => {
-              console.log(doc.reportCategory, 'doc.reportCategory')
+              console.log(doc.reportCategory, "doc.reportCategory");
               // Category label
               const categoryLabel =
-                TEST_CATEGORY.find((c) => c.key === doc.reportCategory)?.label ||
+                TEST_CATEGORY.find((c) => c.key === doc.reportCategory)
+                  ?.label ||
                 doc.reportCategory ||
                 "Report";
 
@@ -629,34 +1605,53 @@ export const ProfileView: React.FC = () => {
                 >
                   <div className="flex gap-3 min-w-0 flex-1">
                     <div className="w-9 h-9 bg-primary/10 text-primary rounded-lg flex items-center justify-center flex-shrink-0">
-                      <span className="material-symbols-outlined text-lg">
-                        {doc.mimeType === "application/pdf" ? "picture_as_pdf" : "image"}
+                      <span
+                        className={`material-symbols-outlined ${elderlyMode ? "text-[22px]" : "text-lg"
+                          } font-bold`}
+                      >
+                        {doc.mimeType === "application/pdf"
+                          ? "picture_as_pdf"
+                          : "image"}
                       </span>
                     </div>
                     <div className="text-left min-w-0 flex-1">
                       {/* Row 1: category badge + private badge + date */}
                       <div className="flex items-center flex-wrap gap-1">
-                        <span className="bg-secondary/10 text-secondary text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
+                        <span
+                          className={`bg-secondary/10 text-secondary ${elderlyMode ? "text-[12px]" : "text-[8px]"
+                            } px-1.5 py-0.5 rounded font-bold uppercase tracking-wider`}
+                        >
                           {categoryLabel}
                         </span>
 
                         {doc.isPrivate && (
-                          <div className="bg-red-100 text-red-600 rounded font-bold  px-1.5 py-0.5 flex gap-1 items-center">
-                            <span className="material-symbols-outlined text-sm!">lock</span>
-                            <span className=" text-[8px] tracking-wide!">
+                          <div className="bg-red-100 text-red-600 rounded font-bold px-1.5 py-0.5 flex gap-1 items-center">
+                            <span className="material-symbols-outlined text-sm!">
+                              lock
+                            </span>
+                            <span
+                              className={` ${elderlyMode ? "text-[12px]" : "text-[8px]"
+                                } tracking-wide!`}
+                            >
                               Private
                             </span>
                           </div>
                         )}
 
-                        <span className="text-secondary text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
+                        <span
+                          className={`${elderlyMode ? "text-[12px]" : "text-[8px]"
+                            } text-secondary px-1.5 py-0.5 rounded font-bold uppercase tracking-wider`}
+                        >
                           • {displayDate}
                         </span>
                       </div>
 
                       {/* Row 2: file name */}
                       <div className="flex items-center gap-2 mt-1">
-                        <span className="text-[10px] text-outline font-semibold flex items-center gap-0.5 truncate">
+                        <span
+                          className={`${elderlyMode ? "text-[14px]" : "text-[10px]"
+                            } text-outline font-semibold flex items-center gap-0.5 truncate`}
+                        >
                           <span className="material-symbols-outlined text-sm! shrink-0">
                             description
                           </span>
@@ -670,7 +1665,10 @@ export const ProfileView: React.FC = () => {
                           <span className="material-symbols-outlined text-sm! text-outline shrink-0">
                             notes
                           </span>
-                          <span className="text-[10px] text-on-surface-variant italic truncate">
+                          <span
+                            className={`${elderlyMode ? "text-[14px]" : "text-[10px]"
+                              } text-on-surface-variant italic truncate`}
+                          >
                             {doc.note}
                           </span>
                         </div>
@@ -687,7 +1685,12 @@ export const ProfileView: React.FC = () => {
                     className="w-7 h-7 rounded-full hover:bg-red-50 flex items-center justify-center text-outline hover:text-red-500 transition-colors ml-1 disabled:opacity-50 shrink-0"
                     title="Delete Document"
                   >
-                    <span className="material-symbols-outlined text-base">delete</span>
+                    <span
+                      className={`material-symbols-outlined ${elderlyMode ? "text-[18px]" : "text-sm"
+                        } font-bold`}
+                    >
+                      delete
+                    </span>
                   </button>
                 </div>
               );
@@ -696,13 +1699,191 @@ export const ProfileView: React.FC = () => {
         </div>
       </section>
 
+      {/* Prescription Image Viewer Modal */}
+      {selectedDocument &&
+        (selectedDocument.mimeType === "application/pdf" ||
+          selectedDocument.fileName?.toLowerCase().endsWith(".pdf")) ? (
+        <PdfViewer
+          url={selectedDocument.previewUrl || selectedDocument.fileUrl}
+          onClose={() => setSelectedDocument(null)}
+          isPinchZoomEnabled={isPinchZoomEnabled}
+        />
+      ) : // ) : selectedDocument ? (
+        //   <div
+        //     className="fixed inset-0 bg-inverse-surface/70 backdrop-blur-md z-50 flex items-center justify-center p-4"
+        //     onClick={() => setSelectedDocument(null)}
+        //   >
+        //     <div
+        //       className="relative max-w-screen-md max-h-[90dvh]"
+        //       onClick={(e) => e.stopPropagation()}
+        //     >
+        //       <img
+        //         src={selectedDocument.previewUrl || selectedDocument.fileUrl}
+        //         alt={selectedDocument.fileName}
+        //         style={{ transform: `scale(${zoom})`, touchAction: "none" }}
+        //         className="max-w-full max-h-[85dvh] object-contain"
+        //         onTouchStart={handleTouchStart}
+        //         onTouchMove={handleTouchMove}
+        //         onTouchEnd={handleTouchEnd}
+        //         onWheel={(e) => {
+        //           e.preventDefault();
+        //           setZoom((prev) =>
+        //             Math.min(Math.max(prev - e.deltaY * 0.001, 0.5), 3),
+        //           );
+        //         }}
+        //       />
+        //       <button
+        //         type="button"
+        //         className="absolute top-2 right-2 w-8 h-8 rounded-full bg-surface-container flex items-center justify-center"
+        //         onClick={() => setSelectedDocument(null)}
+        //       >
+        //         <span className="material-symbols-outlined text-sm">close</span>
+        //       </button>
+        //     </div>
+        //   </div>
+        // ) : null}
+        selectedDocument ? (
+          <div
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-2"
+            onClick={() => setSelectedDocument(null)}
+          >
+            <div
+              className="relative w-full h-full flex flex-col overflow-hidden"
+              onClick={(event) => event.stopPropagation()}
+            >
+              {/* -----------------------------------------
+          Zoom Controls
+      ----------------------------------------- */}
+
+              <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1 bg-white rounded-lg shadow-lg p-1">
+                {/* Zoom Out */}
+
+                <button
+                  type="button"
+                  onClick={zoomOut}
+                  disabled={zoom <= 0.5}
+                  aria-label="Zoom out"
+                  className="w-9 h-9 rounded-lg bg-gray-100 text-gray-800 text-xl flex items-center justify-center disabled:opacity-40 hover:bg-gray-200 transition-colors"
+                >
+                  −
+                </button>
+
+                {/* Zoom Percentage / Reset */}
+
+                <button
+                  type="button"
+                  onClick={resetImageView}
+                  aria-label="Reset zoom"
+                  className="min-w-[58px] h-9 px-2 rounded-lg bg-gray-100 text-gray-800 text-xs font-medium hover:bg-gray-200 transition-colors"
+                >
+                  {Math.round(zoom * 100)}%
+                </button>
+
+                {/* Zoom In */}
+
+                <button
+                  type="button"
+                  onClick={zoomIn}
+                  disabled={zoom >= 4}
+                  aria-label="Zoom in"
+                  className="w-9 h-9 rounded-lg bg-gray-100 text-gray-800 text-xl flex items-center justify-center disabled:opacity-40 hover:bg-gray-200 transition-colors"
+                >
+                  +
+                </button>
+              </div>
+
+              {/* -----------------------------------------
+          Close
+      ----------------------------------------- */}
+
+              <button
+                type="button"
+                onClick={() => setSelectedDocument(null)}
+                aria-label="Close image viewer"
+                className="absolute top-3 right-3 z-30 w-9 h-9 rounded-lg bg-white text-gray-800 shadow-lg flex items-center justify-center hover:bg-gray-100 transition-colors"
+              >
+                <span className="material-symbols-outlined text-lg">close</span>
+              </button>
+
+              {/* -----------------------------------------
+          Image Container
+      ----------------------------------------- */}
+
+              <div
+                ref={imageContainerRef}
+                className="flex-1 min-h-0 w-full flex items-center justify-center overflow-hidden p-3"
+                style={{
+                  touchAction: isPinchZoomEnabled ? "none" : "pan-x pan-y",
+
+                  overscrollBehavior: "contain",
+
+                  WebkitOverflowScrolling: "touch",
+                }}
+              >
+                <img
+                  ref={imageRef}
+                  src={selectedDocument.previewUrl || selectedDocument.fileUrl}
+                  alt={selectedDocument.fileName || "Document"}
+                  draggable={false}
+                  onLoad={() => {
+                    /*
+                     * Recalculate position after image dimensions
+                     * are available.
+                     */
+                    setImagePosition((previous) =>
+                      clampImagePosition(previous.x, previous.y, zoomRef.current),
+                    );
+                  }}
+                  onPointerDown={
+                    isPinchZoomEnabled ? handlePointerDown : undefined
+                  }
+                  onPointerMove={
+                    isPinchZoomEnabled ? handlePointerMove : undefined
+                  }
+                  onPointerUp={isPinchZoomEnabled ? handlePointerUp : undefined}
+                  onPointerCancel={
+                    isPinchZoomEnabled ? handlePointerCancel : undefined
+                  }
+                  onMouseDown={handleMouseDown}
+                  onMouseMove={handleMouseMove}
+                  onMouseUp={handleMouseUp}
+                  onMouseLeave={handleMouseUp}
+                  onWheel={handleWheel}
+                  className="max-w-full max-h-[calc(100dvh-32px)] object-contain select-none"
+                  style={{
+                    transform: `translate3d(${imagePosition.x}px, ${imagePosition.y}px, 0) scale(${zoom})`,
+                    transformOrigin: "center center",
+
+                    touchAction: "none",
+
+                    userSelect: "none",
+                    WebkitUserSelect: "none",
+                    WebkitTouchCallout: "none",
+
+                    cursor:
+                      zoom > 1
+                        ? isMouseDraggingRef.current
+                          ? "grabbing"
+                          : "grab"
+                        : "default",
+
+                    willChange: "transform",
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        ) : null}
+
       {/* 5. ADD DOCUMENT MODAL */}
       {showAddReport && (
-        <div className="fixed inset-0 bg-inverse-surface/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-inverse-surface/40 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-hidden">
           <div className="w-full max-w-[360px] bg-white rounded-3xl p-6 shadow-2xl border border-outline-variant/30 flex flex-col animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="font-headline-md text-sm text-secondary font-bold flex items-center gap-2">
-                <span className="material-symbols-outlined text-primary text-xl">upload_file</span>
+              <h3 className="text-sm text-secondary font-bold flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-xl">
+                  upload_file
+                </span>
                 <span>Add Medical Report</span>
               </h3>
               <button
@@ -724,7 +1905,9 @@ export const ProfileView: React.FC = () => {
             <div className="space-y-4 text-left">
               {/* Who's report? */}
               <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Who's report is this?</label>
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                  Who's report is this?
+                </label>
                 <select
                   value={reportPatient}
                   onChange={(e) => setReportPatient(e.target.value)}
@@ -732,10 +1915,13 @@ export const ProfileView: React.FC = () => {
                   className={`w-full px-2 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary ${isUploading ? "opacity-50 cursor-not-allowed" : ""
                     }`}
                 >
-                  <option value="Myself">Myself ({user?.nickname || user?.fullName})</option>
-                  {familyMembers.map((fm) => (
+                  <option value="Myself">
+                    Myself ({user?.nickname || user?.fullName})
+                  </option>
+                  {mergedFamilyMembers.map((fm) => (
                     <option key={fm.id} value={fm.id}>
-                      {nicknameMap[fm.id] || fm.nickname || fm.name} ({fm.relationship})
+                      {nicknameMap[fm.id] || fm.nickname || fm.name} (
+                      {fm.relationship})
                     </option>
                   ))}
                 </select>
@@ -764,7 +1950,9 @@ export const ProfileView: React.FC = () => {
 
               {/* Date Input */}
               <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Test Date</label>
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                  Test Date
+                </label>
                 <input
                   type="date"
                   value={reportDate}
@@ -815,20 +2003,27 @@ export const ProfileView: React.FC = () => {
                 reportCategory={reportTestCategory}
                 isPrivate={isPrivateReport}
                 onComplete={async (data) => {
-                  console.log('OCR Data:', data, 'Patient:', reportPatient,);
+                  await trackEvent('prescription_upload', {
+                    status: 'success',
+                  });
+                  console.log("OCR Data:", data, "Patient:", reportPatient);
                   setOcrError(null);
                   setOcrMessage(null);
                   setOcrReportData(data);
 
                   if (!data.document_id) {
-                    setOcrError('No document ID returned. Upload may have failed.');
+                    setOcrError(
+                      "No document ID returned. Upload may have failed.",
+                    );
                     setIsUploading(false);
                     return;
                   }
 
                   await fetchDocuments();
 
-                  setOcrMessage('Document uploaded and processed successfully!');
+                  setOcrMessage(
+                    "Document uploaded and processed successfully!",
+                  );
                   setShowAddReport(false);
                   setOcrReportData(null);
                   setOcrError(null);
@@ -841,8 +2036,12 @@ export const ProfileView: React.FC = () => {
                   // Reset fields after successful upload
                   setReportPatient(reportPatient);
                 }}
-                onError={(err) => {
-                  setOcrError('Failed to process the file. Please try again.');
+                onError={async (err) => {
+                  await trackEvent('prescription_upload', {
+                    status: 'failure',
+                    error_code: 'upload_failed',
+                  });
+                  setOcrError("Failed to process the file. Please try again.");
                   setIsUploading(false);
                   console.error(err);
                 }}
@@ -854,8 +2053,16 @@ export const ProfileView: React.FC = () => {
                 }}
               />
 
-              {ocrError && <p className="text-red-500 text-xs font-medium text-center">{ocrError}</p>}
-              {ocrMessage && <p className="text-green-500 text-xs font-medium text-center">{ocrMessage}</p>}
+              {ocrError && (
+                <p className="text-red-500 text-xs font-medium text-center">
+                  {ocrError}
+                </p>
+              )}
+              {ocrMessage && (
+                <p className="text-green-500 text-xs font-medium text-center">
+                  {ocrMessage}
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -866,8 +2073,10 @@ export const ProfileView: React.FC = () => {
         <div className="fixed inset-0 bg-inverse-surface/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="w-full max-w-[360px] bg-white rounded-3xl p-6 shadow-2xl border border-outline-variant/30 flex flex-col animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="font-headline-md text-sm text-secondary font-bold flex items-center gap-2">
-                <span className="material-symbols-outlined text-primary text-xl">add_location_alt</span>
+              <h3 className="text-sm text-secondary font-bold flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-xl">
+                  add_location_alt
+                </span>
                 <span>Add Address</span>
               </h3>
               <button
@@ -879,9 +2088,14 @@ export const ProfileView: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleAddressSubmit} className="space-y-4 text-left">
+            <form
+              onSubmit={handleAddressSubmit}
+              className="space-y-4 text-left"
+            >
               <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Address Label</label>
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                  Address Label
+                </label>
                 <select
                   value={addressLabel}
                   onChange={(e) => setAddressLabel(e.target.value)}
@@ -896,7 +2110,9 @@ export const ProfileView: React.FC = () => {
               </div>
 
               <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Street Address (Line 1)</label>
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                  Street Address (Line 1)
+                </label>
                 <input
                   type="text"
                   required
@@ -909,7 +2125,9 @@ export const ProfileView: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Area / Locality</label>
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                    Area / Locality
+                  </label>
                   <input
                     type="text"
                     required
@@ -920,7 +2138,9 @@ export const ProfileView: React.FC = () => {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Pincode</label>
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                    Pincode
+                  </label>
                   <input
                     type="text"
                     required
@@ -948,8 +2168,10 @@ export const ProfileView: React.FC = () => {
         <div className="fixed inset-0 bg-inverse-surface/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="w-full max-w-[420px] bg-white rounded-3xl p-6 shadow-2xl border border-outline-variant/30 flex flex-col max-h-[85vh] overflow-y-auto animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="font-headline-md text-sm text-secondary font-bold flex items-center gap-2">
-                <span className="material-symbols-outlined text-primary text-xl">manage_accounts</span>
+              <h3 className="text-sm text-secondary font-bold flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-xl">
+                  manage_accounts
+                </span>
                 <span>Edit Personal Profile</span>
               </h3>
               <button
@@ -965,7 +2187,9 @@ export const ProfileView: React.FC = () => {
               {/* Name & Nickname */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Full Name</label>
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                    Full Name
+                  </label>
                   <input
                     type="text"
                     required
@@ -975,7 +2199,9 @@ export const ProfileView: React.FC = () => {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Nickname</label>
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                    Nickname
+                  </label>
                   <input
                     type="text"
                     placeholder="e.g. Sarah"
@@ -988,8 +2214,10 @@ export const ProfileView: React.FC = () => {
 
               {/* Age & DOB */}
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Age</label>
+                {/* <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                    Age
+                  </label>
                   <input
                     type="number"
                     required
@@ -997,9 +2225,11 @@ export const ProfileView: React.FC = () => {
                     onChange={(e) => setAge(Number(e.target.value))}
                     className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
                   />
-                </div>
+                </div> */}
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Date of Birth</label>
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                    Date of Birth
+                  </label>
                   <input
                     type="date"
                     value={userDob}
@@ -1012,7 +2242,9 @@ export const ProfileView: React.FC = () => {
               {/* Gender & Blood Group */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Gender</label>
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                    Gender
+                  </label>
                   <select
                     value={gender}
                     onChange={(e) => setGender(e.target.value)}
@@ -1024,15 +2256,21 @@ export const ProfileView: React.FC = () => {
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Blood Group</label>
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                    Blood Group
+                  </label>
                   <select
                     value={userBloodGroup}
                     onChange={(e) => setUserBloodGroup(e.target.value)}
                     className="w-full px-2 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
                   >
-                    {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map((bg) => (
-                      <option key={bg} value={bg}>{bg}</option>
-                    ))}
+                    {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map(
+                      (bg) => (
+                        <option key={bg} value={bg}>
+                          {bg}
+                        </option>
+                      ),
+                    )}
                   </select>
                 </div>
               </div>
@@ -1040,7 +2278,9 @@ export const ProfileView: React.FC = () => {
               {/* Phone & Conditions */}
               <div className="space-y-3">
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Phone Number</label>
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                    Phone Number
+                  </label>
                   <input
                     type="tel"
                     placeholder="e.g. +91 98765 43210"
@@ -1050,7 +2290,9 @@ export const ProfileView: React.FC = () => {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Medical Conditions (Comma Separated)</label>
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                    Medical Conditions (Comma Separated)
+                  </label>
                   <textarea
                     placeholder="e.g. Hypertension, Pre-Diabetes"
                     value={userConditions}
@@ -1062,7 +2304,9 @@ export const ProfileView: React.FC = () => {
 
               {/* Avatar Selector Grid */}
               <div className="space-y-2">
-                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Select Avatar</label>
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                  Select Avatar
+                </label>
                 <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
                   {AVATAR_CATEGORIES.map((cat) => (
                     <button
@@ -1080,17 +2324,25 @@ export const ProfileView: React.FC = () => {
                 </div>
 
                 <div className="grid grid-cols-5 gap-2 max-h-32 overflow-y-auto p-1 bg-white border border-outline-variant/10 rounded-xl">
-                  {AVATAR_ITEMS.filter((av) => av.category === activeUserAvatarCategory).map((av) => {
+                  {AVATAR_ITEMS.filter(
+                    (av) => av.category === activeUserAvatarCategory,
+                  ).map((av) => {
                     const isSelected = userAvatarUrl === av.url;
                     return (
                       <button
                         key={av.id}
                         type="button"
                         onClick={() => setUserAvatarUrl(av.url)}
-                        className={`w-11 h-11 rounded-full p-0.5 border-2 transition-all flex items-center justify-center overflow-hidden flex-shrink-0 ${isSelected ? "border-primary scale-110 shadow-sm" : "border-transparent hover:scale-105"
+                        className={`w-11 h-11 rounded-full p-0.5 border-2 transition-all flex items-center justify-center overflow-hidden flex-shrink-0 ${isSelected
+                          ? "border-primary scale-110 shadow-sm"
+                          : "border-transparent hover:scale-105"
                           }`}
                       >
-                        <img src={av.url} alt={av.label} className="w-full h-full object-cover" />
+                        <img
+                          src={av.url}
+                          alt={av.label}
+                          className="w-full h-full object-cover"
+                        />
                       </button>
                     );
                   })}
@@ -1113,8 +2365,10 @@ export const ProfileView: React.FC = () => {
         <div className="fixed inset-0 bg-inverse-surface/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="w-full max-w-[420px] bg-white rounded-3xl p-6 shadow-2xl border border-outline-variant/30 flex flex-col max-h-[85vh] overflow-y-auto animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="font-headline-md text-sm text-secondary font-bold flex items-center gap-2">
-                <span className="material-symbols-outlined text-primary text-xl">group_add</span>
+              <h3 className="text-sm text-secondary font-bold flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-xl">
+                  group_add
+                </span>
                 <span>Sync Family Profile</span>
               </h3>
               <button
@@ -1126,11 +2380,16 @@ export const ProfileView: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleAddMemberSubmit} className="space-y-4 text-left">
+            <form
+              onSubmit={handleAddMemberSubmit}
+              className="space-y-4 text-left"
+            >
               {/* Name & Nickname */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Full Name</label>
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                    Full Name
+                  </label>
                   <input
                     type="text"
                     required
@@ -1141,7 +2400,9 @@ export const ProfileView: React.FC = () => {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Nickname</label>
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                    Nickname
+                  </label>
                   <input
                     type="text"
                     placeholder="e.g. Dad, Mom"
@@ -1155,19 +2416,43 @@ export const ProfileView: React.FC = () => {
               {/* Relationship & DOB */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Relationship</label>
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                    Relationship
+                  </label>
                   <select
                     value={famRel}
                     onChange={(e) => setFamRel(e.target.value)}
                     className="w-full px-2 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
                   >
-                    {["Mother", "Father", "Son", "Daughter", "Brother", "Sister", "Grandmother", "Grandfather", "Husband", "Wife", "Partner", "Friend", "Relative", "Neighbor", "Caregiver", "Patient", "Other"].map((r) => (
-                      <option key={r} value={r}>{r}</option>
+                    {[
+                      "Mother",
+                      "Father",
+                      "Son",
+                      "Daughter",
+                      "Brother",
+                      "Sister",
+                      "Grandmother",
+                      "Grandfather",
+                      "Husband",
+                      "Wife",
+                      "Partner",
+                      "Friend",
+                      "Relative",
+                      "Neighbor",
+                      "Caregiver",
+                      "Patient",
+                      "Other",
+                    ].map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
                     ))}
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Date of Birth</label>
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                    Date of Birth
+                  </label>
                   <input
                     type="date"
                     value={famDob}
@@ -1180,7 +2465,9 @@ export const ProfileView: React.FC = () => {
               {/* Gender & Blood Group */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Gender</label>
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                    Gender
+                  </label>
                   <select
                     value={famGender}
                     onChange={(e) => setFamGender(e.target.value)}
@@ -1192,15 +2479,21 @@ export const ProfileView: React.FC = () => {
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Blood Group</label>
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                    Blood Group
+                  </label>
                   <select
                     value={famBloodGroup}
                     onChange={(e) => setFamBloodGroup(e.target.value)}
                     className="w-full px-2 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
                   >
-                    {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map((bg) => (
-                      <option key={bg} value={bg}>{bg}</option>
-                    ))}
+                    {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map(
+                      (bg) => (
+                        <option key={bg} value={bg}>
+                          {bg}
+                        </option>
+                      ),
+                    )}
                   </select>
                 </div>
               </div>
@@ -1208,7 +2501,9 @@ export const ProfileView: React.FC = () => {
               {/* Phone & Notes */}
               <div className="space-y-3">
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Phone Number</label>
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                    Phone Number
+                  </label>
                   <input
                     type="tel"
                     placeholder="e.g. +91 98765 43210"
@@ -1218,7 +2513,9 @@ export const ProfileView: React.FC = () => {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Medical Notes / Conditions</label>
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                    Medical Notes / Conditions
+                  </label>
                   <textarea
                     placeholder="e.g. Penicillin allergy, diabetes, high blood pressure"
                     value={famConditions}
@@ -1230,9 +2527,19 @@ export const ProfileView: React.FC = () => {
 
               {/* Color Picker */}
               <div className="space-y-1.5">
-                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Personalized Accent Color</label>
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                  Personalized Accent Color
+                </label>
                 <div className="flex gap-2">
-                  {["blue", "green", "purple", "orange", "pink", "teal", "grey"].map((c) => {
+                  {[
+                    "blue",
+                    "green",
+                    "purple",
+                    "orange",
+                    "pink",
+                    "teal",
+                    "grey",
+                  ].map((c) => {
                     const isSelected = famColor === c;
                     const bgColors: Record<string, string> = {
                       blue: "bg-blue-500",
@@ -1241,17 +2548,22 @@ export const ProfileView: React.FC = () => {
                       orange: "bg-orange-500",
                       pink: "bg-pink-500",
                       teal: "bg-teal-500",
-                      grey: "bg-slate-500"
+                      grey: "bg-slate-500",
                     };
                     return (
                       <button
                         key={c}
                         type="button"
                         onClick={() => setFamColor(c)}
-                        className={`w-6 h-6 rounded-full ${bgColors[c] || "bg-blue-500"} transition-all flex items-center justify-center`}
+                        className={`w-6 h-6 rounded-full ${bgColors[c] || "bg-blue-500"
+                          } transition-all flex items-center justify-center`}
                         title={c}
                       >
-                        {isSelected && <span className="material-symbols-outlined text-white text-xs font-bold">done</span>}
+                        {isSelected && (
+                          <span className="material-symbols-outlined text-white text-xs font-bold">
+                            done
+                          </span>
+                        )}
                       </button>
                     );
                   })}
@@ -1260,7 +2572,9 @@ export const ProfileView: React.FC = () => {
 
               {/* Avatar Selector */}
               <div className="space-y-2">
-                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Select Representative Avatar</label>
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                  Select Representative Avatar
+                </label>
                 <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
                   {AVATAR_CATEGORIES.map((cat) => (
                     <button
@@ -1277,18 +2591,26 @@ export const ProfileView: React.FC = () => {
                   ))}
                 </div>
                 <div className="grid grid-cols-5 gap-2 max-h-36 overflow-y-auto p-1 bg-white border border-outline-variant/10 rounded-xl">
-                  {AVATAR_ITEMS.filter((av) => av.category === activeAvatarCategory).map((av) => {
+                  {AVATAR_ITEMS.filter(
+                    (av) => av.category === activeAvatarCategory,
+                  ).map((av) => {
                     const isSelected = famAvatarUrl === av.url;
                     return (
                       <button
                         key={av.id}
                         type="button"
                         onClick={() => setFamAvatarUrl(av.url)}
-                        className={`w-11 h-11 rounded-full p-0.5 border-2 transition-all flex items-center justify-center overflow-hidden flex-shrink-0 ${isSelected ? "border-primary scale-110 shadow-sm" : "border-transparent hover:scale-105"
+                        className={`w-11 h-11 rounded-full p-0.5 border-2 transition-all flex items-center justify-center overflow-hidden flex-shrink-0 ${isSelected
+                          ? "border-primary scale-110 shadow-sm"
+                          : "border-transparent hover:scale-105"
                           }`}
                         title={av.label}
                       >
-                        <img src={av.url} alt={av.label} className="w-full h-full object-cover" />
+                        <img
+                          src={av.url}
+                          alt={av.label}
+                          className="w-full h-full object-cover"
+                        />
                       </button>
                     );
                   })}
@@ -1320,13 +2642,16 @@ export const ProfileView: React.FC = () => {
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b border-outline-variant/20 bg-white/80 backdrop-blur-sm">
               <div className="flex items-center gap-3 min-w-0">
-                <span className="material-symbols-outlined text-primary">description</span>
+                <span className="material-symbols-outlined text-primary">
+                  description
+                </span>
                 <div className="min-w-0">
-                  <h3 className="font-headline-md text-sm text-secondary font-bold truncate">
+                  <h3 className="text-sm text-secondary font-bold truncate">
                     {selectedDocument.fileName}
                   </h3>
                   <p className="text-[10px] text-outline">
-                    {selectedDocument.documentType} • {new Date(selectedDocument.createdAt).toLocaleDateString()}
+                    {selectedDocument.documentType} •{" "}
+                    {new Date(selectedDocument.createdAt).toLocaleDateString()}
                   </p>
                 </div>
                 {selectedDocument.isPrivate && (
@@ -1340,7 +2665,9 @@ export const ProfileView: React.FC = () => {
                   onClick={() => setSelectedDocument(null)}
                   className="p-2 rounded-full! hover:bg-surface-container transition-colors"
                 >
-                  <span className="material-symbols-outlined text-sm">close</span>
+                  <span className="material-symbols-outlined text-sm">
+                    close
+                  </span>
                 </button>
               </div>
             </div>
@@ -1356,22 +2683,24 @@ export const ProfileView: React.FC = () => {
                       </div>
                     )}
                     {!previewError ? (
-                      <img
+                      <ZoomableDocumentImage
                         key={selectedDocument.id}
                         src={selectedDocument.previewUrl}
                         alt={selectedDocument.fileName}
-                        className="max-w-full max-h-[70vh] object-contain mx-auto rounded-lg"
                         onLoad={() => setPreviewLoading(false)}
                         onError={() => {
                           setPreviewLoading(false);
                           setPreviewError(true);
                         }}
-                        style={{ display: previewLoading ? 'none' : 'block' }}
                       />
                     ) : (
                       <div className="flex flex-col items-center justify-center h-[70vh] text-center">
-                        <span className="material-symbols-outlined text-6xl text-outline-variant">image_not_supported</span>
-                        <p className="text-sm text-on-surface-variant mt-2">Failed to load image preview.</p>
+                        <span className="material-symbols-outlined text-6xl text-outline-variant">
+                          image_not_supported
+                        </span>
+                        <p className="text-sm text-on-surface-variant mt-2">
+                          Failed to load image preview.
+                        </p>
                         <a
                           href={selectedDocument.previewUrl}
                           target="_blank"
@@ -1391,8 +2720,12 @@ export const ProfileView: React.FC = () => {
                   />
                 ) : (
                   <div className="flex flex-col items-center justify-center h-[70vh] text-center">
-                    <span className="material-symbols-outlined text-6xl text-outline-variant">insert_drive_file</span>
-                    <p className="text-sm text-on-surface-variant mt-2">Preview not available for this file type.</p>
+                    <span className="material-symbols-outlined text-6xl text-outline-variant">
+                      insert_drive_file
+                    </span>
+                    <p className="text-sm text-on-surface-variant mt-2">
+                      Preview not available for this file type.
+                    </p>
                     {selectedDocument.previewUrl && (
                       <a
                         href={selectedDocument.previewUrl}
@@ -1407,8 +2740,12 @@ export const ProfileView: React.FC = () => {
                 )
               ) : (
                 <div className="flex flex-col items-center justify-center h-[70vh] text-center">
-                  <span className="material-symbols-outlined text-6xl text-outline-variant">image_not_supported</span>
-                  <p className="text-sm text-on-surface-variant mt-2">No preview available.</p>
+                  <span className="material-symbols-outlined text-6xl text-outline-variant">
+                    image_not_supported
+                  </span>
+                  <p className="text-sm text-on-surface-variant mt-2">
+                    No preview available.
+                  </p>
                 </div>
               )}
             </div>
@@ -1419,10 +2756,19 @@ export const ProfileView: React.FC = () => {
       {/* Family Sync Hub Modal */}
       {showSyncModal && (
         <div className="fixed inset-0 bg-inverse-surface/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="w-full max-w-[400px] bg-white rounded-3xl p-6 shadow-2xl border border-outline-variant/30 flex flex-col animate-in zoom-in-95 duration-200">
+          <div className="w-full max-w-[400px] max-h-[calc(100dvh-2rem)] bg-white rounded-3xl p-6 shadow-2xl border border-outline-variant/30 flex flex-col min-h-0 overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="font-headline-md text-sm text-secondary font-bold flex items-center gap-2" id="family-sync-header">
-                <span className="material-symbols-outlined text-primary text-xl">diversity_1</span>
+              <h3
+                className={`text-secondary font-bold flex items-center gap-2 ${elderlyMode ? "text-[18px]" : " text-sm"
+                  }`}
+                id="family-sync-header"
+              >
+                <span
+                  className={`material-symbols-outlined text-primary ${elderlyMode ? "text-2xl" : " text-xl"
+                    }`}
+                >
+                  diversity_1
+                </span>
                 <span>Family Sync Hub</span>
               </h3>
               <button
@@ -1433,14 +2779,33 @@ export const ProfileView: React.FC = () => {
               </button>
             </div>
 
-            <div className="flex-grow space-y-4 text-left">
+            <div
+              className="flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y space-y-4 text-left pb-4 pr-1"
+              style={{
+                WebkitOverflowScrolling: "touch",
+              }}
+            >
               {/* Scenario 1: User does NOT belong to any family */}
               {!activeFamily ? (
                 <div className="space-y-4">
                   {/* Create Family Card */}
-                  <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10 space-y-3" id="create-family-card">
-                    <span className="text-[10px] font-bold text-primary uppercase tracking-wider block">Create New Family Group</span>
-                    <p className="text-[10px] text-on-surface-variant leading-relaxed">Become the Admin. Choose a custom name and generate your group's unique invitation code.</p>
+                  <div
+                    className="p-4 bg-primary/5 rounded-2xl border border-primary/10 space-y-3"
+                    id="create-family-card"
+                  >
+                    <span
+                      className={` ${elderlyMode ? "text-sm" : "text-[10px]"
+                        } font-bold text-primary uppercase tracking-wider block`}
+                    >
+                      Create New Family Group
+                    </span>
+                    <p
+                      className={` ${elderlyMode ? "text-sm" : "text-[10px]"
+                        } text-on-surface-variant leading-relaxed`}
+                    >
+                      Become the Admin. Choose a custom name and generate your
+                      group's unique invitation code.
+                    </p>
                     <div className="flex gap-2">
                       <input
                         type="text"
@@ -1457,7 +2822,9 @@ export const ProfileView: React.FC = () => {
                           }
                           setIsCreatingFamily(true);
                           try {
-                            const success = await createFamily(newFamilyName.trim());
+                            const success = await createFamily(
+                              newFamilyName.trim(),
+                            );
                             if (success) {
                               setNewFamilyName("");
                             }
@@ -1466,19 +2833,36 @@ export const ProfileView: React.FC = () => {
                           }
                         }}
                         disabled={isCreatingFamily}
-                        className="px-4 py-2 bg-primary text-on-primary font-bold rounded-xl text-xs hover:opacity-90 active:scale-95 transition-all shadow-sm flex items-center justify-center gap-1.5 min-w-[76px] disabled:opacity-50 disabled:pointer-events-none"
+                        className={`px-4 py-2 bg-primary text-on-primary font-bold rounded-xl ${elderlyMode ? "text-[16px]" : "text-xs"
+                          } hover:opacity-90 active:scale-95 transition-all shadow-sm flex items-center justify-center gap-1.5 min-w-[76px] disabled:opacity-50 disabled:pointer-events-none`}
                       >
                         {isCreatingFamily ? (
                           <div className="w-3.5 h-3.5 border-2 border-on-primary border-t-transparent rounded-full animate-spin" />
-                        ) : "Create"}
+                        ) : (
+                          "Create"
+                        )}
                       </button>
                     </div>
                   </div>
 
                   {/* Join Family Card */}
-                  <div className="p-4 bg-surface-container-low border border-outline-variant/20 rounded-2xl space-y-3" id="join-family-card">
-                    <span className="text-[10px] font-bold text-secondary uppercase tracking-wider block">Join Existing Family Group</span>
-                    <p className="text-[10px] text-on-surface-variant leading-relaxed">Enter a family invitation code to view synced adherence scoreboards.</p>
+                  <div
+                    className="p-4 bg-surface-container-low border border-outline-variant/20 rounded-2xl space-y-3"
+                    id="join-family-card"
+                  >
+                    <span
+                      className={`${elderlyMode ? "text-sm" : "text-[10px]"
+                        } font-bold text-secondary uppercase tracking-wider block`}
+                    >
+                      Join Existing Family Group
+                    </span>
+                    <p
+                      className={`${elderlyMode ? "text-sm" : "text-[10px]"
+                        } text-on-surface-variant leading-relaxed`}
+                    >
+                      Enter a family invitation code to view synced adherence
+                      scoreboards.
+                    </p>
 
                     <div className="flex gap-2">
                       <input
@@ -1496,19 +2880,26 @@ export const ProfileView: React.FC = () => {
                             return;
                           }
                           if (!isSupabaseConfigured) {
-                            alert("Database is not configured. Please set your Supabase environment variables.");
+                            alert(
+                              "Database is not configured. Please set your Supabase environment variables.",
+                            );
                             return;
                           }
                           let searchId = joinFamilyId.trim().toUpperCase();
-                          if (searchId.length === 6 && !searchId.startsWith("FAM-")) {
+                          if (
+                            searchId.length === 6 &&
+                            !searchId.startsWith("FAM-")
+                          ) {
                             searchId = "FAM-" + searchId;
                           }
                           setIsVerifying(true);
                           try {
                             const verifyActionPromise = (async () => {
-                              const { data: fams, error: famErr } = await supabase
-                                .from("families")
-                                .select(`
+                              const { data: fams, error: famErr } =
+                                await supabase
+                                  .from("families")
+                                  .select(
+                                    `
                                     id,
                                     name,
                                     family_code,
@@ -1516,35 +2907,56 @@ export const ProfileView: React.FC = () => {
                                     profiles:admin_id (
                                       full_name
                                     )
-                                  `)
-                                .eq("family_code", searchId);
+                                  `,
+                                  )
+                                  .eq("family_code", searchId);
                               if (famErr) throw famErr;
                               if (!fams || fams.length === 0) return null;
 
                               const matchFam = fams[0];
-                              const { data: membersList, error: countErr } = await supabase
-                                .from("profiles")
-                                .select("id")
-                                .eq("family_id", matchFam.id);
+                              const { data: membersList, error: countErr } =
+                                await supabase
+                                  .from("profiles")
+                                  .select("id")
+                                  .eq("family_id", matchFam.id);
                               if (countErr) throw countErr;
-                              const memberCount = membersList ? membersList.length : 0;
-                              const adminName = matchFam.profiles ? (matchFam.profiles.full_name || "Unknown") : "Unknown";
+                              const memberCount = membersList
+                                ? membersList.length
+                                : 0;
+                              const adminName = matchFam.profiles
+                                ? matchFam.profiles.full_name || "Unknown"
+                                : "Unknown";
                               return {
                                 id: matchFam.id,
                                 name: matchFam.name,
                                 memberCount: memberCount,
                                 adminName: adminName,
                                 familyCode: matchFam.family_code,
-                                adminId: matchFam.admin_id
+                                adminId: matchFam.admin_id,
                               };
                             })();
 
-                            const timeoutPromise = new Promise<never>((_, reject) =>
-                              setTimeout(() => reject(new Error("Request timed out. Please check your connection.")), 8000)
+                            const timeoutPromise = new Promise<never>(
+                              (_, reject) =>
+                                setTimeout(
+                                  () =>
+                                    reject(
+                                      new Error(
+                                        "Request timed out. Please check your connection.",
+                                      ),
+                                    ),
+                                  8000,
+                                ),
                             );
-                            const verified = await Promise.race([verifyActionPromise, timeoutPromise]);
+                            const verified = await Promise.race([
+                              verifyActionPromise,
+                              timeoutPromise,
+                            ]);
                             if (!verified) {
-                              alert("No active family found matching code: " + searchId);
+                              alert(
+                                "No active family found matching code: " +
+                                searchId,
+                              );
                               setVerificationFamily(null);
                             } else {
                               setVerificationFamily(verified);
@@ -1557,26 +2969,47 @@ export const ProfileView: React.FC = () => {
                           }
                         }}
                         disabled={isVerifying || isJoiningFamily}
-                        className="px-3 py-2 bg-secondary text-white font-bold rounded-xl text-xs hover:opacity-90 active:scale-95 transition-all shadow-sm flex items-center justify-center min-w-[70px] disabled:opacity-50 disabled:pointer-events-none"
+                        className={`px-3 py-2 bg-secondary text-white font-bold rounded-xl ${elderlyMode ? "text-[16px]" : "text-xs"
+                          } hover:opacity-90 active:scale-95 transition-all shadow-sm flex items-center justify-center min-w-[70px] disabled:opacity-50 disabled:pointer-events-none`}
                       >
                         {isVerifying ? (
                           <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        ) : "Verify"}
+                        ) : (
+                          "Verify"
+                        )}
                       </button>
                     </div>
 
                     {verificationFamily && (
                       <div className="p-3 bg-white rounded-xl border border-primary/20 space-y-3 animate-in zoom-in-95 duration-200">
                         <div className="space-y-1">
-                          <h4 className="font-bold text-xs text-secondary">{verificationFamily.name}</h4>
-                          <div className="text-[10px] text-on-surface-variant space-y-0.5">
-                            <p>👑 Admin: <span className="font-bold text-on-surface">{verificationFamily.adminName}</span></p>
-                            <p>👥 Members: <span className="font-bold text-on-surface">{verificationFamily.memberCount} joined</span></p>
+                          <h4
+                            className={`${elderlyMode ? "text-[16px]" : "text-xs"
+                              } font-bold text-secondary uppercase tracking-wider`}
+                          >
+                            {verificationFamily.name}
+                          </h4>
+                          <div
+                            className={`${elderlyMode ? "text-[14px]" : "text-[10px]"
+                              } text-on-surface-variant space-y-0.5`}
+                          >
+                            <p>
+                              👑 Admin:{" "}
+                              <span className="font-bold text-on-surface">
+                                {verificationFamily.adminName}
+                              </span>
+                            </p>
+                            <p>
+                              👥 Members:{" "}
+                              <span className="font-bold text-on-surface">
+                                {verificationFamily.memberCount} joined
+                              </span>
+                            </p>
                           </div>
                         </div>
 
                         {/* Terms & Conditions */}
-                        <div className='flex gap-2'>
+                        <div className="flex gap-2">
                           <input
                             id="terms"
                             type="checkbox"
@@ -1584,21 +3017,34 @@ export const ProfileView: React.FC = () => {
                             onChange={(e) => setTermsAccepted(e.target.checked)}
                             className="h-4 w-4 rounded border-outline-variant/50 text-primary accent-primary mt-0.5"
                           />
-                          <label htmlFor="terms" className="text-xs text-on-surface-variant leading-5 cursor-pointer">
-                            By joining this family group, you agree to share your personal information, medication reminders, and health records with other members of this group. Only join if you trust all members
+                          <label
+                            htmlFor="terms"
+                            className={`${elderlyMode ? "text-[16px]" : "text-xs"
+                              } text-on-surface-variant leading-5 cursor-pointer`}
+                          >
+                            By joining this family group, you agree to share
+                            your personal information, medication reminders, and
+                            health records with other members of this group.
+                            Only join if you trust all members
                           </label>
                         </div>
 
                         {/* Don't Share Medical Records */}
-                        <div className='flex gap-2'>
+                        <div className="flex gap-2">
                           <input
                             id="shareMedicalRecords"
                             type="checkbox"
                             checked={dontShareMedicalRecords}
-                            onChange={(e) => setDontShareMedicalRecords(e.target.checked)}
+                            onChange={(e) =>
+                              setDontShareMedicalRecords(e.target.checked)
+                            }
                             className="h-4 w-4 rounded border-outline-variant/50 text-primary accent-primary mt-0.5"
                           />
-                          <label htmlFor="shareMedicalRecords" className="text-xs text-on-surface-variant leading-5 cursor-pointer">
+                          <label
+                            htmlFor="shareMedicalRecords"
+                            className={`${elderlyMode ? "text-[16px]" : "text-xs"
+                              } text-on-surface-variant leading-5 cursor-pointer`}
+                          >
                             I don't want to share my medical records
                           </label>
                         </div>
@@ -1612,7 +3058,7 @@ export const ProfileView: React.FC = () => {
                                 verificationFamily.name,
                                 verificationFamily.familyCode,
                                 verificationFamily.adminId,
-                                dontShareMedicalRecords
+                                dontShareMedicalRecords,
                               );
                               if (success) {
                                 setVerificationFamily(null);
@@ -1625,17 +3071,26 @@ export const ProfileView: React.FC = () => {
                             }
                           }}
                           disabled={isJoiningFamily || !termsAccepted}
-                          className="w-full py-2 bg-emerald-600 text-white font-bold rounded-xl text-[11px] hover:bg-emerald-700 active:scale-95 transition-all flex items-center justify-center gap-1.5 min-h-[32px] disabled:opacity-50 disabled:pointer-events-none"
+                          className={`w-full py-2 bg-emerald-600 text-white font-bold rounded-xl ${elderlyMode ? "text-[15px]" : "text-[11px]"
+                            } hover:bg-emerald-700 active:scale-95 transition-all flex items-center justify-center gap-1.5 min-h-[32px] disabled:opacity-50 disabled:pointer-events-none`}
                         >
                           {isJoiningFamily ? (
                             <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          ) : "Confirm & Join Group"}
+                          ) : (
+                            "Confirm & Join Group"
+                          )}
                         </button>
                       </div>
                     )}
                   </div>
-                  <div id="family-sync-note" className="mt-4 p-3 bg-secondary/5 border border-secondary/10 rounded-xl text-xs text-on-surface-variant">
-                    <strong>Note:</strong> Family Sync helps caregivers and family members stay informed with shared medication schedules, reminders, and health updates.
+                  <div
+                    id="family-sync-note"
+                    className={`mt-4 p-3 bg-secondary/5 border border-secondary/10 rounded-xl ${elderlyMode ? "text-[16px]" : "text-xs"
+                      } text-on-surface-variant`}
+                  >
+                    <strong>Note:</strong> Family Sync helps caregivers and
+                    family members stay informed with shared medication
+                    schedules, reminders, and health updates.
                   </div>
                 </div>
               ) : (
@@ -1650,8 +3105,11 @@ export const ProfileView: React.FC = () => {
                             <input
                               type="text"
                               value={editedFamilyName}
-                              onChange={(e) => setEditedFamilyName(e.target.value)}
-                              className="px-2 py-1 bg-white border border-outline rounded-lg text-xs font-bold focus:outline-none focus:border-primary"
+                              onChange={(e) =>
+                                setEditedFamilyName(e.target.value)
+                              }
+                              className={`${elderlyMode ? "text-[16px]" : "text-xs"
+                                } px-2 py-1 bg-white border border-outline rounded-lg font-bold focus:outline-none focus:border-primary`}
                             />
                             <button
                               onClick={async () => {
@@ -1666,16 +3124,24 @@ export const ProfileView: React.FC = () => {
                                 }
                               }}
                               disabled={isRenamingFamily}
-                              className="px-2 py-1 bg-primary text-on-primary text-[10px] font-bold rounded flex items-center justify-center gap-1 disabled:opacity-50"
+                              className={`${elderlyMode ? "text-[14px]" : "text-[10px]"
+                                } px-2 py-1 bg-primary text-on-primary font-bold rounded flex items-center justify-center gap-1 disabled:opacity-50`}
                             >
                               {isRenamingFamily ? (
                                 <div className="w-2 h-2 border border-on-primary border-t-transparent rounded-full animate-spin" />
-                              ) : "Save"}
+                              ) : (
+                                "Save"
+                              )}
                             </button>
                           </div>
                         ) : (
                           <div className="flex items-center gap-1.5">
-                            <h4 className="font-headline-md text-sm text-secondary font-bold">{activeFamily.name}</h4>
+                            <h4
+                              className={`${elderlyMode ? "text-[18px]" : "text-sm"
+                                } text-secondary font-bold`}
+                            >
+                              {activeFamily.name}
+                            </h4>
                             {user?.id === activeFamily.adminId && (
                               <button
                                 onClick={() => {
@@ -1684,13 +3150,21 @@ export const ProfileView: React.FC = () => {
                                 }}
                                 className="text-outline hover:text-primary transition-colors"
                               >
-                                <span className="material-symbols-outlined text-xs">edit</span>
+                                <span
+                                  className={`${elderlyMode ? "text-[16px]" : "text-xs"
+                                    } material-symbols-outlined `}
+                                >
+                                  edit
+                                </span>
                               </button>
                             )}
                           </div>
                         )}
                         <div className="flex items-center gap-1.5 mt-1">
-                          <p className="text-[9px] text-outline font-bold uppercase tracking-wider">
+                          <p
+                            className={`${elderlyMode ? "text-[13px]" : "text-[9px]"
+                              } text-outline font-bold uppercase tracking-wider`}
+                          >
                             Code:{" "}
                             <span className="font-mono text-secondary select-all">
                               {activeFamily.familyCode}
@@ -1698,12 +3172,17 @@ export const ProfileView: React.FC = () => {
                           </p>
                           <button
                             type="button"
-                            onClick={() => handleCopyFamilyCode(activeFamily.familyCode)}
-                            className={`flex items-center justify-center gap-0.5 px-1.5 py-0.5 rounded-md border text-[9px] font-bold transition-all active:scale-95 ${copiedFamilyCode
-                              ? "bg-emerald-50 border-emerald-300 text-emerald-700"
-                              : "bg-white border-outline-variant/30 text-secondary hover:border-primary/40 hover:text-primary"
+                            onClick={() =>
+                              handleCopyFamilyCode(activeFamily.familyCode)
+                            }
+                            className={`flex items-center justify-center gap-0.5 px-1.5 py-0.5 rounded-md border ${elderlyMode ? "text-[13px]" : "text-[9px]"
+                              } font-bold transition-all active:scale-95 ${copiedFamilyCode
+                                ? "bg-emerald-50 border-emerald-300 text-emerald-700"
+                                : "bg-white border-outline-variant/30 text-secondary hover:border-primary/40 hover:text-primary"
                               }`}
-                            title={copiedFamilyCode ? "Copied!" : "Copy Family Code"}
+                            title={
+                              copiedFamilyCode ? "Copied!" : "Copy Family Code"
+                            }
                           >
                             <span className="material-symbols-outlined text-sm! leading-none">
                               {copiedFamilyCode ? "check" : "content_copy"}
@@ -1712,51 +3191,94 @@ export const ProfileView: React.FC = () => {
                           </button>
                         </div>
                       </div>
-                      <span className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 text-[8px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                      <span
+                        className={`${elderlyMode ? "text-[12px]" : "text-[8px]"
+                          } bg-emerald-500/10 text-center text-emerald-600 border border-emerald-500/20 px-2 py-0.5 rounded font-bold uppercase tracking-wider`}
+                      >
                         Active Group
                       </span>
                     </div>
 
-                    {user?.id === activeFamily.adminId && familyMembers.length === 0 && (
-                      <button
-                        onClick={async () => {
-                          if (confirm("Regenerate invitation code? This will invalidate the previous code.")) {
-                            setIsRegeneratingCode(true);
-                            try {
-                              await regenerateFamilyCode();
-                            } finally {
-                              setIsRegeneratingCode(false);
+                    {user?.id === activeFamily.adminId &&
+                      mergedFamilyMembers.length === 0 && (
+                        <button
+                          onClick={async () => {
+                            if (
+                              confirm(
+                                "Regenerate invitation code? This will invalidate the previous code.",
+                              )
+                            ) {
+                              setIsRegeneratingCode(true);
+                              try {
+                                await regenerateFamilyCode();
+                              } finally {
+                                setIsRegeneratingCode(false);
+                              }
                             }
-                          }
-                        }}
-                        disabled={isRegeneratingCode}
-                        className="text-[9px] text-primary hover:underline font-bold flex items-center gap-0.5 disabled:opacity-50 disabled:pointer-events-none"
-                      >
-                        {isRegeneratingCode ? (
-                          <div className="w-2 h-2 border border-primary border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <span className="material-symbols-outlined text-xs">refresh</span>
-                        )}
-                        <span>{isRegeneratingCode ? "Regenerating..." : "Regenerate Code"}</span>
-                      </button>
-                    )}
+                          }}
+                          disabled={isRegeneratingCode}
+                          className={`${elderlyMode ? "text-[13px]" : "text-[9px]"
+                            } text-primary hover:underline font-bold flex items-center gap-0.5 disabled:opacity-50 disabled:pointer-events-none`}
+                        >
+                          {isRegeneratingCode ? (
+                            <div className="w-2 h-2 border border-primary border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <span
+                              className={`${elderlyMode ? "text-[16px]" : "text-xs"
+                                } material-symbols-outlined`}
+                            >
+                              refresh
+                            </span>
+                          )}
+                          <span>
+                            {isRegeneratingCode
+                              ? "Regenerating..."
+                              : "Regenerate Code"}
+                          </span>
+                        </button>
+                      )}
                   </div>
 
                   {/* Adherence and Analytics Summary */}
                   <div className="p-3 bg-secondary/5 rounded-xl border border-secondary/10 space-y-2 text-xs">
                     <div className="flex justify-between items-center text-on-surface">
-                      <span className="font-semibold text-outline text-[11px]">Your Adherence:</span>
-                      <span className="font-extrabold text-tertiary text-xs">{adherencePercentage}%</span>
+                      <span
+                        className={`${elderlyMode ? "text-[15px]" : "text-[11px]"
+                          } font-semibold text-outline`}
+                      >
+                        Your Adherence:
+                      </span>
+                      <span
+                        className={`${elderlyMode ? "text-[16px]" : "text-xs"
+                          } font-extrabold text-tertiary`}
+                      >
+                        {adherencePercentage}%
+                      </span>
                     </div>
                     <div className="flex justify-between items-center text-on-surface">
-                      <span className="font-semibold text-outline text-[11px]">Family Wellness Score:</span>
-                      <span className="font-extrabold text-primary text-xs">{familyWellnessScore}/10</span>
+                      <span
+                        className={`${elderlyMode ? "text-[15px]" : "text-[11px]"
+                          } font-semibold text-outline`}
+                      >
+                        Family Wellness Score:
+                      </span>
+                      <span
+                        className={`${elderlyMode ? "text-[16px]" : "text-xs"
+                          } font-extrabold text-tertiary`}
+                      >
+                        {familyWellnessScore}/10
+                      </span>
                     </div>
                   </div>
 
                   {/* Family Roster list */}
                   <div className="space-y-2">
-                    <span className="text-[10px] font-bold text-outline uppercase tracking-wider block">Family Roster</span>
+                    <span
+                      className={`${elderlyMode ? "text-[14px]" : "text-[10px]"
+                        } font-bold text-outline uppercase tracking-wider block`}
+                    >
+                      Family Roster
+                    </span>
                     <div className="divide-y divide-outline-variant/15 border border-outline-variant/15 rounded-xl overflow-hidden bg-white">
                       {/* Active User */}
                       <div className="p-3 flex items-center justify-between gap-3 bg-surface-container-low/20">
@@ -1767,38 +3289,68 @@ export const ProfileView: React.FC = () => {
                             className="w-8 h-8 rounded-full border border-primary/20"
                           />
                           <div>
-                            <span className="font-bold text-xs text-on-surface block">{user?.fullName} (You)</span>
-                            <span className="text-[9px] text-outline">
-                              {user?.id === activeFamily.adminId ? "Group Admin" : "Group Member"}
+                            <span
+                              className={`${elderlyMode ? "text-[16px]" : "text-xs"
+                                } font-bold text-on-surface block`}
+                            >
+                              {user?.fullName} (You)
+                            </span>
+                            <span
+                              className={`${elderlyMode ? "text-[13px]" : "text-[9px]"
+                                } text-outline`}
+                            >
+                              {user?.id === activeFamily.adminId
+                                ? "Group Admin"
+                                : "Group Member"}
                             </span>
                           </div>
                         </div>
-                        <span className="text-[8px] px-2 py-0.5 rounded font-bold uppercase bg-primary-container text-white border border-primary/20">
-                          {user?.id === activeFamily.adminId ? "Admin" : "Member"}
+                        <span
+                          className={`${elderlyMode ? "text-[12px]" : "text-[8px]"
+                            } px-2 py-0.5 rounded font-bold uppercase bg-primary-container text-white border border-primary/20`}
+                        >
+                          {user?.id === activeFamily.adminId
+                            ? "Admin"
+                            : "Member"}
                         </span>
                       </div>
 
                       {/* Linked Members */}
-                      {familyMembers.map((member) => (
+                      {mergedFamilyMembers.map((member) => (
                         <div
                           key={member.id}
                           onClick={() => {
                             setEditingNicknameMemberId(member.id);
-                            setEditingNicknameValue(nicknameMap[member.id] || member.name);
+                            setEditingNicknameValue(
+                              nicknameMap[member.id] || member.name,
+                            );
                           }}
                           className="p-3 flex items-center justify-between gap-3 cursor-pointer"
                         >
                           <div className="flex items-center gap-2">
-                            <img src={member.avatarUrl} alt={member.name} className="w-8 h-8 rounded-full border border-outline-variant/30" />
+                            <img
+                              src={member.avatarUrl}
+                              alt={member.name}
+                              className="w-8 h-8 rounded-full border border-outline-variant/30"
+                            />
                             <div>
-                              <span className="font-bold text-xs text-on-surface block cursor-pointer hover:text-primary transition-colors">
-                                {nicknameMap[member.id] || member.nickname || member.name}
+                              <span
+                                className={`${elderlyMode ? "text-[16px]" : "text-xs"
+                                  } font-bold text-on-surface block cursor-pointer hover:text-primary transition-colors`}
+                              >
+                                {nicknameMap[member.id] ||
+                                  member.nickname ||
+                                  member.name}
                               </span>
-                              <span className="text-[9px] text-outline">
+                              <span
+                                className={`${elderlyMode ? "text-[13px]" : "text-[9px]"
+                                  } text-outline`}
+                              >
                                 {member.color === "purple"
-                                  ? (member.id === activeFamily.adminId ? "Group Admin" : "Group Member")
-                                  : `Local Profile (${member.relationship})`
-                                }
+                                  ? member.id === activeFamily.adminId
+                                    ? "Group Admin"
+                                    : "Group Member"
+                                  : `Local Profile (${member.relationship})`}
                               </span>
                             </div>
                           </div>
@@ -1808,7 +3360,11 @@ export const ProfileView: React.FC = () => {
                                 <>
                                   <button
                                     onClick={async () => {
-                                      if (confirm(`Transfer admin ownership rights to ${member.name}?`)) {
+                                      if (
+                                        confirm(
+                                          `Transfer admin ownership rights to ${member.name}?`,
+                                        )
+                                      ) {
                                         setIsTransferringAdmin(member.id);
                                         try {
                                           await transferAdminRights(member.id);
@@ -1817,8 +3373,12 @@ export const ProfileView: React.FC = () => {
                                         }
                                       }
                                     }}
-                                    disabled={isTransferringAdmin !== null || isRemovingMember !== null}
-                                    className="px-2 py-1 bg-surface-container-high hover:bg-opacity-80 text-secondary font-bold text-[9px] rounded-lg transition-all flex items-center gap-1 disabled:opacity-50"
+                                    disabled={
+                                      isTransferringAdmin !== null ||
+                                      isRemovingMember !== null
+                                    }
+                                    className={`${elderlyMode ? "text-[13px]" : "text-[9px]"
+                                      } px-2 py-1 bg-surface-container-high hover:bg-opacity-80 text-secondary font-bold rounded-lg transition-all flex items-center gap-1 disabled:opacity-50`}
                                     title="Transfer Admin Rights"
                                   >
                                     {isTransferringAdmin === member.id && (
@@ -1828,7 +3388,11 @@ export const ProfileView: React.FC = () => {
                                   </button>
                                   <button
                                     onClick={async () => {
-                                      if (confirm(`Are you sure you want to remove ${member.name} from the family portal?`)) {
+                                      if (
+                                        confirm(
+                                          `Are you sure you want to remove ${member.name} from the family portal?`,
+                                        )
+                                      ) {
                                         setIsRemovingMember(member.id);
                                         try {
                                           await removeFamilyMember(member.id);
@@ -1837,8 +3401,12 @@ export const ProfileView: React.FC = () => {
                                         }
                                       }
                                     }}
-                                    disabled={isTransferringAdmin !== null || isRemovingMember !== null}
-                                    className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 font-bold text-[9px] rounded-lg transition-all border border-red-200/20 flex items-center gap-1 disabled:opacity-50"
+                                    disabled={
+                                      isTransferringAdmin !== null ||
+                                      isRemovingMember !== null
+                                    }
+                                    className={`${elderlyMode ? "text-[13px]" : "text-[9px]"
+                                      } px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-lg transition-all border border-red-200/20 flex items-center gap-1 disabled:opacity-50`}
                                   >
                                     {isRemovingMember === member.id && (
                                       <div className="w-2 h-2 border border-red-600 border-t-transparent rounded-full animate-spin" />
@@ -1847,12 +3415,21 @@ export const ProfileView: React.FC = () => {
                                   </button>
                                 </>
                               ) : (
-                                <span className="text-[9px] text-outline/80 italic pr-1">Joined</span>
+                                <span
+                                  className={`${elderlyMode ? "text-[13px]" : "text-[9px]"
+                                    } text-outline/80 italic pr-1`}
+                                >
+                                  Joined
+                                </span>
                               )
                             ) : (
                               <button
                                 onClick={async () => {
-                                  if (confirm(`Are you sure you want to delete the local profile card for ${member.name}?`)) {
+                                  if (
+                                    confirm(
+                                      `Are you sure you want to delete the local profile card for ${member.name}?`,
+                                    )
+                                  ) {
                                     setIsRemovingMember(member.id);
                                     try {
                                       await deleteFamilyMember(member.id);
@@ -1862,7 +3439,8 @@ export const ProfileView: React.FC = () => {
                                   }
                                 }}
                                 disabled={isRemovingMember === member.id}
-                                className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 font-bold text-[9px] rounded-lg transition-all border border-red-200/20 flex items-center gap-1 disabled:opacity-50"
+                                className={`${elderlyMode ? "text-[13px]" : "text-[9px]"
+                                  } px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-lg transition-all border border-red-200/20 flex items-center gap-1 disabled:opacity-50`}
                               >
                                 {isRemovingMember === member.id && (
                                   <div className="w-2 h-2 border border-red-600 border-t-transparent rounded-full animate-spin" />
@@ -1881,7 +3459,11 @@ export const ProfileView: React.FC = () => {
                     {user?.id === activeFamily.adminId ? (
                       <button
                         onClick={async () => {
-                          if (confirm("Are you sure you want to DISBAND this family group? All other members will be disconnected instantly.")) {
+                          if (
+                            confirm(
+                              "Are you sure you want to DISBAND this family group? All other members will be disconnected instantly.",
+                            )
+                          ) {
                             setIsDisbanding(true);
                             try {
                               await disbandFamily();
@@ -1891,13 +3473,19 @@ export const ProfileView: React.FC = () => {
                           }
                         }}
                         disabled={isDisbanding}
-                        className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-sm disabled:opacity-50 disabled:pointer-events-none"
+                        className={`${elderlyMode ? "text-[16px]" : "text-xs"
+                          } w-full py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-sm disabled:opacity-50 disabled:pointer-events-none`}
                       >
                         {isDisbanding ? (
                           <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                         ) : (
                           <>
-                            <span className="material-symbols-outlined text-sm">delete_forever</span>
+                            <span
+                              className={`${elderlyMode ? "text-[18px]" : "text-sm"
+                                } material-symbols-outlined`}
+                            >
+                              delete_forever
+                            </span>
                             <span>Disband Family Group</span>
                           </>
                         )}
@@ -1905,7 +3493,11 @@ export const ProfileView: React.FC = () => {
                     ) : (
                       <button
                         onClick={async () => {
-                          if (confirm("Are you sure you want to leave this family group? You will lose access to the shared scoreboard timeline.")) {
+                          if (
+                            confirm(
+                              "Are you sure you want to leave this family group? You will lose access to the shared scoreboard timeline.",
+                            )
+                          ) {
                             setIsLeaving(true);
                             try {
                               await leaveFamily();
@@ -1915,13 +3507,19 @@ export const ProfileView: React.FC = () => {
                           }
                         }}
                         disabled={isLeaving}
-                        className="w-full py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-sm disabled:opacity-50 disabled:pointer-events-none"
+                        className={`${elderlyMode ? "text-[16px]" : "text-xs"
+                          } w-full py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-sm disabled:opacity-50 disabled:pointer-events-none`}
                       >
                         {isLeaving ? (
                           <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                         ) : (
                           <>
-                            <span className="material-symbols-outlined text-sm">logout</span>
+                            <span
+                              className={`${elderlyMode ? "text-[18px]" : "text-sm"
+                                } material-symbols-outlined`}
+                            >
+                              logout
+                            </span>
                             <span>Leave Family Group</span>
                           </>
                         )}
@@ -1939,21 +3537,32 @@ export const ProfileView: React.FC = () => {
       {showDeleteAccount && (
         <div className="fixed inset-0 bg-inverse-surface/40 backdrop-blur-md z-[70] flex items-center justify-center p-4">
           <div className="w-full max-w-[340px] bg-white rounded-3xl p-6 shadow-2xl border border-outline-variant/30 flex flex-col animate-in zoom-in-95 duration-200">
-
             {/* Icon */}
             <div className="flex justify-center mb-4">
               <div className="w-14 h-14 rounded-full bg-red-100 text-red-600 flex items-center justify-center">
-                <span className="material-symbols-outlined text-2xl">delete_forever</span>
+                <span
+                  className={`${elderlyMode ? "text-[28px]" : "text-2xl"
+                    } material-symbols-outlined`}
+                >
+                  delete_forever
+                </span>
               </div>
             </div>
 
             {/* Title & Message */}
             <div className="text-center mb-6">
-              <h3 className="font-headline-md text-base text-secondary font-bold">
+              <h3
+                className={`font-headline-md ${elderlyMode ? "text-[20px]" : "text-base"
+                  }  text-secondary font-bold`}
+              >
                 Delete Account?
               </h3>
-              <p className="text-xs text-on-surface-variant leading-relaxed mt-2">
-                This will permanently delete your account and all associated data. This action cannot be undone.
+              <p
+                className={`${elderlyMode ? "text-[14px]" : "text-xs"
+                  } text-on-surface-variant leading-relaxed mt-2`}
+              >
+                This will permanently delete your account and all associated
+                data. This action cannot be undone.
               </p>
             </div>
 
@@ -1965,7 +3574,8 @@ export const ProfileView: React.FC = () => {
                   setShowDeleteAccount(false);
                 }}
                 disabled={isDeletingAccount}
-                className="flex-1 py-3 bg-surface-container hover:bg-surface-container-high text-secondary font-bold rounded-xl text-xs active:scale-[0.98] transition-all disabled:opacity-50"
+                className={`flex-1 py-3 bg-surface-container hover:bg-surface-container-high text-secondary font-bold rounded-xl  active:scale-[0.98] transition-all disabled:opacity-50 ${elderlyMode ? "text-[16px]" : "text-xs"
+                  }`}
               >
                 Cancel
               </button>
@@ -1987,7 +3597,8 @@ export const ProfileView: React.FC = () => {
                     setIsDeletingAccount(false);
                   }
                 }}
-                className="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all shadow-sm disabled:opacity-60 disabled:pointer-events-none"
+                className={`flex-1 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all shadow-sm disabled:opacity-60 disabled:pointer-events-none ${elderlyMode ? "text-[16px]" : "text-xs"
+                  }`}
               >
                 {isDeletingAccount ? (
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -1996,7 +3607,6 @@ export const ProfileView: React.FC = () => {
                 )}
               </button>
             </div>
-
           </div>
         </div>
       )}
@@ -2006,17 +3616,30 @@ export const ProfileView: React.FC = () => {
         <div className="fixed inset-0 bg-inverse-surface/40 backdrop-blur-md z-[60] flex items-center justify-center p-4">
           <div className="w-full max-w-[320px] bg-white rounded-3xl p-6 shadow-2xl border border-outline-variant/30 flex flex-col animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center mb-4">
-              <h4 className="font-headline-md text-sm text-secondary font-bold">Edit Nickname</h4>
+              <h4
+                className={`${elderlyMode ? "text-[18px]" : "text-sm"
+                  } text-secondary font-bold`}
+              >
+                Edit Nickname
+              </h4>
               <button
                 onClick={() => setEditingNicknameMemberId(null)}
                 className="w-7 h-7 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center focus:outline-none"
               >
-                <span className="material-symbols-outlined text-xs">close</span>
+                <span
+                  className={`${elderlyMode ? "text-[16px]" : "text-xs"
+                    } material-symbols-outlined`}
+                >
+                  close
+                </span>
               </button>
             </div>
             <div className="space-y-4">
               <div>
-                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider mb-1">
+                <label
+                  className={`${elderlyMode ? "text-[14px]" : "text-[10px]"
+                    } block font-bold text-outline uppercase tracking-wider mb-1`}
+                >
                   Nickname
                 </label>
                 <input
@@ -2024,7 +3647,8 @@ export const ProfileView: React.FC = () => {
                   value={editingNicknameValue}
                   onChange={(e) => setEditingNicknameValue(e.target.value)}
                   placeholder="Enter nickname"
-                  className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                  className={`w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary ${elderlyMode ? "text-[16px]" : "text-xs"
+                    }`}
                 />
               </div>
               <div className="flex gap-2">
@@ -2053,7 +3677,7 @@ export const ProfileView: React.FC = () => {
                       const saved = await nicknameService.saveNickname(
                         ownerId,
                         editingNicknameMemberId,
-                        trimmed
+                        trimmed,
                       );
 
                       setNicknameMap((prev) => ({
@@ -2067,13 +3691,15 @@ export const ProfileView: React.FC = () => {
                       alert(err?.message);
                     }
                   }}
-                  className="flex-1 py-2.5 bg-primary text-on-primary font-bold rounded-xl text-xs hover:opacity-90 active:scale-95 transition-all shadow-sm"
+                  className={`flex-1 py-2.5 bg-primary text-on-primary font-bold rounded-xl hover:opacity-90 active:scale-95 transition-all shadow-sm ${elderlyMode ? "text-[16px]" : "text-xs"
+                    }`}
                 >
                   Save
                 </button>
                 <button
                   onClick={() => setEditingNicknameMemberId(null)}
-                  className="flex-1 py-2.5 bg-surface-container text-on-surface font-bold rounded-xl text-xs hover:bg-surface-container-high transition-colors"
+                  className={`flex-1 py-2.5 bg-surface-container text-on-surface font-bold rounded-xl hover:bg-surface-container-high transition-colors ${elderlyMode ? "text-[16px]" : "text-xs"
+                    }`}
                 >
                   Cancel
                 </button>

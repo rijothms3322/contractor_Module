@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useApp } from "../../context/AppContext";
 import { MOOD_CONFIG, MoodKey } from "@/lib/mockData";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { moodService } from "@/services/moodService";
+import React from "react";
+import { useApp } from "../../context/AppContext";
 
 interface WellnessCheckInModalProps {
   isOpen: boolean;
@@ -41,7 +41,7 @@ const MOOD_STYLES: Record<MoodKey, { bg: string; border: string; text: string; h
 
 export const WellnessCheckInModal: React.FC<WellnessCheckInModalProps> = ({ isOpen, onClose }) => {
   const { addWellnessLog, wellnessLogs, user } = useApp();
-  console.log(user, 'users')
+  // console.log(user, 'users')
   if (!isOpen) return null;
 
   const t = {

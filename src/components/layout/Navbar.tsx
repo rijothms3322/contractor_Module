@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { useApp, TabType } from "../../context/AppContext";
+import { TabType, useApp } from "../../context/AppContext";
 
 export const Navbar: React.FC = () => {
   const { activeTab, setActiveTab, adminRole } = useApp();
@@ -15,7 +15,7 @@ export const Navbar: React.FC = () => {
   ] : [
     { tab: "home", icon: "home", label: "Home" },
     { tab: "health", icon: "medical_services", label: "Health" },
-    { tab: "profile", icon: "person", label: "Profile" }
+    { tab: "profile", icon: "person", label: "Profile" },
   ];
 
   return (

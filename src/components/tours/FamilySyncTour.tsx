@@ -1,7 +1,7 @@
-import { useApp } from '@/context/AppContext';
-import React, { useState } from 'react';
-import { Joyride } from 'react-joyride';
-import type { Step, TooltipRenderProps } from 'react-joyride';
+import { useApp } from "@/context/AppContext";
+import React, { useState } from "react";
+import { Joyride } from "react-joyride";
+import type { Step, TooltipRenderProps } from "react-joyride";
 
 function CustomTooltip({
   step,
@@ -13,7 +13,7 @@ function CustomTooltip({
   tooltipProps,
 }: TooltipRenderProps) {
   const isLastStep = index === size - 1;
-  const { updateUserProfile } = useApp()
+  const { updateUserProfile, elderlyMode } = useApp();
   return (
     <div
       {...tooltipProps}
@@ -24,7 +24,12 @@ function CustomTooltip({
         <button
           {...skipProps}
           onClick={(e) => {
-            updateUserProfile({ isWalkthroughShown: true, isMedicineWalkthroughShown: true, isPrescriptionWalkthroughShown: true, isWellnessHealthWalkthroughShown: true });
+            updateUserProfile({
+              isWalkthroughShown: true,
+              isMedicineWalkthroughShown: true,
+              isPrescriptionWalkthroughShown: true,
+              isWellnessHealthWalkthroughShown: true,
+            });
             skipProps.onClick(e);
           }}
           className="text-outline font-semibold text-sm hover:text-primary transition-colors cursor-pointer bg-transparent border-none"
@@ -50,7 +55,7 @@ function CustomTooltip({
             }}
             className="px-5 py-2 bg-primary text-white font-bold text-sm rounded-xl shadow-md hover:opacity-90 active:scale-95 transition-all border-none"
           >
-            {isLastStep ? 'Finish' : 'Next'}
+            {isLastStep ? "Finish" : "Next"}
           </button>
         </div>
       </div>
@@ -58,55 +63,139 @@ function CustomTooltip({
   );
 }
 
-const tourSteps: Step[] = [
-  {
-    content: (
-      <div>
-        <h3 className="font-bold text-lg">👪 Family Sync Hub</h3>
-        <p className="text-sm mt-1">Manage your family's health together. Connect with loved ones to share medication updates and monitor adherence.</p>
-      </div>
-    ),
-    placement: 'bottom',
-    target: '#family-sync-header',
-    skipBeacon: true,
-  },
-  {
-    content: (
-      <div>
-        <h3 className="font-bold text-lg">👪 Create a Family Group</h3>
-        <p className="text-sm mt-1">Create your own family group to securely manage medications and monitor your loved ones' adherence from one place.</p>
-      </div>
-    ),
-    placement: 'bottom',
-    target: '#create-family-card',
-    skipBeacon: true,
-  },
-  {
-    content: (
-      <div>
-        <h3 className="font-bold text-lg">🔗 Join an Existing Family Group</h3>
-        <p className="text-sm mt-1">Enter an invitation code from your family administrator to securely join an existing family group and stay connected.</p>
-      </div>
-    ),
-    placement: 'bottom',
-    target: '#join-family-card',
-    skipBeacon: true,
-  },
-  {
-    content: (
-      <div>
-        <h3 className="font-bold text-lg">💡 Why Family Sync?</h3>
-        <p className="text-sm mt-1">Family Sync helps caregivers and family members stay informed with shared medication schedules, reminders, and health updates.</p>
-      </div>
-    ),
-    placement: 'bottom',
-    target: '#family-sync-note',
-    skipBeacon: true,
-  },
-];
+// const tourSteps: Step[] = [
+//     {
+//       content: (
+//         <div>
+//           <h3
+//             className={`font-bold ${elderlyMode ? "text-[16px]" : "text-lg"}`}
+//           >
+//             👪 Family Sync Hub
+//           </h3>
+//           <p className={`text-sm mt-1`}>
+//             Manage your family's health together. Connect with loved ones to
+//             share medication updates and monitor adherence.
+//           </p>
+//         </div>
+//       ),
+//       placement: "bottom",
+//       target: "#family-sync-header",
+//       skipBeacon: true,
+//     },
+//     {
+//       content: (
+//         <div>
+//           <h3 className="font-bold text-lg">👪 Create a Family Group</h3>
+//           <p className="text-sm mt-1">
+//             Create your own family group to securely manage medications and
+//             monitor your loved ones' adherence from one place.
+//           </p>
+//         </div>
+//       ),
+//       placement: "bottom",
+//       target: "#create-family-card",
+//       skipBeacon: true,
+//     },
+//     {
+//       content: (
+//         <div>
+//           <h3 className="font-bold text-lg">
+//             🔗 Join an Existing Family Group
+//           </h3>
+//           <p className="text-sm mt-1">
+//             Enter an invitation code from your family administrator to securely
+//             join an existing family group and stay connected.
+//           </p>
+//         </div>
+//       ),
+//       placement: "bottom",
+//       target: "#join-family-card",
+//       skipBeacon: true,
+//     },
+//     {
+//       content: (
+//         <div>
+//           <h3 className="font-bold text-lg">💡 Why Family Sync?</h3>
+//           <p className="text-sm mt-1">
+//             Family Sync helps caregivers and family members stay informed with
+//             shared medication schedules, reminders, and health updates.
+//           </p>
+//         </div>
+//       ),
+//       placement: "bottom",
+//       target: "#family-sync-note",
+//       skipBeacon: true,
+//     },
+//   ];
 
 const FamilySyncTour: React.FC = () => {
   const [run, setRun] = useState(true);
+  const { elderlyMode } = useApp();
+
+  const tourSteps: Step[] = [
+    {
+      content: (
+        <div>
+          <h3
+            className={`font-bold ${elderlyMode ? "text-[22px]" : "text-lg"}`}
+          >
+            👪 Family Sync Hub
+          </h3>
+          <p className={`text-sm mt-1`}>
+            Manage your family's health together. Connect with loved ones to
+            share medication updates and monitor adherence.
+          </p>
+        </div>
+      ),
+      placement: "bottom",
+      target: "#family-sync-header",
+      skipBeacon: true,
+    },
+    {
+      content: (
+        <div>
+          <h3 className="font-bold text-lg">👪 Create a Family Group</h3>
+          <p className="text-sm mt-1">
+            Create your own family group to securely manage medications and
+            monitor your loved ones' adherence from one place.
+          </p>
+        </div>
+      ),
+      placement: "bottom",
+      target: "#create-family-card",
+      skipBeacon: true,
+    },
+    {
+      content: (
+        <div>
+          <h3 className="font-bold text-lg">
+            🔗 Join an Existing Family Group
+          </h3>
+          <p className="text-sm mt-1">
+            Enter an invitation code from your family administrator to securely
+            join an existing family group and stay connected.
+          </p>
+        </div>
+      ),
+      placement: "bottom",
+      target: "#join-family-card",
+      skipBeacon: true,
+    },
+    {
+      content: (
+        <div>
+          <h3 className="font-bold text-lg">💡 Why Family Sync?</h3>
+          <p className="text-sm mt-1">
+            Family Sync helps caregivers and family members stay informed with
+            shared medication schedules, reminders, and health updates.
+          </p>
+        </div>
+      ),
+      placement: "bottom",
+      target: "#family-sync-note",
+      skipBeacon: true,
+    },
+  ];
 
   return (
     <Joyride
@@ -116,15 +205,15 @@ const FamilySyncTour: React.FC = () => {
       tooltipComponent={CustomTooltip}
       styles={{
         overlay: {
-          backgroundColor: 'rgba(0,0,0,0.35)',
+          backgroundColor: "rgba(0,0,0,0.35)",
         },
       }}
       locale={{
-        back: 'Back',
-        close: 'Close',
-        last: 'Finish',
-        next: 'Next',
-        skip: 'Skip',
+        back: "Back",
+        close: "Close",
+        last: "Finish",
+        next: "Next",
+        skip: "Skip",
       }}
     />
   );

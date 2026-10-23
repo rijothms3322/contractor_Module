@@ -16,18 +16,22 @@ interface ProfileOnboardingProps {
     loadingAction?: "complete" | "skip" | null;
 }
 
-export const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete, onSkip, isLoading = false, loadingAction = null,}) => {
-    const [gender, setGender] = useState("");
+export const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete, onSkip, isLoading = false, loadingAction = null, }) => {
     const { user } = useApp();
-    console.log(user, 'y')
+
+    const [fullName, setFullName] = useState(user?.fullName || "");
+    const [bloodGroup, setBloodGroup] = useState("");
+
+    const [gender, setGender] = useState("");
     const [dob, setDob] = useState("");
     const [phone, setPhone] = useState(user?.phone_number || "");
     const [email, setEmail] = useState(user?.email || "");
     const [conditions, setConditions] = useState<string[]>([]);
     const [error, setError] = useState("");
     const today = new Date().toISOString().split("T")[0];
-
+    console.log(user)
     const conditionList = [
+        "None",
         "Diabetes",
         "Hypertension",
         "Heart Disease",
@@ -35,7 +39,6 @@ export const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete
         "Cancer",
         "Kidney Disease",
         "Others",
-        "None",
     ];
 
     const toggleCondition = (value: string) => {
@@ -89,7 +92,6 @@ export const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete
             return;
         }
 
-
         if (conditions.length === 0) {
             setError("Please select at least one health condition.");
             return;
@@ -99,103 +101,189 @@ export const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete
     };
 
     return (
-        <div className="min-h-screen bg-background flex justify-center items-center p-6">
-            <div className="w-full max-w-100 bg-white rounded-3xl p-8 shadow-xl border border-outline-variant/20 animate-in zoom-in-95 duration-300">
-                <div className="text-center mb-8">
-                    <img src="/logo.png" alt="MEDIMZ" className="h-14 mx-auto mb-4" />
-                    <h1 className="text-2xl font-bold text-on-surface">
-                        Tell us about yourself
-                    </h1>
-                    <p className="text-sm text-on-surface-variant mt-2">
-                        This helps Medimz personalize your health journey.
-                    </p>
-                </div>
+        <div className="min-h-screen bg-[#F7F8FA] flex flex-col items-center pb-32 font-sans text-[#1F2937]">
+            {/* Header */}
+            <div className="text-center mt-10 mb-8 px-6 max-w-lg">
+                <img src="/logo.png" alt="MEDIMZ" className="h-40 mx-auto mb-7" />
+                <h1 className="text-[34px] leading-tight font-extrabold
+                    bg-gradient-to-r from-primary via-[#ee7b4d] to-secondary
+                    bg-clip-text text-transparent">
+                    Tell us about yourself
+                </h1>
+                <p className="text-sm text-on-surface-variant mt-2">
+                    This helps Medimz personalize your health journey & custom care plans.
+                </p>
+            </div>
 
-                <div className="mb-6">
-                    <label className="block text-sm font-semibold text-on-surface mb-2">
-                        Email
-                    </label>
-                    <input
-                        type="email"
-                        placeholder="Enter your email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="
-                            w-full px-4 py-3 bg-surface-container/40 border border-outline-variant/40 rounded-xl
-                            text-sm text-on-surface
-                            focus:outline-none focus:border-primary transition-all
-                        "
-                    />
-                </div>
+            <div className="w-full max-w-[500px] px-4 flex flex-col gap-6">
 
-                {/* Gender */}
-                <div className="mb-6">
-                    <label className="block text-sm font-semibold text-on-surface mb-2">
-                        Gender
-                    </label>
-                    <div className="grid grid-cols-3 gap-3">
-                        {["Male", "Female", "Other"].map((item) => (
-                            <button
-                                key={item}
-                                type="button"
-                                onClick={() => setGender(item)}
-                                className={`
-                                    py-3 rounded-xl border font-medium transition-all
-                                    ${gender === item
-                                        ? "border-primary bg-primary/10 text-primary shadow-sm"
-                                        : "border-outline-variant/30 bg-surface-container-low text-on-surface-variant hover:border-primary/40"
-                                    }
-                                `}
-                            >
-                                {item}
-                            </button>
-                        ))}
+                {/* Basic Information Card */}
+                <div className="bg-white rounded-3xl p-6 shadow-[0_4px_24px_rgba(0,0,0,0.02)] border border-gray-100">
+
+                    {/* Card Header */}
+                    <div className="flex items-start gap-3 mb-3">
+                        <div className="bg-red-100 p-2 rounded-xl text-primary shrink-0">
+                            <span className="material-symbols-outlined">badge</span>
+                        </div>
+                        <div>
+                            <h2 className="text-[17px] font-bold text-gray-900">Basic Information</h2>
+                            <p className="text-[13px] text-[#6B7280]">Essential details to establish your record</p>
+                        </div>
                     </div>
+
+                    <div className="h-px bg-gray-100 w-full mb-6" />
+
+                    {/* Full Name Field */}
+                    <div className="mb-4">
+                        <label className="block text-[13px] font-semibold text-gray-800 mb-1.5">
+                            Full Name <span className="text-[#ee7b4d]">*</span>
+                        </label>
+                        <div className="relative">
+                            <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none text-gray-400">
+                                <span className="material-symbols-outlined text-md!">person</span>
+                            </div>
+                            <input
+                                type="text"
+                                placeholder="e.g. John Doe"
+                                value={fullName}
+                                onChange={(e) => setFullName(e.target.value)}
+                                className="w-full pl-9 pr-3 py-2.5 bg-[#F9FAFB] border border-[#E8DCD7] rounded-xl text-[14px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#ee7b4d] focus:ring-1 focus:ring-[#ee7b4d]/20 transition-all"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 mb-5">
+                        {/* Email */}
+                        <div>
+                            <label className="block text-[13px] font-semibold text-gray-800 mb-1.5">
+                                Email Address <span className="text-[#ee7b4d]">*</span>
+                            </label>
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none text-gray-400">
+                                    <span className="material-symbols-outlined text-md!">mail</span>
+                                </div>
+                                <input
+                                    type="email"
+                                    placeholder="e.g. john@example.com"
+                                    value={email}
+                                    disabled
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    className="w-full pl-9 pr-3 py-2.5 bg-[#F9FAFB] border border-[#E8DCD7] rounded-xl text-[14px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#ee7b4d] focus:ring-1 focus:ring-[#ee7b4d]/20 transition-all"
+                                />
+                            </div>
+                        </div>
+                        {/* Phone */}
+                        <div>
+                            <label className="block text-[13px] font-semibold text-gray-800 mb-1.5">
+                                Phone Number <span className="text-[#ee7b4d]">*</span>
+                            </label>
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none text-gray-400">
+                                    <span className="material-symbols-outlined text-md!">phone</span>
+                                </div>
+                                <input
+                                    type="tel"
+                                    placeholder="e.g. +1 (555) 000-0000"
+                                    value={phone}
+                                    disabled
+                                    onChange={(e) => setPhone(e.target.value)}
+                                    className="w-full pl-9 pr-3 py-2.5 bg-[#F9FAFB] border border-[#E8DCD7] rounded-xl text-[14px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#ee7b4d] focus:ring-1 focus:ring-[#ee7b4d]/20 transition-all"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Gender */}
+                    <div className="mb-5">
+                        <label className="block text-[13px] font-semibold text-gray-800 mb-2">
+                            Gender <span className="text-[#ee7b4d]">*</span>
+                        </label>
+                        <div className="flex bg-[#F0F4F8] p-1.5 rounded-xl">
+                            {["Male", "Female", "Other"].map((item) => (
+                                <button
+                                    key={item}
+                                    type="button"
+                                    onClick={() => setGender(item)}
+                                    className={`
+                                        flex-1 py-2.5 text-[14px] font-semibold rounded-lg transition-all duration-200
+                                        ${gender === item
+                                            ? "bg-[#ee7b4d] text-white shadow-sm"
+                                            : "text-gray-600 hover:text-gray-900"
+                                        }
+                                    `}
+                                >
+                                    {item}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        {/* Date of Birth */}
+                        <div>
+                            <label className="block text-[13px] font-semibold text-gray-800 mb-1.5">
+                                Date of Birth <span className="text-[#ee7b4d]">*</span>
+                            </label>
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none text-gray-400">
+                                    <span className="material-symbols-outlined text-md!">calendar_month</span>
+                                </div>
+                                <input
+                                    type="date"
+                                    value={dob}
+                                    max={today}
+                                    onFocus={(e) => e.currentTarget.showPicker?.()}
+                                    onClick={(e) => e.currentTarget.showPicker?.()}
+                                    onChange={(e) => setDob(e.target.value)}
+                                    className="w-full pl-9 pr-3 py-2.5 bg-[#F9FAFB] border border-[#E8DCD7] rounded-xl text-[14px] text-gray-500 focus:outline-none focus:border-[#ee7b4d] focus:ring-1 focus:ring-[#ee7b4d]/20 transition-all"
+                                />
+                            </div>
+                        </div>
+                        {/* Blood Group */}
+                        <div>
+                            <label className="block text-[13px] font-semibold text-gray-800 mb-1.5">
+                                Blood Group
+                            </label>
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none text-gray-400">
+                                    <span className="material-symbols-outlined text-md!">bloodtype</span>
+                                </div>
+                                <select
+                                    value={bloodGroup}
+                                    onChange={(e) => setBloodGroup(e.target.value)}
+                                    className="w-full pl-9 pr-8 py-2.5 bg-[#F9FAFB] border border-[#E8DCD7] rounded-xl text-[14px] text-gray-900 appearance-none focus:outline-none focus:border-[#ee7b4d] focus:ring-1 focus:ring-[#ee7b4d]/20 transition-all"
+                                >
+                                    <option value="" disabled>Select</option>
+                                    {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map(bg => (
+                                        <option key={bg} value={bg}>{bg}</option>
+                                    ))}
+                                </select>
+                                <div className="absolute inset-y-0 right-2 flex items-center pointer-events-none text-gray-400">
+                                    <span className="material-symbols-outlined text-md!">keyboard_arrow_down</span> 
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
 
-                {/* Date of Birth */}
-                <div className="mb-6">
-                    <label className="block text-sm font-semibold text-on-surface mb-2">
-                        Date of Birth
-                    </label>
-                    <input
-                        type="date"
-                        value={dob}
-                        max={today}
-                        onFocus={(e) => e.currentTarget.showPicker?.()}
-                        onClick={(e) => e.currentTarget.showPicker?.()}
-                        onChange={(e) => setDob(e.target.value)}
-                        className="
-                            w-full px-4 py-3 bg-surface-container/40 border border-outline-variant/40 rounded-xl
-                            text-sm text-on-surface
-                            focus:outline-none focus:border-primary transition-all
-                        "
-                    />
-                </div>
+                {/* Existing Conditions Card */}
+                <div className="bg-white rounded-3xl p-6 shadow-[0_4px_24px_rgba(0,0,0,0.02)] border border-gray-100">
 
-                {/* Phone Number */}
-                <div className="mb-6">
-                    <label className="block text-sm font-semibold text-on-surface mb-2">
-                        Phone Number
-                    </label>
-                    <input
-                        type="tel"
-                        placeholder="Enter your phone number"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        className="
-                            w-full px-4 py-3 bg-surface-container/40 border border-outline-variant/40 rounded-xl
-                            text-sm text-on-surface
-                            focus:outline-none focus:border-primary transition-all
-                        "
-                    />
-                </div>
+                    {/* Card Header */}
+                    <div className="flex items-start gap-3 mb-6">
+                        <div className="bg-[#EFF6F9] p-2.5 rounded-xl text-[#4A7A9C] shrink-0">
+                           <span className="material-symbols-outlined text-md!">health_and_safety</span> 
+                        </div>
+                        <div>
+                            <h2 className="text-[17px] font-bold text-gray-900">Existing Conditions</h2>
+                            <p className="text-[13px] text-[#6B7280]">Tailors your care recommendations</p>
+                        </div>
+                    </div>
 
-                {/* Conditions */}
-                <div className="mb-8">
-                    <label className="block text-sm font-semibold text-on-surface mb-2">
-                        Existing Conditions
-                    </label>
+                    <div className="h-px bg-gray-100 w-full mb-6" />
+
+                    {/* Condition Grid */}
                     <div className="grid grid-cols-2 gap-3">
                         {conditionList.map((item) => {
                             const isSelected = conditions.includes(item);
@@ -205,63 +293,70 @@ export const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete
                                     type="button"
                                     onClick={() => toggleCondition(item)}
                                     className={`
-                                        py-2.5 px-3 rounded-xl border text-sm font-medium transition-all
-                                        flex items-center gap-2
+                                        flex items-center justify-between py-3 px-4 rounded-xl border transition-all duration-200
                                         ${isSelected
-                                            ? "border-primary bg-primary/10 text-primary shadow-sm"
-                                            : "border-outline-variant/30 bg-surface-container-low text-on-surface-variant hover:border-primary/40"
+                                            ? "border-[#ee7b4d] bg-[#FEF0EC]"
+                                            : "border-[#E8DCD7] bg-white hover:border-[#ee7b4d]/50"
                                         }
                                     `}
                                 >
-                                    <span
-                                        className={`
-                                            w-4 h-4 rounded border flex items-center justify-center text-xs
-                                            ${isSelected
-                                                ? "border-primary bg-primary text-white"
-                                                : "border-outline-variant/50 bg-white"
-                                            }
-                                        `}
-                                    >
-                                        {isSelected && "✓"}
-                                    </span>
-                                    {item}
+                                    <div className="flex items-center gap-2.5 overflow-hidden">
+                                        <div className={`w-2 h-2 rounded-full shrink-0 ${isSelected ? 'bg-[#ee7b4d]' : 'bg-[#D1BFA9]'}`} />
+                                        <span className={`text-[13px] font-semibold truncate ${isSelected ? 'text-[#ee7b4d]' : 'text-gray-700'}`}>
+                                            {item}
+                                        </span>
+                                    </div>
+                                    <div className={`
+                                        w-[18px] h-[18px] rounded-[4px] border flex items-center justify-center shrink-0 transition-colors
+                                        ${isSelected
+                                            ? "border-[#ee7b4d] bg-[#ee7b4d]"
+                                            : "border-[#E8DCD7] bg-white"
+                                        }
+                                    `}>
+                                        {isSelected && (
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                                <polyline points="20 6 9 17 4 12"></polyline>
+                                            </svg>
+                                        )}
+                                    </div>
                                 </button>
                             );
                         })}
                     </div>
                 </div>
 
-
+                {/* Error Message */}
                 {error && (
-                    <div className="mb-5 p-3 bg-error-container/20 text-error text-sm rounded-xl border border-error/20">
+                    <div className="p-3.5 bg-red-50 text-red-600 text-[13px] font-medium rounded-xl border border-red-100 flex items-start gap-2 animate-in fade-in slide-in-from-top-2">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
                         {error}
                     </div>
                 )}
+            </div>
 
-                <button
-                    onClick={handleContinue}
-                    disabled={isLoading}
-                    className="w-full py-3.5 bg-primary text-on-primary font-bold rounded-xl shadow-md hover:opacity-90 active:scale-98 transition-all"
-                >
-                   {loadingAction === "complete" ? (
-                        <div className="flex items-center justify-center gap-2">
-                            <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        </div>
-                    ) : 'Continue →'}
-                </button>
-
-                <button
-                    onClick={onSkip}
-                    disabled={isLoading}
-                    className="w-full mt-3 text-sm text-on-surface-variant hover:text-primary transition-colors"
-                >
-                    {loadingAction === "skip" ? (
-                        <div className="flex items-center justify-center gap-2">
-                            <span className="w-4 h-4 border-2 border-outline-variant/40 border-t-primary rounded-full animate-spin" />
-                            Skipping...
-                        </div>
-                    ) : 'Skip for now'}
-                </button>
+            {/* Sticky Bottom Bar for Continue Button */}
+            <div className="w-full">
+                <div className="max-w-[500px] mx-auto p-4 flex flex-col items-center">
+                    <button
+                        onClick={handleContinue}
+                        disabled={isLoading}
+                        className="w-full py-3.5 bg-[#ee7b4d] text-white font-bold text-[16px] rounded-xl shadow-[0_4px_14px_rgba(242,108,66,0.3)] hover:bg-[#E05A31] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                    >
+                        {loadingAction === "complete" ? (
+                            <div className="flex items-center justify-center gap-2">
+                                <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            </div>
+                        ) : (
+                            <>
+                                Continue
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                                    <polyline points="12 5 19 12 12 19"></polyline>
+                                </svg>
+                            </>
+                        )}
+                    </button>
+                </div>
             </div>
         </div>
     );

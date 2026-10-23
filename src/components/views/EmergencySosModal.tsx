@@ -23,9 +23,20 @@ const SOS_RELATIONS: { key: SOSRelation; label: string }[] = [
   { key: "other", label: "Other" },
 ];
 
-export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, onClose }) => {
-  const { user, familyMembers, medicines, reminders } = useApp();
-  const [activeScreen, setActiveScreen] = useState<"setup" | "menu" | "location" | "profile" | "meds" | "allergies" | "ambulance">("menu");
+export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({
+  isOpen,
+  onClose,
+}) => {
+  const { user, familyMembers, medicines, reminders, elderlyMode } = useApp();
+  const [activeScreen, setActiveScreen] = useState<
+    | "setup"
+    | "menu"
+    | "location"
+    | "profile"
+    | "meds"
+    | "allergies"
+    | "ambulance"
+  >("menu");
 
   // Contacts list
   const [contacts, setContacts] = useState<SOSContact[]>([]);
@@ -47,12 +58,15 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
 
   // Ambulance settings (unchanged)
   const [countryCode, setCountryCode] = useState("IN");
-  const countryEmergencyNumbers: Record<string, { name: string; number: string }> = {
+  const countryEmergencyNumbers: Record<
+    string,
+    { name: string; number: string }
+  > = {
     US: { name: "United States", number: "911" },
     IN: { name: "India", number: "108" },
     UK: { name: "United Kingdom", number: "999" },
     AE: { name: "UAE", number: "999" },
-    CA: { name: "Canada", number: "911" }
+    CA: { name: "Canada", number: "911" },
   };
 
   useEffect(() => {
@@ -101,10 +115,10 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
   // Cleanup location
   useEffect(() => {
     return () => {
-      if (locationIntervalRef.current) clearInterval(locationIntervalRef.current);
+      if (locationIntervalRef.current)
+        clearInterval(locationIntervalRef.current);
     };
   }, []);
-
 
   const pickContact = async () => {
     try {
@@ -123,14 +137,9 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
         return;
       }
 
-      const name =
-        contact.name?.display ||
-        contact.name?.given ||
-        "";
+      const name = contact.name?.display || contact.name?.given || "";
 
-      const phone =
-        contact.phones?.[0]?.number ||
-        "";
+      const phone = contact.phones?.[0]?.number || "";
 
       setFormName(name);
       setFormPhone(phone);
@@ -138,7 +147,6 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
       console.error("Contact picker failed:", error);
     }
   };
-
 
   // --- Fetch all contacts ---
   const fetchContacts = async () => {
@@ -232,7 +240,7 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
   const handleFamilySelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const memberId = e.target.value;
     setSelectedFamilyMember(memberId);
-    const member = familyMembers.find(m => m.id === memberId);
+    const member = familyMembers.find((m) => m.id === memberId);
     if (member) {
       setFormName(member.name);
       setFormPhone(member.phone || "");
@@ -283,18 +291,15 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
       if (permissions.location !== "granted") {
         permissions = await Geolocation.requestPermissions();
 
-        console.log(
-          "Location permission after request:",
-          permissions.location
-        );
+        console.log("Location permission after request:", permissions.location);
       }
 
       // Still not granted
       if (permissions.location !== "granted") {
         alert(
           "Location permission is required.\n\n" +
-          "Please enable Location permission for this app in Android Settings, " +
-          "then come back and try again."
+            "Please enable Location permission for this app in Android Settings, " +
+            "then come back and try again.",
         );
 
         return;
@@ -309,7 +314,7 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
 
       alert(
         "Unable to access your location.\n\n" +
-        "Please enable Location permission in Android Settings and try again."
+          "Please enable Location permission in Android Settings and try again.",
       );
     } finally {
       setLoading(false);
@@ -343,10 +348,7 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
 
     await updateLocation();
 
-    locationIntervalRef.current = setInterval(
-      updateLocation,
-      4000
-    );
+    locationIntervalRef.current = setInterval(updateLocation, 4000);
   };
 
   const shareLocationNative = async () => {
@@ -388,19 +390,22 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
             text: shareText,
           });
           return;
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
 
       // Clipboard fallback
       try {
         await navigator.clipboard.writeText(shareText);
-        alert("SOS message copied to clipboard! Paste it in WhatsApp / SMS / Email.");
+        alert(
+          "SOS message copied to clipboard! Paste it in WhatsApp / SMS / Email.",
+        );
       } catch {
         alert("Could not share. Please copy manually:\n\n" + shareText);
       }
     }
   };
-
 
   const stopLocationSharing = () => {
     setIsSharingLocation(false);
@@ -412,12 +417,15 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
     setLongitude(null);
   };
 
-  // --- share medical profile --- 
+  // --- share medical profile ---
   const shareMedicalProfile = async () => {
     // Build each section as an array of lines; skip empty ones
     const patientLines: string[] = [];
     if (user?.fullName) patientLines.push(`Name: ${user.fullName}`);
-    if (user?.age) patientLines.push(`Age: ${user.age} yrs${user.gender ? ` (${user.gender})` : ""}`);
+    if (user?.age)
+      patientLines.push(
+        `Age: ${user.age} yrs${user.gender ? ` (${user.gender})` : ""}`,
+      );
     if (user?.bloodGroup) patientLines.push(`Blood Group: ${user.bloodGroup}`);
 
     const conditionLines =
@@ -428,9 +436,9 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
     const medLines =
       userOnlyMedicines.length > 0
         ? userOnlyMedicines.map(
-          (m) =>
-            `• ${m.name} (${m.dosage}) — ${m.instructions || "As directed"}`
-        )
+            (m) =>
+              `• ${m.name} (${m.dosage}) — ${m.instructions || "As directed"}`,
+          )
         : ["• No medicines configured"];
 
     // Compose the final message with sections, joining only non-empty blocks
@@ -472,7 +480,7 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
       try {
         await navigator.clipboard.writeText(shareText);
         alert(
-          "Medical profile copied to clipboard! Paste it in WhatsApp / SMS / Email."
+          "Medical profile copied to clipboard! Paste it in WhatsApp / SMS / Email.",
         );
       } catch {
         alert("Could not share. Please copy manually:\n\n" + shareText);
@@ -480,7 +488,7 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
     }
   };
 
-   if (!isOpen) return null;    
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-surface-container/95 backdrop-blur-md scroll-auto! flex items-center justify-center p-4 animate-in fade-in duration-300">
@@ -497,23 +505,64 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
         {activeScreen === "setup" && (
           <div className="space-y-4">
             <div className="text-center pb-2">
-              <span className="material-symbols-outlined text-4xl text-red-500 animate-pulse">contact_phone</span>
-              <h2 className="font-headline-lg text-lg font-extrabold text-secondary mt-1">Emergency Contacts</h2>
-              <p className="font-body-md text-xs text-on-surface-variant">
-                {contacts.length === 0 ? "Add your first emergency contact." : "Manage your emergency contacts."}
+              <span
+                className={`material-symbols-outlined ${
+                  elderlyMode ? "text-5xl" : "text-4xl"
+                } text-red-500 animate-pulse`}
+              >
+                contact_phone
+              </span>
+              <h2
+                className={`font-headline-lg text-lg font-extrabold text-secondary mt-1 ${
+                  elderlyMode ? "text-[24px]" : "text-lg"
+                }`}
+              >
+                Emergency Contacts
+              </h2>
+              <p
+                className={`font-body-md text-xs text-on-surface-variant ${
+                  elderlyMode ? "text-[16px]" : "text-xs"
+                }`}
+              >
+                {contacts.length === 0
+                  ? "Add your first emergency contact."
+                  : "Manage your emergency contacts."}
               </p>
             </div>
 
             {/* Contact List */}
             <div className="space-y-2 max-h-48 overflow-y-auto">
               {contacts.length === 0 ? (
-                <p className="text-xs text-on-surface-variant italic text-center py-2">No contacts saved yet.</p>
+                <p
+                  className={`text-xs text-on-surface-variant italic text-center py-2 ${
+                    elderlyMode ? "text-[16px]" : "text-xs"
+                  }`}
+                >
+                  No contacts saved yet.
+                </p>
               ) : (
                 contacts.map((contact) => (
-                  <div key={contact.id} className="flex items-center justify-between p-2 bg-surface-container-low rounded-xl border border-outline-variant/20">
+                  <div
+                    key={contact.id}
+                    className="flex items-center justify-between p-2 bg-surface-container-low rounded-xl border border-outline-variant/20"
+                  >
                     <div className="min-w-0 flex-1">
-                      <p className="font-bold text-xs text-secondary truncate">{contact.full_name}</p>
-                      <p className="text-[10px] text-on-surface-variant truncate">{contact.phone_number} • {SOS_RELATIONS.find(r => r.key === contact.relation)?.label || contact.relation}</p>
+                      <p
+                        className={`font-bold text-xs text-secondary truncate ${
+                          elderlyMode ? "text-[16px]" : "text-xs"
+                        }`}
+                      >
+                        {contact.full_name}
+                      </p>
+                      <p
+                        className={`text-[10px] text-on-surface-variant truncate ${
+                          elderlyMode ? "text-[16px]" : "text-xs"
+                        }`}
+                      >
+                        {contact.phone_number} •{" "}
+                        {SOS_RELATIONS.find((r) => r.key === contact.relation)
+                          ?.label || contact.relation}
+                      </p>
                     </div>
                     <div className="flex gap-1 flex-shrink-0">
                       <button
@@ -521,14 +570,26 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
                         onClick={() => startEdit(contact)}
                         className="py-0.5 px-1 rounded hover:bg-surface-container-high text-secondary"
                       >
-                        <span className="material-symbols-outlined text-sm">edit</span>
+                        <span
+                          className={`material-symbols-outlined ${
+                            elderlyMode ? "text-[18px]" : "text-sm"
+                          }`}
+                        >
+                          edit
+                        </span>
                       </button>
                       <button
                         type="button"
                         onClick={() => handleDeleteContact(contact.id)}
                         className="py-0.5 px-1 rounded hover:bg-red-50 text-red-500"
                       >
-                        <span className="material-symbols-outlined text-sm">delete</span>
+                        <span
+                          className={`material-symbols-outlined ${
+                            elderlyMode ? "text-[18px]" : "text-sm"
+                          }`}
+                        >
+                          delete
+                        </span>
                       </button>
                       <button
                         type="button"
@@ -538,7 +599,13 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
                         }}
                         className="py-0.5 px-1 rounded hover:bg-emerald-50 text-emerald-600"
                       >
-                        <span className="material-symbols-outlined text-sm">Call</span>
+                        <span
+                          className={`material-symbols-outlined ${
+                            elderlyMode ? "text-[18px]" : "text-sm"
+                          }`}
+                        >
+                          Call
+                        </span>
                       </button>
                     </div>
                   </div>
@@ -556,7 +623,9 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
                   <select
                     value={selectedFamilyMember}
                     onChange={handleFamilySelect}
-                    className="w-full px-3 py-2 border border-outline-variant/40 rounded-xl font-label-md text-xs bg-surface-container-low"
+                    className={`w-full px-3 py-2 border border-outline-variant/40 rounded-xl font-label-md text-xs bg-surface-container-low ${
+                      elderlyMode ? "text-[16px]" : "text-xs"
+                    }`}
                   >
                     <option value="">-- Select from family sync --</option>
                     {familyMembers.map((member) => (
@@ -572,7 +641,9 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
                     placeholder="Full Name"
                     value={formName}
                     onChange={(e) => setFormName(e.target.value)}
-                    className="w-full px-3 py-2 pr-10 border border-outline-variant/40 rounded-xl font-label-md text-xs bg-surface-container-low"
+                    className={`w-full px-3 py-2 pr-10 border border-outline-variant/40 rounded-xl font-label-md text-xs bg-surface-container-low ${
+                      elderlyMode ? "text-[16px]" : "text-xs"
+                    }`}
                   />
 
                   <button
@@ -592,15 +663,23 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
                     placeholder="Phone Number"
                     value={formPhone}
                     onChange={(e) => setFormPhone(e.target.value)}
-                    className="px-3 py-2 border border-outline-variant/40 rounded-xl font-label-md text-xs bg-surface-container-low"
+                    className={`px-3 py-2 border border-outline-variant/40 rounded-xl font-label-md text-xs bg-surface-container-low ${
+                      elderlyMode ? "text-[16px]" : "text-xs"
+                    }`}
                   />
                   <select
                     value={formRelation}
-                    onChange={(e) => setFormRelation(e.target.value as SOSRelation)}
-                    className="px-3 py-2 border border-outline-variant/40 rounded-xl font-label-md text-xs bg-surface-container-low"
+                    onChange={(e) =>
+                      setFormRelation(e.target.value as SOSRelation)
+                    }
+                    className={`px-3 py-2 border border-outline-variant/40 rounded-xl font-label-md text-xs bg-surface-container-low ${
+                      elderlyMode ? "text-[16px]" : "text-xs"
+                    }`}
                   >
                     {SOS_RELATIONS.map((rel) => (
-                      <option key={rel.key} value={rel.key}>{rel.label}</option>
+                      <option key={rel.key} value={rel.key}>
+                        {rel.label}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -609,7 +688,9 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
                     type="button"
                     onClick={handleSaveContact}
                     disabled={loading}
-                    className="flex-1 py-2 rounded-xl bg-primary text-white font-label-md text-xs font-bold hover:opacity-95 shadow-md disabled:opacity-50"
+                    className={`flex-1 py-2 ${
+                      elderlyMode ? "text-[16px]" : "text-xs"
+                    } rounded-xl bg-primary text-white font-label-md  font-bold hover:opacity-95 shadow-md disabled:opacity-50`}
                   >
                     {editingId ? "Update" : "Add"} Contact
                   </button>
@@ -617,7 +698,9 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
                     <button
                       type="button"
                       onClick={cancelEdit}
-                      className="px-4 py-2 rounded-xl border border-outline-variant/40 font-label-md text-xs hover:bg-surface-container-low"
+                      className={`px-4 py-2 rounded-xl border border-outline-variant/40 font-label-md ${
+                        elderlyMode ? "text-[16px]" : "text-xs"
+                      } hover:bg-surface-container-low`}
                     >
                       Cancel
                     </button>
@@ -630,7 +713,9 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
               <button
                 type="button"
                 onClick={onClose}
-                className="w-1/2 py-2.5 rounded-xl border border-outline-variant/40 font-label-md text-xs font-bold hover:bg-surface-container-low"
+                className={`w-1/2 py-2.5 rounded-xl border border-outline-variant/40 font-label-md ${
+                  elderlyMode ? "text-[16px]" : "text-xs"
+                } font-bold hover:bg-surface-container-low`}
               >
                 Cancel
               </button>
@@ -643,7 +728,9 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
                     alert("Please add at least one emergency contact.");
                   }
                 }}
-                className="w-1/2 py-2.5 rounded-xl bg-primary text-white font-label-md text-xs font-bold hover:opacity-95 shadow-md"
+                className={`w-1/2 py-2.5 rounded-xl bg-primary text-white font-label-md ${
+                  elderlyMode ? "text-[16px]" : "text-xs"
+                } font-bold hover:opacity-95 shadow-md`}
               >
                 Proceed
               </button>
@@ -655,22 +742,52 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
         {activeScreen === "menu" && (
           <div className="space-y-4 text-center">
             <div>
-              <span className="material-symbols-outlined text-5xl text-red-500 animate-bounce">sos</span>
-              <h2 className="font-headline-lg text-lg font-black text-secondary mt-1">Emergency Assistance</h2>
-              <p className="font-body-md text-xs text-on-surface-variant">Need immediate help? Select an option below.</p>
+              <span
+                className={`material-symbols-outlined text-5xl text-red-500 animate-bounce ${
+                  elderlyMode ? "text-[52px]" : "text-5xl"
+                }`}
+              >
+                sos
+              </span>
+              <h2
+                className={`font-headline-lg ${
+                  elderlyMode ? "text-[22px]" : "text-lg"
+                } font-black text-secondary mt-1`}
+              >
+                Emergency Assistance
+              </h2>
+              <p
+                className={`${
+                  elderlyMode ? "text-[16px]" : "text-xs"
+                } text-on-surface-variant`}
+              >
+                Need immediate help? Select an option below.
+              </p>
             </div>
 
             <div className="grid gap-2 text-left">
               <div className="relative">
                 <button
                   onClick={() => setShowContactsDropdown(!showContactsDropdown)}
-                  className="w-full py-3 px-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-label-md text-xs font-bold flex items-center justify-between shadow-md transition-all active:scale-98"
+                  className={`w-full py-3 px-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-label-md ${
+                    elderlyMode ? "text-[16px]" : "text-xs"
+                  } font-bold flex items-center justify-between shadow-md transition-all active:scale-98`}
                 >
                   <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-sm text-white">phone_in_talk</span>
+                    <span
+                      className={`material-symbols-outlined ${
+                        elderlyMode ? "text-[18px]" : "text-sm"
+                      } text-white`}
+                    >
+                      phone_in_talk
+                    </span>
                     <span>Call Emergency Contact</span>
                   </div>
-                  <span className="material-symbols-outlined text-sm text-white">
+                  <span
+                    className={`material-symbols-outlined ${
+                      elderlyMode ? "text-[18px]" : "text-sm"
+                    } text-white`}
+                  >
                     {showContactsDropdown ? "expand_less" : "expand_more"}
                   </span>
                 </button>
@@ -678,7 +795,13 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
                 {showContactsDropdown && (
                   <div className="absolute left-0 right-0 mt-1 bg-white border border-outline-variant/30 rounded-xl shadow-lg z-20 max-h-48 overflow-y-auto p-2">
                     {contacts.length === 0 ? (
-                      <p className="text-xs text-on-surface-variant italic text-center py-2">No contacts saved.</p>
+                      <p
+                        className={`${
+                          elderlyMode ? "text-[16px]" : "text-xs"
+                        } text-on-surface-variant italic text-center py-2`}
+                      >
+                        No contacts saved.
+                      </p>
                     ) : (
                       contacts.map((contact) => (
                         <div
@@ -690,10 +813,28 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
                           }}
                         >
                           <div className="text-left">
-                            <p className="font-bold text-xs text-secondary">{contact.full_name}</p>
-                            <p className="text-[10px] text-on-surface-variant">{contact.phone_number}</p>
+                            <p
+                              className={`font-bold ${
+                                elderlyMode ? "text-[16px]" : "text-xs"
+                              } text-on-surface-variant italic text-center py-2`}
+                            >
+                              {contact.full_name}
+                            </p>
+                            <p
+                              className={`${
+                                elderlyMode ? "text-[16px]" : "text-xs"
+                              } text-on-surface-variant italic text-center py-2`}
+                            >
+                              {contact.phone_number}
+                            </p>
                           </div>
-                          <span className="material-symbols-outlined text-[10px] text-emerald-600">Call</span>
+                          <span
+                            className={`material-symbols-outlined ${
+                              elderlyMode ? "text-[14px]" : "text-[10px]"
+                            } text-emerald-600`}
+                          >
+                            Call
+                          </span>
                         </div>
                       ))
                     )}
@@ -705,24 +846,52 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
               <button
                 onClick={handleShareLocation}
                 disabled={loading}
-                className="w-full py-3 px-4 bg-blue-500 hover:bg-blue-600 text-white rounded-2xl font-label-md text-xs font-bold flex items-center justify-between shadow-md transition-all active:scale-98"
+                className={`w-full py-3 px-4 bg-blue-500 hover:bg-blue-600 text-white rounded-2xl font-label-md ${
+                  elderlyMode ? "text-[16px]" : "text-xs"
+                } font-bold flex items-center justify-between shadow-md transition-all active:scale-98`}
               >
                 <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-sm text-white">share_location</span>
+                  <span
+                    className={`material-symbols-outlined ${
+                      elderlyMode ? "text-[18px]" : "text-sm"
+                    } text-white`}
+                  >
+                    share_location
+                  </span>
                   <span>Share Live GPS Location</span>
                 </div>
-                <span className="material-symbols-outlined text-sm text-white">arrow_forward</span>
+                <span
+                  className={`material-symbols-outlined ${
+                    elderlyMode ? "text-[18px]" : "text-sm"
+                  } text-white`}
+                >
+                  arrow_forward
+                </span>
               </button>
 
               <button
                 onClick={() => setActiveScreen("profile")}
-                className="w-full py-3 px-4 bg-surface-container-high hover:bg-surface-container-highest text-secondary rounded-2xl font-label-md text-xs font-bold flex items-center justify-between border border-outline-variant/20 shadow-sm transition-all active:scale-98"
+                className={`w-full py-3 px-4 bg-surface-container-high hover:bg-surface-container-highest text-secondary rounded-2xl font-label-md ${
+                  elderlyMode ? "text-[16px]" : "text-xs"
+                } font-bold flex items-center justify-between border border-outline-variant/20 shadow-sm transition-all active:scale-98`}
               >
                 <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-sm text-secondary">badge</span>
+                  <span
+                    className={`material-symbols-outlined ${
+                      elderlyMode ? "text-[18px]" : "text-sm"
+                    } text-secondary`}
+                  >
+                    badge
+                  </span>
                   <span>Share Medical Profile</span>
                 </div>
-                <span className="material-symbols-outlined text-sm text-secondary">arrow_forward</span>
+                <span
+                  className={`material-symbols-outlined ${
+                    elderlyMode ? "text-[18px]" : "text-sm"
+                  } text-secondary`}
+                >
+                  arrow_forward
+                </span>
               </button>
 
               {/* <button
@@ -752,13 +921,30 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
                   const config = countryEmergencyNumbers[countryCode];
                   window.location.href = `tel:${config.number}`;
                 }}
-                className="w-full py-3 px-4 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-label-md text-xs font-bold flex items-center justify-between shadow-md transition-all active:scale-98"
+                className={`w-full py-3 px-4 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-label-md ${
+                  elderlyMode ? "text-[16px]" : "text-xs"
+                } font-bold flex items-center justify-between shadow-md transition-all active:scale-98`}
               >
                 <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-sm text-white">medical_services</span>
-                  <span>Call Ambulance Dispatch ({countryEmergencyNumbers[countryCode].number})</span>
+                  <span
+                    className={`material-symbols-outlined ${
+                      elderlyMode ? "text-[18px]" : "text-sm"
+                    } text-white`}
+                  >
+                    medical_services
+                  </span>
+                  <span>
+                    Call Ambulance Dispatch (
+                    {countryEmergencyNumbers[countryCode].number})
+                  </span>
                 </div>
-                <span className="material-symbols-outlined text-sm text-white">call</span>
+                <span
+                  className={`material-symbols-outlined ${
+                    elderlyMode ? "text-[18px]" : "text-sm"
+                  } text-white`}
+                >
+                  call
+                </span>
               </button>
             </div>
 
@@ -768,13 +954,17 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
                   setActiveScreen("setup");
                   resetForm();
                 }}
-                className="w-1/2 py-2.5 rounded-xl border border-outline-variant/30 font-label-md text-xs hover:bg-surface-container-low"
+                className={`w-1/2 py-2.5 rounded-xl ${
+                  elderlyMode ? "text-[16px]" : "text-xs"
+                } border border-outline-variant/30 font-label-md hover:bg-surface-container-low`}
               >
                 Edit Contacts
               </button>
               <button
                 onClick={onClose}
-                className="w-1/2 py-2.5 rounded-xl bg-outline text-white font-label-md text-xs font-bold hover:opacity-95"
+                className={`w-1/2 py-2.5 rounded-xl ${
+                  elderlyMode ? "text-[16px]" : "text-xs"
+                } bg-outline text-white font-label-md font-bold hover:opacity-95`}
               >
                 ❌ Close SOS
               </button>
@@ -787,27 +977,76 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
           <div className="space-y-4 text-center">
             <div className="w-full flex justify-end">
               <button
-                onClick={() => { stopLocationSharing(); setActiveScreen("menu"); }}
-                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-container-high transition-colors"
+                onClick={() => {
+                  stopLocationSharing();
+                  setActiveScreen("menu");
+                }}
+                className={`w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-container-high ${
+                  elderlyMode ? "text-[16px]" : "text-sm"
+                } transition-colors`}
                 title="Close"
               >
-                <span className="material-symbols-outlined text-sm text-secondary">close</span>
+                <span
+                  className={`material-symbols-outlined ${
+                    elderlyMode ? "text-[18px]" : "text-sm"
+                  } text-secondary`}
+                >
+                  close
+                </span>
               </button>
             </div>
             <div>
-              <span className="material-symbols-outlined text-5xl text-blue-500 animate-ping">location_searching</span>
-              <h2 className="font-headline-lg text-lg font-black text-secondary mt-3">Live Location Sharing</h2>
-              <p className="font-body-md text-xs text-on-surface-variant">Sharing location with emergency contact...</p>
+              <span
+                className={`material-symbols-outlined ${
+                  elderlyMode ? "text-[52px]" : "text-5xl"
+                } text-blue-500 animate-ping`}
+              >
+                location_searching
+              </span>
+              <h2
+                className={`font-headline-lg text-lg font-black text-secondary mt-3 ${
+                  elderlyMode ? "text-[22px]" : "text-lg"
+                }`}
+              >
+                Live Location Sharing
+              </h2>
+              <p
+                className={`font-body-md ${
+                  elderlyMode ? "text-[16px]" : "text-xs"
+                } text-on-surface-variant`}
+              >
+                Sharing location with emergency contact...
+              </p>
             </div>
 
-            <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 text-left font-label-md text-xs text-blue-900 space-y-2">
+            <div
+              className={`bg-blue-50 border border-blue-100 rounded-2xl p-4 text-left font-label-md text-xs text-blue-900 space-y-2 ${
+                elderlyMode ? "text-[16px]" : "text-xs"
+              }`}
+            >
               <div className="flex items-center gap-2 font-bold">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
                 <span>GPS Simulator Active</span>
               </div>
-              <p>Latitude: <span className="font-mono font-bold">{latitude?.toFixed(6) || "Locating..."}</span></p>
-              <p>Longitude: <span className="font-mono font-bold">{longitude?.toFixed(6) || "Locating..."}</span></p>
-              <p className="text-[10px] text-blue-700/80">Location parameters are automatically updated every 4 seconds.</p>
+              <p>
+                Latitude:{" "}
+                <span className="font-mono font-bold">
+                  {latitude?.toFixed(6) || "Locating..."}
+                </span>
+              </p>
+              <p>
+                Longitude:{" "}
+                <span className="font-mono font-bold">
+                  {longitude?.toFixed(6) || "Locating..."}
+                </span>
+              </p>
+              <p
+                className={`text-blue-700/80 ${
+                  elderlyMode ? "text-[14px]" : "text-[10px]"
+                }`}
+              >
+                Location parameters are automatically updated every 4 seconds.
+              </p>
             </div>
 
             <div className="pt-2 flex gap-2">
@@ -815,9 +1054,17 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
                 type="button"
                 onClick={shareLocationNative}
                 disabled={latitude === null || longitude === null}
-                className="w-full py-3 rounded-xl bg-primary hover:bg-on-primary-fixed-variant text-white font-label-md text-xs font-bold flex items-center justify-center gap-2 shadow-md transition-all active:scale-98 disabled:opacity-50 disabled:pointer-events-none"
+                className={`w-full py-3 rounded-xl bg-primary hover:bg-on-primary-fixed-variant text-white font-label-md text-xs font-bold flex items-center justify-center gap-2 shadow-md transition-all active:scale-98 disabled:opacity-50 disabled:pointer-events-none ${
+                  elderlyMode ? "text-[16px]" : "text-xs"
+                }`}
               >
-                <span className="material-symbols-outlined text-sm text-white">share</span>
+                <span
+                  className={`material-symbols-outlined ${
+                    elderlyMode ? "text-[18px]" : "text-sm"
+                  } text-white`}
+                >
+                  share
+                </span>
                 <span>
                   {latitude === null ? "Waiting for GPS..." : "Share via"}
                 </span>
@@ -830,49 +1077,121 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
         {activeScreen === "profile" && (
           <div className="flex flex-col gap-5">
             <div className="space-y-4 text-left">
-              <h3 className="font-headline-lg text-base text-secondary font-black text-center border-b pb-2">🚑 Medical Summary Card</h3>
-              <div className="space-y-2 font-label-md text-xs">
-                <p><strong className="text-secondary">Patient Name:</strong> {user?.fullName || "Sarah D'Souza"}</p>
-                <p><strong className="text-secondary">Age:</strong> {user?.age || 68} yrs ({user?.gender || "Female"})</p>
-                <p><strong className="text-secondary">Blood Group:</strong> {user?.bloodGroup || "O+"}</p>
-                <p><strong className="text-secondary">Chronic Diagnoses:</strong> {user?.medicalConditions && user.medicalConditions.length > 0 ? user.medicalConditions.join(", ") : "None Configured"}</p>
+              <h3
+                className={`font-headline-lg text-secondary font-black text-center border-b pb-2 ${
+                  elderlyMode ? "text-[20px]" : "text-base"
+                }`}
+              >
+                🚑 Medical Summary Card
+              </h3>
+              <div
+                className={`space-y-2 font-label-md ${
+                  elderlyMode ? "text-[16px]" : "text-xs"
+                }`}
+              >
+                <p>
+                  <strong className="text-secondary">Patient Name:</strong>{" "}
+                  {user?.fullName || "Sarah D'Souza"}
+                </p>
+                <p>
+                  <strong className="text-secondary">Age:</strong>{" "}
+                  {user?.age || 68} yrs ({user?.gender || "Female"})
+                </p>
+                <p>
+                  <strong className="text-secondary">Blood Group:</strong>{" "}
+                  {user?.bloodGroup || "O+"}
+                </p>
+                <p>
+                  <strong className="text-secondary">Chronic Diagnoses:</strong>{" "}
+                  {user?.medicalConditions && user.medicalConditions.length > 0
+                    ? user.medicalConditions.join(", ")
+                    : "None Configured"}
+                </p>
               </div>
             </div>
 
             <div className="space-y-4 text-left">
-              <h3 className="font-headline-lg text-base text-secondary font-black text-center border-b pb-2">⚠️ Chronic Conditions & Alerts</h3>
-              <div className="p-4 bg-orange-50 border border-orange-100 rounded-2xl font-label-md text-xs text-orange-900 space-y-3">
-                <p className="font-bold text-red-500">Active High Risk Profile</p>
-                {user?.medicalConditions && user.medicalConditions.length > 0 ? (
+              <h3
+                className={`font-headline-lg text-secondary font-black text-center border-b pb-2 ${
+                  elderlyMode ? "text-[20px]" : "text-base"
+                }`}
+              >
+                ⚠️ Chronic Conditions & Alerts
+              </h3>
+              <div
+                className={`p-4 bg-orange-50 border border-orange-100 rounded-2xl font-label-md ${
+                  elderlyMode ? "text-[16px]" : "text-xs"
+                } text-orange-900 space-y-3`}
+              >
+                <p className="font-bold text-red-500">
+                  Active High Risk Profile
+                </p>
+                {user?.medicalConditions &&
+                user.medicalConditions.length > 0 ? (
                   <ul className="list-disc pl-4 space-y-1">
                     {user.medicalConditions.map((cond, idx) => (
-                      <li key={idx} className="font-bold">{cond}</li>
+                      <li key={idx} className="font-bold">
+                        {cond}
+                      </li>
                     ))}
                   </ul>
                 ) : (
-                  <p className="italic text-orange-800">No chronic health conditions are registered.</p>
+                  <p className="italic text-orange-800">
+                    No chronic health conditions are registered.
+                  </p>
                 )}
                 <div className="h-px bg-orange-200" />
-                <p className="text-[10px] text-orange-700/80">Always check with medical authorities before administrating new prescriptions in emergency situations.</p>
+                <p className="text-[10px] text-orange-700/80">
+                  Always check with medical authorities before administrating
+                  new prescriptions in emergency situations.
+                </p>
               </div>
             </div>
 
-
             <div className="space-y-4 text-left">
-              <h3 className="font-headline-lg text-base text-secondary font-black text-center border-b pb-2">💊 Active Medication Summary</h3>
-              <div className="max-h-60 overflow-y-auto space-y-2">
+              <h3
+                className={`font-headline-lg text-secondary font-black text-center border-b pb-2 ${
+                  elderlyMode ? "text-[20px]" : "text-base"
+                }`}
+              >
+                💊 Active Medication Summary
+              </h3>
+              <div className={`max-h-60 overflow-y-auto space-y-2 `}>
                 {userOnlyMedicines.length === 0 ? (
-                  <p className="text-xs text-on-surface-variant italic">No medicines found in system.</p>
+                  <p
+                    className={`${
+                      elderlyMode ? "text-[16px]" : "text-xs"
+                    } text-on-surface-variant italic`}
+                  >
+                    No medicines found in system.
+                  </p>
                 ) : (
                   userOnlyMedicines.map((med) => {
                     const hasMatchingRem = reminders.find(
-                      (r) => r.medicineId === med.id && (!r.familyMemberId || r.familyMemberId === user?.id)
+                      (r) =>
+                        r.medicineId === med.id &&
+                        (!r.familyMemberId || r.familyMemberId === user?.id),
                     );
                     return (
-                      <div key={med.id} className="p-3 bg-surface-container-low border border-outline-variant/30 rounded-xl font-label-md text-xs">
-                        <p className="font-bold text-secondary">{med.name} ({med.dosage})</p>
-                        <p className="text-outline mt-0.5">Instructions: {med.instructions || "N/A"}</p>
-                        <p className="text-[10px] text-on-surface-variant">Scheduled: {hasMatchingRem ? "Yes" : "As Needed"}</p>
+                      <div
+                        key={med.id}
+                        className={`p-3 bg-surface-container-low border border-outline-variant/30 rounded-xl font-label-md ${
+                          elderlyMode ? "text-[16px]" : "text-xs"
+                        }`}
+                      >
+                        <p className="font-bold text-secondary">
+                          {med.name} ({med.dosage})
+                        </p>
+                        <p className="text-outline mt-0.5">
+                          Instructions: {med.instructions || "N/A"}
+                        </p>
+                        <p
+                          className={`${
+                            elderlyMode ? "text-[14px]" : "text-[10px]"
+                          } text-on-surface-variant`}
+                        >
+                          Scheduled: {hasMatchingRem ? "Yes" : "As Needed"}
+                        </p>
                       </div>
                     );
                   })
@@ -880,19 +1199,30 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
               </div>
             </div>
 
-            <div className="pt-4 flex gap-2">
+            <div
+              className={`pt-4 flex justify-between ${
+                elderlyMode ? " gap-0" : "gap-2"
+              }`}
+            >
               <button
                 type="button"
                 onClick={() => setActiveScreen("menu")}
-                className="w-full py-2.5 rounded-xl bg-outline text-white font-label-md text-xs font-bold hover:opacity-95 active:scale-98 transition-all"
+                className={`py-2.5 rounded-xl bg-outline text-white  ${
+                  elderlyMode ? "text-[13px] w-fit px-5" : "text-xs w-full"
+                } font-bold hover:opacity-95 active:scale-98 transition-all`}
               >
                 Back to Emergency Menu
-              </button><button
+              </button>
+              <button
                 type="button"
                 onClick={shareMedicalProfile}
-                className="w-full py-2.5 rounded-xl bg-primary text-white font-label-md text-xs font-bold hover:opacity-95 flex items-center justify-center gap-2 shadow-md active:scale-98 transition-all"
+                className={`py-2.5 rounded-xl bg-primary text-white  ${
+                  elderlyMode ? "text-[13px] w-fit px-5" : "text-xs w-full"
+                } font-bold hover:opacity-95 flex items-center justify-center gap-2 shadow-md active:scale-98 transition-all`}
               >
-                <span className="material-symbols-outlined text-sm text-white">share</span>
+                <span className="material-symbols-outlined text-sm text-white">
+                  share
+                </span>
                 <span>Share via</span>
               </button>
             </div>
@@ -902,18 +1232,33 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
         {/* CURRENT MEDICATIONS SCREEN */}
         {activeScreen === "meds" && (
           <div className="space-y-4 text-left">
-            <h3 className="font-headline-lg text-base text-secondary font-black text-center border-b pb-2">💊 Active Medication Summary</h3>
+            <h3 className="font-headline-lg text-base text-secondary font-black text-center border-b pb-2">
+              💊 Active Medication Summary
+            </h3>
             <div className="max-h-60 overflow-y-auto space-y-2">
               {medicines.length === 0 ? (
-                <p className="text-xs text-on-surface-variant italic">No medicines found in system.</p>
+                <p className="text-xs text-on-surface-variant italic">
+                  No medicines found in system.
+                </p>
               ) : (
                 medicines.map((med) => {
-                  const hasMatchingRem = reminders.find(r => r.medicineId === med.id);
+                  const hasMatchingRem = reminders.find(
+                    (r) => r.medicineId === med.id,
+                  );
                   return (
-                    <div key={med.id} className="p-3 bg-surface-container-low border border-outline-variant/30 rounded-xl font-label-md text-xs">
-                      <p className="font-bold text-secondary">{med.name} ({med.dosage})</p>
-                      <p className="text-outline mt-0.5">Instructions: {med.instructions || "N/A"}</p>
-                      <p className="text-[10px] text-on-surface-variant">Scheduled: {hasMatchingRem ? "Yes" : "As Needed"}</p>
+                    <div
+                      key={med.id}
+                      className="p-3 bg-surface-container-low border border-outline-variant/30 rounded-xl font-label-md text-xs"
+                    >
+                      <p className="font-bold text-secondary">
+                        {med.name} ({med.dosage})
+                      </p>
+                      <p className="text-outline mt-0.5">
+                        Instructions: {med.instructions || "N/A"}
+                      </p>
+                      <p className="text-[10px] text-on-surface-variant">
+                        Scheduled: {hasMatchingRem ? "Yes" : "As Needed"}
+                      </p>
                     </div>
                   );
                 })
@@ -934,20 +1279,29 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
         {/* CHRONIC CONDITIONS / ALLERGIES SCREEN */}
         {activeScreen === "allergies" && (
           <div className="space-y-4 text-left">
-            <h3 className="font-headline-lg text-base text-secondary font-black text-center border-b pb-2">⚠️ Chronic Conditions & Alerts</h3>
+            <h3 className="font-headline-lg text-base text-secondary font-black text-center border-b pb-2">
+              ⚠️ Chronic Conditions & Alerts
+            </h3>
             <div className="p-4 bg-orange-50 border border-orange-100 rounded-2xl font-label-md text-xs text-orange-900 space-y-3">
               <p className="font-bold text-red-500">Active High Risk Profile</p>
               {user?.medicalConditions && user.medicalConditions.length > 0 ? (
                 <ul className="list-disc pl-4 space-y-1">
                   {user.medicalConditions.map((cond, idx) => (
-                    <li key={idx} className="font-bold">{cond}</li>
+                    <li key={idx} className="font-bold">
+                      {cond}
+                    </li>
                   ))}
                 </ul>
               ) : (
-                <p className="italic text-orange-800">No chronic health conditions are registered.</p>
+                <p className="italic text-orange-800">
+                  No chronic health conditions are registered.
+                </p>
               )}
               <div className="h-px bg-orange-200" />
-              <p className="text-[10px] text-orange-700/80">Always check with medical authorities before administrating new prescriptions in emergency situations.</p>
+              <p className="text-[10px] text-orange-700/80">
+                Always check with medical authorities before administrating new
+                prescriptions in emergency situations.
+              </p>
             </div>
 
             <div className="pt-4 flex gap-2">
@@ -965,23 +1319,33 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
         {activeScreen === "ambulance" && (
           <div className="space-y-4 text-center">
             <div>
-              <span className="material-symbols-outlined text-5xl text-red-600 animate-pulse">emergency_share</span>
-              <h2 className="font-headline-lg text-lg font-black text-secondary mt-2">Ambulance Dispatch</h2>
-              <p className="font-body-md text-xs text-on-surface-variant">Select country region to configure dispatch number.</p>
+              <span className="material-symbols-outlined text-5xl text-red-600 animate-pulse">
+                emergency_share
+              </span>
+              <h2 className="font-headline-lg text-lg font-black text-secondary mt-2">
+                Ambulance Dispatch
+              </h2>
+              <p className="font-body-md text-xs text-on-surface-variant">
+                Select country region to configure dispatch number.
+              </p>
             </div>
 
             <div className="space-y-3 text-left">
-              <label className="font-label-md text-xs font-bold text-secondary">Region Country Config:</label>
+              <label className="font-label-md text-xs font-bold text-secondary">
+                Region Country Config:
+              </label>
               <select
                 value={countryCode}
                 onChange={(e) => setCountryCode(e.target.value)}
                 className="w-full px-3 py-2 border border-outline-variant/40 rounded-xl font-label-md text-xs bg-surface-container-low"
               >
-                {Object.entries(countryEmergencyNumbers).map(([code, config]) => (
-                  <option key={code} value={code}>
-                    {config.name} ({config.number})
-                  </option>
-                ))}
+                {Object.entries(countryEmergencyNumbers).map(
+                  ([code, config]) => (
+                    <option key={code} value={code}>
+                      {config.name} ({config.number})
+                    </option>
+                  ),
+                )}
               </select>
             </div>
 
@@ -989,14 +1353,25 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
               <button
                 onClick={() => {
                   const config = countryEmergencyNumbers[countryCode];
-                  if (confirm(`Emergency Safety Check:\nAre you sure you want to dial ${config.name} ambulance dispatcher?\n📞 Dial: ${config.number}`)) {
-                    alert(`Calling Emergency Dispatch Services: ${config.number}`);
+                  if (
+                    confirm(
+                      `Emergency Safety Check:\nAre you sure you want to dial ${config.name} ambulance dispatcher?\n📞 Dial: ${config.number}`,
+                    )
+                  ) {
+                    alert(
+                      `Calling Emergency Dispatch Services: ${config.number}`,
+                    );
                   }
                 }}
                 className="w-full py-3 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-label-md text-xs font-bold flex items-center justify-center gap-2 shadow-md"
               >
-                <span className="material-symbols-outlined text-sm animate-pulse text-white">call</span>
-                <span>Confirm Call Ambulance ({countryEmergencyNumbers[countryCode].number})</span>
+                <span className="material-symbols-outlined text-sm animate-pulse text-white">
+                  call
+                </span>
+                <span>
+                  Confirm Call Ambulance (
+                  {countryEmergencyNumbers[countryCode].number})
+                </span>
               </button>
 
               <button
@@ -1008,7 +1383,6 @@ export const EmergencySosModal: React.FC<EmergencySosModalProps> = ({ isOpen, on
             </div>
           </div>
         )}
-
       </div>
     </div>
   );

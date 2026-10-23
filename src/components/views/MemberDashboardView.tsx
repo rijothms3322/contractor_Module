@@ -1,17 +1,27 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
-import { useApp } from "../../context/AppContext";
-import { FamilyMember, Medicine, Reminder, Booking, HealthReport } from "../../lib/mockData";
-import { AVATAR_CATEGORIES, AVATAR_ITEMS, AvatarItem } from "../../lib/avatarLibrary";
-import { medicineService } from "@/services/medicineService";
-import { adminService } from "@/services/adminService";
-import { requestNotificationPermission } from "@/services/notificationWeb";
-import OCRUploader from "../OCRUploader";
-import { getDocumentPreview, medicalReportService } from "@/services/medicalReportService";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
-import { nicknameService } from "@/services/nicknameService";
+import { adminService } from "@/services/adminService";
 import { documentService } from "@/services/documentService";
+import {
+  getDocumentPreview,
+  medicalReportService,
+} from "@/services/medicalReportService";
+import { medicineService } from "@/services/medicineService";
+import { nicknameService } from "@/services/nicknameService";
+import { requestNotificationPermission } from "@/services/notificationWeb";
+import { reminderService } from "@/services/reminderService";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useApp } from "../../context/AppContext";
+import {
+  AVATAR_CATEGORIES,
+  AVATAR_ITEMS,
+  AvatarItem,
+} from "../../lib/avatarLibrary";
+import { FamilyMember, Medicine, Reminder } from "../../lib/mockData";
+import OCRUploader from "../OCRUploader";
+import ZoomableDocumentImage from "./ZoomableDocumentImage";
+import { trackEvent } from "@/lib/analytics";
 
 interface MemberDashboardViewProps {
   member: FamilyMember;
@@ -22,7 +32,7 @@ interface MemberDashboardViewProps {
 const frequencyOptions = [
   { value: "every_day", label: "Every day" },
   { value: "specific_days", label: "Specific days" },
-  { value: "interval", label: "At an interval" }
+  { value: "interval", label: "At an interval" },
 ];
 
 const WEEK_DAYS = [
@@ -54,7 +64,10 @@ const SLOT_DEFAULT_TIME: Record<
   night: "20:00",
 };
 
-export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member, onBack }) => {
+export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({
+  member,
+  onBack,
+}) => {
   const {
     medicines,
     reminders,
@@ -68,33 +81,55 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
     familyMembers,
     user,
     addFamilyMember,
+    elderlyMode,
   } = useApp();
-  const [activeTab, setActiveTab] = useState<"overview" | "medicines" | "orders" | "medicalReport" | "reports" | "appointments" | "timeline" | "history">("overview");
+  const [activeTab, setActiveTab] = useState<
+    | "overview"
+    | "medicines"
+    | "orders"
+    | "medicalReport"
+    | "reports"
+    | "appointments"
+    | "timeline"
+    | "history"
+  >("overview");
   const [searchQuery, setSearchQuery] = useState("");
   const [showAddMedsModal, setShowAddMedsModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [nicknameMap, setNicknameMap] = useState<Record<string, string>>({});
-  console.log(medicines, 'medicines')
+  console.log(medicines, "medicines");
   // Profile Edit fields
   const [editName, setEditName] = useState(member.name);
   const [editNickname, setEditNickname] = useState(
-    nicknameMap[member.id] || member.nickname || member.name
+    nicknameMap[member.id] || member.nickname || member.name,
   );
   const [editRel, setEditRel] = useState(member.relationship);
   const [editDob, setEditDob] = useState(member.dob || "");
   const [editAge, setEditAge] = useState(member.age);
   const [editGender, setEditGender] = useState(member.gender);
-  const [editBloodGroup, setEditBloodGroup] = useState(member.bloodGroup || "O+");
+  const [editBloodGroup, setEditBloodGroup] = useState(
+    member.bloodGroup || "O+",
+  );
   const [editPhone, setEditPhone] = useState(member.phone || "");
-  const [editConditions, setEditConditions] = useState(member.medicalConditions.join(", "));
+  const [editConditions, setEditConditions] = useState(
+    member.medicalConditions.join(", "),
+  );
   const [editColor, setEditColor] = useState(member.color || "blue");
-  const [editAvatarUrl, setEditAvatarUrl] = useState(member.avatarUrl || "/avatars/senior-01.png");
-  const [activeEditAvatarCategory, setActiveEditAvatarCategory] = useState<AvatarItem["category"]>("senior");
+  const [editAvatarUrl, setEditAvatarUrl] = useState(
+    member.avatarUrl || "/avatars/senior-01.png",
+  );
+  const [activeEditAvatarCategory, setActiveEditAvatarCategory] =
+    useState<AvatarItem["category"]>("senior");
   const [freshMember, setFreshMember] = useState<FamilyMember | null>(null);
   const [memberMeds, setMemberMeds] = useState<Medicine[]>([]);
+  const [fetchedReminders, setFetchedReminders] = useState<Reminder[] | null>(
+    null,
+  );
   const [apiReports, setApiReports] = useState<any[]>([]);
   const [memberMedsCount, setMemberMedsCount] = useState<number | null>(null);
-  const [memberReportsCount, setMemberReportsCount] = useState<number | null>(null);
+  const [memberReportsCount, setMemberReportsCount] = useState<number | null>(
+    null,
+  );
 
   // Add these states after existing states
   const [newMedName, setNewMedName] = useState("");
@@ -103,7 +138,9 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
   const [medicineLoading, setMedicineLoading] = useState(false);
   const [newDosage, setNewDosage] = useState("");
   const [newInstructions, setNewInstructions] = useState("");
-  const [newSelectedTimings, setNewSelectedTimings] = useState<("morning" | "afternoon" | "evening" | "night")[]>(["morning"]);
+  const [newSelectedTimings, setNewSelectedTimings] = useState<
+    ("morning" | "afternoon" | "evening" | "night")[]
+  >(["morning"]);
   const [newIntakeTimes, setNewIntakeTimes] = useState<string[]>(["08:00"]);
   const [timeInput, setTimeInput] = useState("08:00");
   const [newEndDate, setNewEndDate] = useState("");
@@ -113,24 +150,35 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
   const [validationError, setValidationError] = useState<string | null>(null);
 
   // Frequency states
-  const [frequency, setFrequency] = useState<"every_day" | "specific_days" | "interval">("every_day");
+  const [frequency, setFrequency] = useState<
+    "every_day" | "specific_days" | "interval"
+  >("every_day");
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
-  const [selectedDayType, setSelectedDayType] = useState<'weekdays' | 'normal'>("weekdays");
+  const [selectedDayType, setSelectedDayType] = useState<"weekdays" | "normal">(
+    "weekdays",
+  );
   const [repeatEveryNDays, setRepeatEveryNDays] = useState<number | null>(null);
   const [intervalHours, setIntervalHours] = useState<number>(8);
   const [intervalMinutes, setIntervalMinutes] = useState<number>(0);
   const [intervalStartTime, setIntervalStartTime] = useState<string>("08:00");
-  const [showStartTimeDropdown, setShowStartTimeDropdown] = useState<boolean>(false);
+  const [showStartTimeDropdown, setShowStartTimeDropdown] =
+    useState<boolean>(false);
   const [showWeekOptions, setShowWeekOptions] = useState(false);
   const [showDurationPicker, setShowDurationPicker] = useState(false);
-  const [editingDocumentId, setEditingDocumentId] = useState<string | null>(null);
+  const [editingDocumentId, setEditingDocumentId] = useState<string | null>(
+    null,
+  );
   const [isAddingMedicine, setIsAddingMedicine] = useState(false);
 
   const [showEntryChoiceModal, setShowEntryChoiceModal] = useState(false);
-  const [extractedMedicines, setExtractedMedicines] = useState<any[] | null>(null);
+  const [extractedMedicines, setExtractedMedicines] = useState<any[] | null>(
+    null,
+  );
   const [extractedReport, setExtractedReport] = useState<any | null>(null);
   const [extractedPreviewVisible, setExtractedPreviewVisible] = useState(false);
-  const [selectedMedicineIndex, setSelectedMedicineIndex] = useState<number | null>(null);
+  const [selectedMedicineIndex, setSelectedMedicineIndex] = useState<
+    number | null
+  >(null);
   const [ocrError, setOcrError] = useState<string | null>(null);
   const [ocrWarning, setOcrWarning] = useState<string | null>(null);
   const [ocrMedicineData, setOcrMedicineData] = useState<any>(null);
@@ -139,27 +187,33 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
   const [previewError, setPreviewError] = useState<boolean>(false);
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
 
-  // Member documents 
+  // Member documents
   const [memberDocuments, setMemberDocuments] = useState<any[]>([]);
   const [loadingDocuments, setLoadingDocuments] = useState<boolean>(false);
   const [selectedDocument, setSelectedDocument] = useState<any | null>(null);
-  const [selectedDocumentUrl, setSelectedDocumentUrl] = useState<string | null>(null);
+  const [selectedDocumentUrl, setSelectedDocumentUrl] = useState<string | null>(
+    null,
+  );
   const [documentPreviewLoading, setDocumentPreviewLoading] = useState(false);
   const [documentPreviewError, setDocumentPreviewError] = useState(false);
+  const remindersRequestRef = useRef<{
+    userId: string;
+    promise: Promise<Reminder[]>;
+  } | null>(null);
 
   const isMedicineAlreadyAdded = (med: any): boolean => {
     const name = (med.medicine_name || med.name || "").toLowerCase().trim();
-    return medicines.some(m => m.name.toLowerCase().trim() === name);
+    return medicines.some((m) => m.name.toLowerCase().trim() === name);
   };
 
   const getRefillDays = (med: Medicine): number | null => {
     if (med.stockCount === undefined || med.stockCount === null) return null;
-    const dailyDoses = (med.intakeTimes?.length || med.timings?.length || 1);
+    const dailyDoses = med.intakeTimes?.length || med.timings?.length || 1;
     return Math.floor(med.stockCount / dailyDoses);
   };
 
   const getSlotFromTime = (
-    timeStr: string
+    timeStr: string,
   ): "morning" | "afternoon" | "evening" | "night" => {
     const [h] = timeStr.split(":").map(Number);
     if (h >= 5 && h < 12) return "morning";
@@ -193,29 +247,29 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
 
   const handleSelectSuggestion = (s: any) => {
     setNewMedName(s.medicine_name);
-    setNewDosage(s.strength + ',' + s.dosage_form || "");
+    setNewDosage(s.strength + "," + s.dosage_form || "");
     setNewInstructions(s.instructions || "");
     setShowSuggestions(false);
   };
 
   const handleTimingToggle = (
-    timing: "morning" | "afternoon" | "evening" | "night"
+    timing: "morning" | "afternoon" | "evening" | "night",
   ) => {
     if (newSelectedTimings.includes(timing)) {
       // ---------- DESELECT ----------
-      setNewSelectedTimings(prev => prev.filter(t => t !== timing));
+      setNewSelectedTimings((prev) => prev.filter((t) => t !== timing));
 
       // Remove every intake time belonging to this slot
-      setNewIntakeTimes(prev =>
-        prev.filter(time => getSlotFromTime(time) !== timing)
+      setNewIntakeTimes((prev) =>
+        prev.filter((time) => getSlotFromTime(time) !== timing),
       );
     } else {
       // ---------- SELECT ----------
-      setNewSelectedTimings(prev => [...prev, timing]);
+      setNewSelectedTimings((prev) => [...prev, timing]);
 
       // Auto-add the default intake time for this slot
       const defaultTime = SLOT_DEFAULT_TIME[timing];
-      setNewIntakeTimes(prev => {
+      setNewIntakeTimes((prev) => {
         if (prev.includes(defaultTime)) return prev;
         return [...prev, defaultTime].sort();
       });
@@ -227,7 +281,7 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
     setLoadingDocuments(true);
     try {
       const docs = await documentService.getUserDocuments(member.id);
-      console.log(docs, 'docs')
+      console.log(docs, "docs");
       // Family member view me private documents hide karo
       const visibleDocs = docs.filter((d: any) => !d.isPrivate);
 
@@ -255,14 +309,69 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
     };
   }, [member.id]);
 
+  useEffect(() => {
+    const ownerId = user?.id;
+    if (!ownerId) return;
+
+    let active = true;
+    let request = remindersRequestRef.current;
+
+    if (!request || request.userId !== ownerId) {
+      request = {
+        userId: ownerId,
+        promise: reminderService.getReminders(ownerId),
+      };
+      remindersRequestRef.current = request;
+    }
+
+    request.promise
+      .then((results) => {
+        if (active) setFetchedReminders(results);
+      })
+      .catch((error) => {
+        if (!active) return;
+        if (remindersRequestRef.current === request)
+          remindersRequestRef.current = null;
+        console.error("Failed to fetch member dashboard reminders:", error);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
+
   // 1. FILTERING GLOBAL CONTEXT RECORDS FOR THIS MEMBER
   const memberReminders = useMemo(() => {
-    return reminders.filter(r => r.familyMemberId === member.id);
-  }, [reminders, member.id]);
+    const remindersById = new Map(
+      [...reminders, ...(fetchedReminders || [])].map((reminder) => [
+        reminder.id,
+        reminder,
+      ]),
+    );
+    return Array.from(remindersById.values()).filter(
+      (reminder) => reminder.familyMemberId === member.id,
+    );
+  }, [reminders, fetchedReminders, member.id]);
+
+  const markMemberReminderTaken = (reminderId: string) => {
+    toggleReminderStatus(reminderId, "taken");
+    setFetchedReminders(
+      (previous) =>
+        previous?.map((reminder) =>
+          reminder.id === reminderId
+            ? { ...reminder, status: "taken" }
+            : reminder,
+        ) ?? null,
+    );
+  };
 
   const memberBookings = useMemo(() => {
     // Match bookings by patientName (e.g. Dad, Mom, Grandma) or direct comparison
-    return bookings.filter(b => b.patientName?.toLowerCase() === member.nickname?.toLowerCase() || b.patientName?.toLowerCase() === member.name.toLowerCase());
+    return bookings.filter(
+      (b) =>
+        b.patientName?.toLowerCase() === member.nickname?.toLowerCase() ||
+        b.patientName?.toLowerCase() === member.name.toLowerCase(),
+    );
   }, [bookings, member]);
 
   const memberReports = useMemo(() => {
@@ -277,7 +386,11 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
   }, [apiReports, searchQuery]);
 
   const memberNotifications = useMemo(() => {
-    return notifications.filter(n => n.message.toLowerCase().includes(member.nickname?.toLowerCase() || member.name.toLowerCase()));
+    return notifications.filter((n) =>
+      n.message
+        .toLowerCase()
+        .includes(member.nickname?.toLowerCase() || member.name.toLowerCase()),
+    );
   }, [notifications, member]);
 
   // Mock appointments for premium representation
@@ -290,7 +403,7 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
         hospital: "Ruby Hall Clinic, Pune",
         date: "2026-07-10",
         time: "10:30 AM",
-        status: "upcoming"
+        status: "upcoming",
       },
       {
         id: "apt-2",
@@ -299,9 +412,13 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
         hospital: "Medimz Care Center",
         date: "2026-06-15",
         time: "04:15 PM",
-        status: "completed"
-      }
-    ].filter(a => a.doctorName.toLowerCase().includes(searchQuery.toLowerCase()) || a.specialization.toLowerCase().includes(searchQuery.toLowerCase()));
+        status: "completed",
+      },
+    ].filter(
+      (a) =>
+        a.doctorName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        a.specialization.toLowerCase().includes(searchQuery.toLowerCase()),
+    );
   }, [searchQuery]);
 
   // Mock Medicine Order History
@@ -315,7 +432,7 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
         status: "Delivered",
         deliveredDate: "2026-07-02",
         supplier: "Medimz Wellness Pharmacy",
-        price: 240
+        price: 240,
       },
       {
         id: "ord-1044",
@@ -324,8 +441,8 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
         quantity: "30 Tablets",
         status: "Pending",
         supplier: "Apollo Pharmacy",
-        price: 180
-      }
+        price: 180,
+      },
     ];
   }, []);
 
@@ -339,13 +456,28 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
   // Chronological Health History Feed
   const memberHistory = useMemo(() => {
     return [
-      { date: "2026-07-03", title: "Routine checkup completed with Dr. Shalini Sen", category: "appointment" },
-      { date: "2026-07-02", title: "Blood Sugar Test booked successfully", category: "lab" },
-      { date: "2026-07-01", title: "New Prescription uploaded for Metformin 500mg", category: "report" },
-      { date: "2026-06-28", title: "Adherence Compliance reached 98% this week", category: "milestone" }
+      {
+        date: "2026-07-03",
+        title: "Routine checkup completed with Dr. Shalini Sen",
+        category: "appointment",
+      },
+      {
+        date: "2026-07-02",
+        title: "Blood Sugar Test booked successfully",
+        category: "lab",
+      },
+      {
+        date: "2026-07-01",
+        title: "New Prescription uploaded for Metformin 500mg",
+        category: "report",
+      },
+      {
+        date: "2026-06-28",
+        title: "Adherence Compliance reached 98% this week",
+        category: "milestone",
+      },
     ];
   }, []);
-
 
   const getIntakeTimeOptions = () => {
     const options: { value: string; label: string }[] = [];
@@ -397,7 +529,7 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
 
     const uniqueOptions: { value: string; label: string }[] = [];
     const seen = new Set<string>();
-    options.forEach(opt => {
+    options.forEach((opt) => {
       if (!seen.has(opt.value)) {
         seen.add(opt.value);
         uniqueOptions.push(opt);
@@ -461,10 +593,20 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
       stockCount: newStockCount ? parseInt(newStockCount, 10) : undefined,
       isPrivate: isPrivate,
       document_id: editingDocumentId || undefined,
-      selected_days: (frequency === "specific_days" && selectedDayType === "weekdays") ? selectedDays : undefined,
-      repeat_every_n_days: (frequency === "specific_days" && selectedDayType === "normal") ? (repeatEveryNDays ?? undefined) : undefined,
-      remind_every: frequency === "interval" ? (intervalHours * 60 + intervalMinutes) : undefined,
-      interval_start_time: frequency === "interval" ? intervalStartTime : undefined,
+      selected_days:
+        frequency === "specific_days" && selectedDayType === "weekdays"
+          ? selectedDays
+          : undefined,
+      repeat_every_n_days:
+        frequency === "specific_days" && selectedDayType === "normal"
+          ? repeatEveryNDays ?? undefined
+          : undefined,
+      remind_every:
+        frequency === "interval"
+          ? intervalHours * 60 + intervalMinutes
+          : undefined,
+      interval_start_time:
+        frequency === "interval" ? intervalStartTime : undefined,
     };
 
     // Always pass member.id as targetFamilyId (since this is MemberDashboardView)
@@ -495,7 +637,7 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
       const allMeds = await medicineService.getMedicines(member.id);
       setMemberMeds(allMeds);
     } catch (error) {
-      console.error('Failed to save medicine:', error);
+      console.error("Failed to save medicine:", error);
     } finally {
       setIsAddingMedicine(false);
     }
@@ -522,7 +664,9 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
       gender: editGender,
       bloodGroup: editBloodGroup,
       phone: editPhone,
-      medicalConditions: editConditions ? editConditions.split(",").map(s => s.trim()) : [],
+      medicalConditions: editConditions
+        ? editConditions.split(",").map((s) => s.trim())
+        : [],
       color: editColor,
       avatarUrl: editAvatarUrl,
     });
@@ -545,7 +689,9 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
 
     const fetchReports = async () => {
       try {
-        const allReport = await medicalReportService.getMedicalReports(member.id);
+        const allReport = await medicalReportService.getMedicalReports(
+          member.id,
+        );
         setApiReports(allReport);
       } catch (error) {
         console.error("Failed to fetch reports:", error);
@@ -553,7 +699,7 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
     };
 
     fetchReports();
-    console.log('featch report')
+    console.log("featch report");
     const interval = setInterval(fetchReports, 30000);
 
     const handleVisibility = () => {
@@ -567,7 +713,6 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
     };
   }, [member.id, activeTab, member.allowReportSharing]);
 
-
   useEffect(() => {
     // Only run fetching logic when the medicines tab is the active one
     if (activeTab !== "medicines") return;
@@ -580,13 +725,13 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
 
         // Global medicines state me se bhi is member ke medicines merge karo
         const fromGlobalOwnerSide = medicines.filter(
-          (m) => m.familyMemberId === member.id
+          (m) => m.familyMemberId === member.id,
         );
 
         const merged = Array.from(
           new Map(
-            [...allMedsFromDb, ...fromGlobalOwnerSide].map((m) => [m.id, m])
-          ).values()
+            [...allMedsFromDb, ...fromGlobalOwnerSide].map((m) => [m.id, m]),
+          ).values(),
         );
 
         console.log("[fetchMeds] merged for", member.name, ":", merged.length);
@@ -665,13 +810,13 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
 
         // Local family member ke liye global medicines state me se
         const fromGlobalOwnerSide = medicines.filter(
-          (m) => m.familyMemberId === member.id
+          (m) => m.familyMemberId === member.id,
         );
 
         const mergedMeds = Array.from(
           new Map(
-            [...medsFromDb, ...fromGlobalOwnerSide].map((m) => [m.id, m])
-          ).values()
+            [...medsFromDb, ...fromGlobalOwnerSide].map((m) => [m.id, m]),
+          ).values(),
         );
 
         setMemberMedsCount(mergedMeds.length);
@@ -725,20 +870,29 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
 
   return (
     <div className="space-y-6 text-left animate-in fade-in slide-in-from-bottom-4 duration-300">
-
       {/* 1. Navigation Header & Back Button */}
       <div className="flex items-center gap-3">
         <button
           onClick={onBack}
           className="w-10 h-10 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center border border-outline-variant/15 transition-all active:scale-90"
         >
-          <span className="material-symbols-outlined text-secondary">arrow_back</span>
+          <span className="material-symbols-outlined text-secondary">
+            arrow_back
+          </span>
         </button>
         <div>
-          <h2 className="font-headline-md text-base text-secondary font-bold flex items-center gap-2">
+          <h2
+            className={`font-headline-md text-base text-secondary font-bold flex items-center gap-2 ${elderlyMode ? "text-xl" : "text-base"
+              }`}
+          >
             <span>{member.nickname || member.name}'s Health Folder</span>
           </h2>
-          <p className="font-body-sm text-[10px] text-on-surface-variant font-medium">Unified family record view</p>
+          <p
+            className={`font-body-sm text-[10px] text-on-surface-variant font-medium ${elderlyMode ? "text-lg" : "text-sm"
+              }`}
+          >
+            Unified family record view
+          </p>
         </div>
       </div>
 
@@ -746,10 +900,17 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
       <div className="glass-card bg-gradient-to-br from-secondary-container/20 to-white border border-outline-variant/20 rounded-3xl p-5 shadow-sm relative overflow-hidden">
         {/* Accent Color Badge */}
         <div className="absolute right-4 top-4 flex gap-2 items-center">
-          <span className="bg-primary/10 text-primary text-[8px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+          <span
+            className={`${elderlyMode ? "text-[9px]" : "text-[8px]"
+              } bg-primary/10 text-primary px-2 py-0.5 rounded font-bold uppercase tracking-wider`}
+          >
             {member.relationship}
           </span>
-          <div className={`w-3.5 h-3.5 rounded-full bg-${member.color || "blue"}-500`} title="Profile Theme Color" />
+          <div
+            className={`w-3.5 h-3.5 rounded-full bg-${member.color || "blue"
+              }-500`}
+            title="Profile Theme Color"
+          />
         </div>
 
         <div className="flex flex-col md:flex-row gap-5 items-center md:items-start text-center md:text-left">
@@ -760,7 +921,12 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
           />
           <div className="space-y-1.5 flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <h3 className="font-headline-lg text-lg text-secondary font-extrabold">{member.nickname || member.name}</h3>
+              <h3
+                className={`font-headline-lg text-lg text-secondary font-extrabold ${elderlyMode ? "text-[22px]" : "text-lg"
+                  }`}
+              >
+                {member.nickname || member.name}
+              </h3>
               {member.isCustom && (
                 <button
                   type="button"
@@ -778,9 +944,12 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                     setEditAvatarUrl(member.avatarUrl);
 
                     // Auto-detect category from current avatar
-                    const currentAvatar = AVATAR_ITEMS.find((av) => av.url === member.avatarUrl);
+                    const currentAvatar = AVATAR_ITEMS.find(
+                      (av) => av.url === member.avatarUrl,
+                    );
                     setActiveEditAvatarCategory(
-                      (currentAvatar?.category as AvatarItem["category"]) || "senior"
+                      (currentAvatar?.category as AvatarItem["category"]) ||
+                      "senior",
                     );
 
                     setShowEditModal(true);
@@ -788,22 +957,53 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                   className="w-7 h-7 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center border border-outline-variant/10 text-secondary hover:text-primary transition-colors"
                   title="Edit Profile"
                 >
-                  <span className="material-symbols-outlined text-xs">edit</span>
-                </button>)}
+                  <span
+                    className={`material-symbols-outlined ${elderlyMode ? "text-[16px]" : "text-xs"
+                      }`}
+                  >
+                    edit
+                  </span>
+                </button>
+              )}
             </div>
-            <p className="font-body-md text-xs text-on-surface-variant">Full Name: {member.name} • {member.gender}</p>
+            <p
+              className={`${elderlyMode ? "text-xs" : "text-[8px]"
+                } text-on-surface-variant`}
+            >
+              Full Name: {member.name} • {member.gender}
+            </p>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
               {member.age && (
                 <div className="bg-white/60 p-2 rounded-xl border border-outline-variant/10 text-left">
-                  <span className="block text-[8px] font-bold text-outline uppercase">Age</span>
-                  <span className="text-xs font-bold text-secondary">{member.age} yrs</span>
+                  <span
+                    className={`block  font-bold ${elderlyMode ? "text-xs" : "text-[8px]"
+                      } text-outline uppercase`}
+                  >
+                    Age
+                  </span>
+                  <span
+                    className={` font-bold ${elderlyMode ? "text-[16px]" : "text-xs"
+                      } text-secondary`}
+                  >
+                    {member.age} yrs
+                  </span>
                 </div>
               )}
               {member.bloodGroup && (
                 <div className="bg-white/60 p-2 rounded-xl border border-outline-variant/10 text-left">
-                  <span className="block text-[8px] font-bold text-outline uppercase">Blood Type</span>
-                  <span className="text-xs font-bold text-secondary">{member.bloodGroup}</span>
+                  <span
+                    className={`block  font-bold ${elderlyMode ? "text-xs" : "text-[8px]"
+                      } text-outline uppercase`}
+                  >
+                    Blood Type
+                  </span>
+                  <span
+                    className={` font-bold ${elderlyMode ? "text-[16px]" : "text-xs"
+                      } text-secondary`}
+                  >
+                    {member.bloodGroup}
+                  </span>
                 </div>
               )}
               {/* <div className="bg-white/60 p-2 rounded-xl border border-outline-variant/10 text-left">
@@ -816,8 +1016,18 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
               </div> */}
             </div>
 
-            <div className="pt-2 text-xs text-on-surface-variant space-y-1 text-left">
-              {member.medicalConditions && (<p><strong className="text-secondary">Medical Conditions:</strong> {member.medicalConditions.join(", ")}</p>)}
+            <div
+              className={`${elderlyMode ? "text-[16px]" : "text-xs"
+                } pt-2  text-on-surface-variant space-y-1 text-left`}
+            >
+              {member.medicalConditions && (
+                <p>
+                  <strong className="text-secondary">
+                    Medical Conditions:
+                  </strong>{" "}
+                  {member.medicalConditions.join(", ")}
+                </p>
+              )}
               {/* <p><strong className="text-secondary">Allergies:</strong> {'-'}</p>
               <p><strong className="text-secondary">Emergency Contact:</strong> {'-'}</p> */}
             </div>
@@ -829,66 +1039,146 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <button
           onClick={() => setActiveTab("medicines")}
-          className={`p-3.5 rounded-2xl border text-left shadow-xs transition-all ${activeTab === "medicines" ? "bg-primary text-on-primary border-primary" : "bg-white text-secondary border-outline-variant/15 hover:bg-surface-container"
+          className={`p-3.5 rounded-2xl border text-left shadow-xs transition-all ${activeTab === "medicines"
+            ? "bg-primary text-on-primary border-primary"
+            : "bg-white text-secondary border-outline-variant/15 hover:bg-surface-container"
             }`}
         >
-          <span className="material-symbols-outlined text-lg">medication</span>
-          <span className="block text-xs font-bold mt-1">Active Medicines</span>
-          <span className="text-lg font-extrabold leading-none">
-            {memberMeds.length > 0 ? memberMeds.length : (memberMedsCount ?? 0)}
+          <span
+            className={`material-symbols-outlined ${elderlyMode ? "text-[22px]" : "text-lg"
+              } `}
+          >
+            medication
+          </span>
+          <span
+            className={`block  mt-1 ${elderlyMode ? "text-[12px]" : "text-xs"}`}
+          >
+            Active Medicines
+          </span>
+          <span
+            className={`block font-bold leading-none ${elderlyMode ? "text-[22px]" : "text-lg"
+              }`}
+          >
+            {memberMeds.length > 0 ? memberMeds.length : memberMedsCount ?? 0}
           </span>
         </button>
 
         <button
           onClick={() => setActiveTab("medicalReport")}
-          className={`p-3.5 rounded-2xl border text-left shadow-xs transition-all ${activeTab === "medicalReport" ? "bg-primary text-on-primary border-primary" : "bg-white text-secondary border-outline-variant/15 hover:bg-surface-container"
+          className={`p-3.5 rounded-2xl border text-left shadow-xs transition-all ${activeTab === "medicalReport"
+            ? "bg-primary text-on-primary border-primary"
+            : "bg-white text-secondary border-outline-variant/15 hover:bg-surface-container"
             }`}
         >
-          <span className="material-symbols-outlined text-lg">science</span>
-          <span className="block text-xs font-bold mt-1">Medical Document</span>
-          <span className="text-lg font-extrabold leading-none">
+          <span
+            className={`material-symbols-outlined ${elderlyMode ? "text-[22px]" : "text-lg"
+              } `}
+          >
+            science
+          </span>
+          <span
+            className={`block  mt-1 ${elderlyMode ? "text-[16px]" : "text-xs"}`}
+          >
+            Medical Document
+          </span>
+          <span
+            className={`block font-bold leading-none ${elderlyMode ? "text-[22px]" : "text-lg"
+              }`}
+          >
             {memberDocuments.length}
           </span>
         </button>
 
         <button
           onClick={() => setActiveTab("appointments")}
-          className={`p-3.5 rounded-2xl border text-left shadow-xs transition-all ${activeTab === "appointments" ? "bg-primary text-on-primary border-primary" : "bg-white text-secondary border-outline-variant/15 hover:bg-surface-container"
+          className={`p-3.5 rounded-2xl border text-left shadow-xs transition-all ${activeTab === "appointments"
+            ? "bg-primary text-on-primary border-primary"
+            : "bg-white text-secondary border-outline-variant/15 hover:bg-surface-container"
             }`}
         >
-          <span className="material-symbols-outlined text-lg">calendar_month</span>
-          <span className="block text-xs font-bold mt-1">Appointments</span>
-          <span className="text-lg font-extrabold leading-none">{0}</span>
+          <span
+            className={`material-symbols-outlined ${elderlyMode ? "text-[22px]" : "text-lg"
+              } `}
+          >
+            calendar_month
+          </span>
+          <span
+            className={`block  mt-1 ${elderlyMode ? "text-[16px]" : "text-xs"}`}
+          >
+            Appointments
+          </span>
+          <span
+            className={`block font-bold leading-none ${elderlyMode ? "text-[22px]" : "text-lg"
+              }`}
+          >
+            {0}
+          </span>
         </button>
 
         <button
           onClick={() => setActiveTab("reports")}
-          className={`p-3.5 rounded-2xl border text-left shadow-xs transition-all ${activeTab === "reports" ? "bg-primary text-on-primary border-primary" : "bg-white text-secondary border-outline-variant/15 hover:bg-surface-container"
+          className={`p-3.5 rounded-2xl border text-left shadow-xs transition-all ${activeTab === "reports"
+            ? "bg-primary text-on-primary border-primary"
+            : "bg-white text-secondary border-outline-variant/15 hover:bg-surface-container"
             }`}
         >
-          <span className="material-symbols-outlined text-lg">description</span>
-          <span className="block text-xs font-bold mt-1">Health Reports</span>
+          <span
+            className={`material-symbols-outlined ${elderlyMode ? "text-[22px]" : "text-lg"
+              } `}
+          >
+            description
+          </span>
+          <span
+            className={`block  mt-1 ${elderlyMode ? "text-[16px]" : "text-xs"}`}
+          >
+            Health Reports
+          </span>
           {/* <span className="text-lg font-extrabold leading-none">{memberReports.length ?? memberReportsCount}</span> */}
-          <span className="text-lg font-extrabold leading-none">-</span>
+          <span
+            className={`block font-bold leading-none ${elderlyMode ? "text-[22px]" : "text-lg"
+              }`}
+          >
+            -
+          </span>
         </button>
 
         <div className="p-3.5 rounded-2xl bg-white border border-outline-variant/15 text-left shadow-xs col-span-2 md:col-span-1">
-          <span className="material-symbols-outlined text-tertiary text-lg">favorite</span>
-          <span className="block text-xs font-bold mt-1 text-secondary">Health Score</span>
-          <span className="text-lg font-extrabold leading-none text-tertiary">-/100</span>
+          <span
+            className={`material-symbols-outlined ${elderlyMode ? "text-[22px]" : "text-lg"
+              } `}
+          >
+            favorite
+          </span>
+          <span
+            className={`block  mt-1 ${elderlyMode ? "text-[16px]" : "text-xs"}`}
+          >
+            Health Score
+          </span>
+          <span
+            className={`block font-bold leading-none ${elderlyMode ? "text-[22px]" : "text-lg"
+              }`}
+          >
+            -/100
+          </span>
         </div>
       </div>
 
       {/* 4. SEARCH BAR & SECTION TAB NAVIGATION */}
       <div className="space-y-3">
         <div className="flex gap-2 bg-surface-container/30 p-1.5 rounded-xl border border-outline-variant/10">
-          <span className="material-symbols-outlined text-outline ml-2 my-auto text-lg">search</span>
+          <span
+            className={`material-symbols-outlined text-outline ml-2 my-auto ${elderlyMode ? "text-[22px]" : "text-lg"
+              }`}
+          >
+            search
+          </span>
           <input
             type="text"
             placeholder={`Search ${activeTab}...`}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-transparent text-xs text-on-surface focus:outline-none placeholder-outline"
+            className={`w-full bg-transparent ${elderlyMode ? "text-[16px]" : "text-xs"
+              } text-on-surface focus:outline-none placeholder-outline`}
           />
         </div>
 
@@ -907,9 +1197,10 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
             <button
               key={key}
               onClick={() => setActiveTab(key as any)}
-              className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all flex-shrink-0 whitespace-nowrap ${activeTab === key
-                ? "bg-secondary text-on-secondary shadow-sm"
-                : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container border border-outline-variant/10"
+              className={`px-3 py-1.5 rounded-xl ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                } font-bold uppercase tracking-wider transition-all flex-shrink-0 whitespace-nowrap ${activeTab === key
+                  ? "bg-secondary text-on-secondary shadow-sm"
+                  : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container border border-outline-variant/10"
                 }`}
             >
               {label}
@@ -926,11 +1217,25 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
           {/* Active Schedule timeline preview */}
           <div className="glass-card p-5 border border-outline-variant/20 rounded-2xl space-y-3">
             <div className="flex justify-between items-center">
-              <h4 className="font-headline-md text-xs text-secondary font-bold flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-primary text-lg">schedule</span>
+              <h4
+                className={`font-headline-md ${elderlyMode ? "text-[16px]" : "text-xs"
+                  } text-secondary font-bold flex items-center gap-1.5`}
+              >
+                <span
+                  className={`material-symbols-outlined text-primary ${elderlyMode ? "text-[22px]" : "text-lg"
+                    }`}
+                >
+                  schedule
+                </span>
                 <span>Today's Reminder Slots</span>
               </h4>
-              <button onClick={() => setActiveTab("timeline")} className="text-[10px] font-bold text-primary hover:underline">View Timeline</button>
+              <button
+                onClick={() => setActiveTab("timeline")}
+                className={`font-bold text-primary hover:underline ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                  }`}
+              >
+                View Timeline
+              </button>
             </div>
             <div className="space-y-2">
               {memberReminders.length > 0 ? (
@@ -938,27 +1243,50 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                   // Group by timingSlot and take the first reminder for each slot
                   const slots = ["morning", "afternoon", "evening", "night"];
                   const slotMap = new Map();
-                  memberReminders.forEach(rem => {
+                  memberReminders.forEach((rem) => {
                     if (!slotMap.has(rem.timingSlot)) {
                       slotMap.set(rem.timingSlot, rem);
                     }
                   });
                   // Build list in the correct order
                   const orderedReminders = slots
-                    .map(slot => slotMap.get(slot))
+                    .map((slot) => slotMap.get(slot))
                     .filter(Boolean);
                   return orderedReminders.map((rem) => (
-                    <div key={rem.id} className="p-3 bg-surface-container-low rounded-xl flex justify-between items-center border border-outline-variant/10">
+                    <div
+                      key={rem.id}
+                      className="p-3 bg-surface-container-low rounded-xl flex justify-between items-center border border-outline-variant/10"
+                    >
                       <div className="flex items-center gap-2">
-                        <span className="material-symbols-outlined text-primary text-sm">pill</span>
-                        <span className="text-xs font-bold text-secondary">{rem.medicineName}</span>
+                        <span
+                          className={`material-symbols-outlined text-primary ${elderlyMode ? "text-[18px]" : "text-sm"
+                            }`}
+                        >
+                          pill
+                        </span>
+                        <span
+                          className={`font-bold text-secondary ${elderlyMode ? "text-[16px]" : "text-xs"
+                            }`}
+                        >
+                          {rem.medicineName}
+                        </span>
                       </div>
-                      <span className="text-[9px] bg-secondary-container/10 text-secondary font-bold px-2 py-0.5 rounded uppercase">{rem.timingSlot}</span>
+                      <span
+                        className={`bg-secondary-container/10 text-secondary font-bold px-2 py-0.5 rounded uppercase ${elderlyMode ? "text-[13px]" : "text-[9px]"
+                          }`}
+                      >
+                        {rem.timingSlot}
+                      </span>
                     </div>
                   ));
                 })()
               ) : (
-                <p className="text-[10px] text-on-surface-variant text-center py-4">No active reminders configured for today</p>
+                <p
+                  className={`text-on-surface-variant text-center py-4 ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                    }`}
+                >
+                  No active reminders configured for today
+                </p>
               )}
             </div>
           </div>
@@ -966,21 +1294,53 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
           {/* Chronological history preview */}
           <div className="glass-card p-5 border border-outline-variant/20 rounded-2xl space-y-3">
             <div className="flex justify-between items-center">
-              <h4 className="font-headline-md text-xs text-secondary font-bold flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-primary text-lg">history</span>
+              <h4
+                className={`font-headline-md ${elderlyMode ? "text-[16px]" : "text-xs"
+                  } text-secondary font-bold flex items-center gap-1.5`}
+              >
+                <span
+                  className={`material-symbols-outlined text-primary ${elderlyMode ? "text-[22px]" : "text-lg"
+                    }`}
+                >
+                  history
+                </span>
                 <span>Member Health Log</span>
               </h4>
-              <button onClick={() => setActiveTab("history")} className="text-[10px] font-bold text-primary hover:underline">Full Log</button>
+              <button
+                onClick={() => setActiveTab("history")}
+                className={`font-bold text-primary hover:underline ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                  }`}
+              >
+                Full Log
+              </button>
             </div>
             <div className="space-y-3 pl-2 relative border-l border-outline-variant/25">
-              {(!memberHistory.length ? memberHistory.slice(0, 3).map((h, i) => (
-                <div key={i} className="relative pl-3">
-                  <div className="absolute -left-[16px] top-1.5 w-2 h-2 rounded-full bg-secondary" />
-                  <span className="block text-[8px] font-bold text-outline">{h.date}</span>
-                  <span className="text-[10px] font-bold text-secondary leading-tight block">{h.title}</span>
-                </div>
-              )) :
-                <p className="text-[10px] text-on-surface-variant italic py-4 text-center">No health history available</p>)}
+              {memberHistory.length ? (
+                memberHistory.slice(0, 3).map((h, i) => (
+                  <div key={i} className="relative pl-3">
+                    <div className="absolute -left-[16px] top-1.5 w-2 h-2 rounded-full bg-secondary" />
+                    <span
+                      className={`block font-bold text-outline ${elderlyMode ? "text-[12px]" : "text-[8px]"
+                        }`}
+                    >
+                      {h.date}
+                    </span>
+                    <span
+                      className={`font-bold text-secondary ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                        } leading-tight block`}
+                    >
+                      {h.title}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <p
+                  className={`text-on-surface-variant italic py-4 text-center ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                    }`}
+                >
+                  No health history available
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -990,7 +1350,12 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
       {activeTab === "medicines" && (
         <div className="space-y-3">
           <div className="flex justify-between items-center">
-            <h4 className="font-headline-md text-xs text-secondary font-bold">Configured Active Medicines</h4>
+            <h4
+              className={`font-headline-md ${elderlyMode ? "text-[16px]" : "text-xs"
+                } text-secondary font-bold`}
+            >
+              Configured Active Medicines
+            </h4>
             <button
               onClick={() => {
                 setExtractedMedicines(null);
@@ -999,9 +1364,15 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                 setOcrError(null);
                 setShowEntryChoiceModal(true);
               }}
-              className="text-[10px] font-bold text-primary hover:underline flex items-center gap-0.5"
+              className={`font-bold text-primary hover:underline flex items-center gap-0.5 ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                }`}
             >
-              <span className="material-symbols-outlined text-sm font-bold">add</span>
+              <span
+                className={`material-symbols-outlined font-bold ${elderlyMode ? "text-[18px]" : "text-sm"
+                  }`}
+              >
+                add
+              </span>
               <span>Add Medicine</span>
             </button>
           </div>
@@ -1011,29 +1382,76 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
               {memberMeds.map((med) => {
                 const refillDays = getRefillDays(med);
                 return (
-                  <div key={med.id} className="p-4 bg-white border border-outline-variant/25 rounded-2xl flex flex-col justify-between gap-3 shadow-xs">
+                  <div
+                    key={med.id}
+                    className="p-4 bg-white border border-outline-variant/25 rounded-2xl flex flex-col justify-between gap-3 shadow-xs"
+                  >
                     <div className="flex justify-between items-start">
                       <div>
-                        <h5 className="font-headline-md text-xs text-secondary font-extrabold">{med.name}</h5>
-                        <span className="text-[9px] text-outline font-bold block mt-0.5">Dosage: {med.dosage}</span>
+                        <h5
+                          className={`font-headline-md ${elderlyMode ? "text-[16px]" : "text-xs"
+                            } text-secondary font-extrabold`}
+                        >
+                          {med.name}
+                        </h5>
+                        <span
+                          className={`text-outline font-bold block mt-0.5 ${elderlyMode ? "text-[13px]" : "text-[9px]"
+                            }`}
+                        >
+                          Dosage: {med.dosage}
+                        </span>
                       </div>
-                      <span className="bg-primary/5 text-primary text-[8px] px-2 py-0.5 rounded font-extrabold uppercase">Active</span>
+                      <span
+                        className={`bg-primary/5 text-primary ${elderlyMode ? "text-[12px]" : "text-[8px]"
+                          } px-2 py-0.5 rounded font-extrabold uppercase`}
+                      >
+                        Active
+                      </span>
                     </div>
-                    <div className="text-[10px] text-on-surface-variant">
-                      <p><strong className="text-secondary">Instructions:</strong> {med.instructions || "Take after meals"}</p>
-                      <p><strong className="text-secondary">Frequency:</strong> {med.timings.join(", ") || "-"}</p>
+                    <div
+                      className={`text-on-surface-variant ${elderlyMode ? "text-[13px]" : "text-[10px]"
+                        }`}
+                    >
+                      <p>
+                        <strong className="text-secondary">
+                          Instructions:
+                        </strong>{" "}
+                        {med.instructions || "Take after meals"}
+                      </p>
+                      <p>
+                        <strong className="text-secondary">Frequency:</strong>{" "}
+                        {med.timings.join(", ") || "-"}
+                      </p>
                     </div>
                     <div className="flex justify-between items-center border-t border-outline-variant/10 pt-2.5 mt-1">
                       {refillDays !== null ? (
                         refillDays <= 6 ? (
-                          <span className="text-[9px] text-tertiary font-bold">Refill in {refillDays} days</span>
+                          <span
+                            className={`text-tertiary font-bold ${elderlyMode ? "text-[13px]" : "text-[9px]"
+                              }`}
+                          >
+                            Refill in {refillDays} days
+                          </span>
                         ) : (
-                          <span className="text-[9px] text-tertiary font-bold">{refillDays} days remaining</span>
+                          <span
+                            className={`text-tertiary font-bold ${elderlyMode ? "text-[13px]" : "text-[9px]"
+                              }`}
+                          >
+                            {refillDays} days remaining
+                          </span>
                         )
                       ) : (
-                        <span className="text-[9px] text-outline font-bold">Stock not tracked</span>
+                        <span
+                          className={`text-outline font-bold ${elderlyMode ? "text-[13px]" : "text-[9px]"
+                            }`}
+                        >
+                          Stock not tracked
+                        </span>
                       )}
-                      <button className="bg-secondary text-on-secondary px-3 py-1 rounded-lg text-[9px] font-bold shadow-xs hover:opacity-90">
+                      <button
+                        className={`bg-secondary text-on-secondary px-3 py-1 rounded-lg font-bold shadow-xs hover:opacity-90 ${elderlyMode ? "text-[13px]" : "text-[9px]"
+                          }`}
+                      >
                         Reorder Meds
                       </button>
                     </div>
@@ -1043,9 +1461,24 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
             </div>
           ) : (
             <div className="p-8 text-center text-on-surface-variant bg-surface-container-low rounded-2xl border border-outline-variant/15">
-              <span className="material-symbols-outlined text-3xl text-outline-variant">medication</span>
-              <p className="text-xs font-bold mt-2">No Active Medicines</p>
-              <p className="text-[10px]">Add a medicine to start tracking.</p>
+              <span
+                className={`material-symbols-outlined ${elderlyMode ? "text-[34px]" : "text-3xl"
+                  } text-outline-variant`}
+              >
+                medication
+              </span>
+              <p
+                className={`text-xs font-bold mt-2 ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                  }`}
+              >
+                No Active Medicines
+              </p>
+              <p
+                className={`text-xs font-bold mt-2 ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                  }`}
+              >
+                Add a medicine to start tracking.
+              </p>
             </div>
           )}
         </div>
@@ -1054,33 +1487,80 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
       {/* ORDERS SUBSECTION */}
       {activeTab === "orders" && (
         <div className="space-y-3">
-          <h4 className="font-headline-md text-xs text-secondary font-bold">Medicine Orders History</h4>
+          <h4
+            className={`font-headline-md text-secondary font-bold ${elderlyMode ? "text-[16px]" : "text-xs"
+              }`}
+          >
+            Medicine Orders History
+          </h4>
           <div className="space-y-2">
-            {(!memberOrders?.length) ? memberOrders.map((o) => (
-              <div key={o.id} className="p-3 bg-white border border-outline-variant/15 rounded-2xl flex flex-col sm:flex-row justify-between sm:items-center gap-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-headline-md text-xs text-secondary font-bold">{o.medicineName}</span>
-                    <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase ${o.status === "Delivered" ? "bg-tertiary/10 text-tertiary" : "bg-primary/10 text-primary"
-                      }`}>{o.status}</span>
+            {!memberOrders?.length ? (
+              memberOrders.map((o) => (
+                <div
+                  key={o.id}
+                  className="p-3 bg-white border border-outline-variant/15 rounded-2xl flex flex-col sm:flex-row justify-between sm:items-center gap-3"
+                >
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`font-headline-md font-bold text-secondary ${elderlyMode ? "text-[16px]" : "text-xs"
+                          }`}
+                      >
+                        {o.medicineName}
+                      </span>
+                      <span
+                        className={`font-bold px-1.5 py-0.5 rounded uppercase ${o.status === "Delivered"
+                          ? "bg-tertiary/10 text-tertiary"
+                          : "bg-primary/10 text-primary"
+                          } ${elderlyMode ? "text-[12px]" : "text-[8px]"}`}
+                      >
+                        {o.status}
+                      </span>
+                    </div>
+                    <p
+                      className={`text-on-surface-variant mt-1 ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                        }`}
+                    >
+                      Order Date: {o.orderDate} • Supplier: {o.supplier}
+                    </p>
                   </div>
-                  <p className="text-[10px] text-on-surface-variant mt-1">Order Date: {o.orderDate} • Supplier: {o.supplier}</p>
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      className={`px-3 py-1 bg-surface-container text-secondary font-bold rounded-lg hover:bg-surface-container-high ${elderlyMode ? "text-[13px]" : "text-[9px]"
+                        }`}
+                    >
+                      Track Order
+                    </button>
+                    <button
+                      className={`px-3 py-1 bg-primary text-on-primary font-bold rounded-lg hover:opacity-90 ${elderlyMode ? "text-[13px]" : "text-[9px]"
+                        }`}
+                    >
+                      Reorder
+                    </button>
+                  </div>
                 </div>
-                <div className="flex gap-2 justify-end">
-                  <button className="px-3 py-1 bg-surface-container text-secondary text-[9px] font-bold rounded-lg hover:bg-surface-container-high">
-                    Track Order
-                  </button>
-                  <button className="px-3 py-1 bg-primary text-on-primary text-[9px] font-bold rounded-lg hover:opacity-90">
-                    Reorder
-                  </button>
-                </div>
-              </div>
-            )) : (
+              ))
+            ) : (
               <div className="space-y-3">
                 <div className="p-8 text-center text-on-surface-variant bg-surface-container-low rounded-2xl border border-outline-variant/15">
-                  <span className="material-symbols-outlined text-3xl text-outline-variant">inbox</span>
-                  <p className="text-xs font-bold mt-2">No Orders Found</p>
-                  <p className="text-[10px]">Orders will appear here once placed.</p>
+                  <span
+                    className={`material-symbols-outlined ${elderlyMode ? "text-[34px]" : "text-3xl"
+                      } text-outline-variant`}
+                  >
+                    inbox
+                  </span>
+                  <p
+                    className={`text-xs font-bold mt-2 ${elderlyMode ? "text-[16px]" : "text-xs"
+                      }`}
+                  >
+                    No Orders Found
+                  </p>
+                  <p
+                    className={`text-xs font-bold mt-2 ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                      }`}
+                  >
+                    Orders will appear here once placed.
+                  </p>
                 </div>
               </div>
             )}
@@ -1092,22 +1572,41 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
       {activeTab === "medicalReport" && (
         <div className="space-y-5">
           <div className="space-y-3">
-            <h4 className="font-headline-md text-xs text-secondary font-bold">
+            <h4
+              className={`font-headline-md text-secondary font-bold ${elderlyMode ? "text-[16px]" : "text-xs"
+                }`}
+            >
               Uploaded Medical Reports
             </h4>
 
             {loadingDocuments ? (
               <div className="text-center py-6">
                 <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-primary mx-auto" />
-                <p className="text-xs text-outline mt-2">Loading documents...</p>
+                <p
+                  className={`text-xs text-outline mt-2 ${elderlyMode ? "text-[16px]" : "text-xs"
+                    }`}
+                >
+                  Loading documents...
+                </p>
               </div>
             ) : memberDocuments.length === 0 ? (
               <div className="p-6 text-center text-on-surface-variant bg-surface-container-low rounded-2xl border border-outline-variant/15">
-                <span className="material-symbols-outlined text-3xl text-outline-variant">
+                <span
+                  className={`material-symbols-outlined ${elderlyMode ? "text-[34px]" : "text-3xl"
+                    } text-outline-variant`}
+                >
                   description
                 </span>
-                <p className="text-xs font-bold mt-2">No Medical Reports Uploaded</p>
-                <p className="text-[10px]">
+                <p
+                  className={`text-xs font-bold mt-2 ${elderlyMode ? "text-[16px]" : "text-xs"
+                    }`}
+                >
+                  No Medical Reports Uploaded
+                </p>
+                <p
+                  className={`text-xs font-bold mt-2 ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                    }`}
+                >
                   This member hasn't uploaded any documents yet.
                 </p>
               </div>
@@ -1116,7 +1615,8 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                 {memberDocuments.map((doc) => {
                   // Category label
                   const categoryLabel =
-                    TEST_CATEGORY.find((c) => c.key === doc.reportCategory)?.label ||
+                    TEST_CATEGORY.find((c) => c.key === doc.reportCategory)
+                      ?.label ||
                     doc.reportCategory ||
                     "Report";
 
@@ -1135,33 +1635,49 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                       <div className="flex gap-3 min-w-0 flex-1">
                         <div className="w-9 h-9 bg-primary/10 text-primary rounded-lg flex items-center justify-center flex-shrink-0">
                           <span className="material-symbols-outlined text-lg">
-                            {doc.mimeType === "application/pdf" ? "picture_as_pdf" : "image"}
+                            {doc.mimeType === "application/pdf"
+                              ? "picture_as_pdf"
+                              : "image"}
                           </span>
                         </div>
                         <div className="text-left min-w-0 flex-1">
                           {/* Row 1: category badge + private badge + date */}
                           <div className="flex items-center flex-wrap gap-1">
-                            <span className="bg-secondary/10 text-secondary text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
+                            <span
+                              className={`bg-secondary/10 text-secondary  px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${elderlyMode ? "text-[12px]" : "text-[8px]"
+                                }`}
+                            >
                               {categoryLabel}
                             </span>
 
                             {doc.isPrivate && (
                               <div className="bg-red-100 text-red-600 rounded font-bold  px-1.5 py-0.5 flex gap-1 items-center">
-                                <span className="material-symbols-outlined text-sm!">lock</span>
-                                <span className=" text-[8px] tracking-wide!">
+                                <span className="material-symbols-outlined text-sm!">
+                                  lock
+                                </span>
+                                <span
+                                  className={`tracking-wide! ${elderlyMode ? "text-[12px]" : "text-[8px]"
+                                    }`}
+                                >
                                   Private
                                 </span>
                               </div>
                             )}
 
-                            <span className="text-secondary text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
+                            <span
+                              className={`text-secondary  px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${elderlyMode ? "text-[12px]" : "text-[8px]"
+                                }`}
+                            >
                               • {displayDate}
                             </span>
                           </div>
 
                           {/* Row 2: file name */}
                           <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[10px] text-outline font-semibold flex items-center gap-0.5 truncate">
+                            <span
+                              className={`text-outline font-semibold flex items-center gap-0.5 truncate ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                                }`}
+                            >
                               <span className="material-symbols-outlined text-sm! shrink-0">
                                 description
                               </span>
@@ -1175,7 +1691,10 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                               <span className="material-symbols-outlined text-sm! text-outline shrink-0">
                                 notes
                               </span>
-                              <span className="text-[10px] text-on-surface-variant italic truncate">
+                              <span
+                                className={`text-on-surface-variant italic truncate ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                                  }`}
+                              >
                                 {doc.note}
                               </span>
                             </div>
@@ -1190,7 +1709,6 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
           </div>
         </div>
       )}
-
 
       {/* {activeTab === "labs" && (
         <div className="space-y-3">
@@ -1227,7 +1745,12 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
       {/* REPORTS SUBSECTION */}
       {activeTab === "reports" && (
         <div className="space-y-3">
-          <h4 className="font-headline-md text-xs text-secondary font-bold">Uploaded Medical Records & PDF Reports</h4>
+          <h4
+            className={` text-secondary font-bold ${elderlyMode ? "text-[16px]" : "text-xs"
+              }`}
+          >
+            Uploaded Medical Records & PDF Reports
+          </h4>
 
           {/* show reports only if allowReportSharing is false */}
           {member.allowReportSharing === false ? (
@@ -1284,17 +1807,41 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
               )} */}
 
               <div className="p-8 text-center text-on-surface-variant bg-surface-container-low rounded-2xl border border-outline-variant/15">
-                <span className="material-symbols-outlined text-3xl text-outline-variant">description</span>
-                <p className="text-xs font-bold mt-2">No Reports Found</p>
-                <p className="text-[10px]">Upload a Health report to see it here.</p>
+                <span
+                  className={`material-symbols-outlined  text-outline-variant ${elderlyMode ? "text-[34px]" : "text-3xl"
+                    }`}
+                >
+                  description
+                </span>
+                <p
+                  className={`text-xs font-bold mt-2 ${elderlyMode ? "text-[16px]" : "text-xs"
+                    }`}
+                >
+                  No Reports Found
+                </p>
+                <p className={`${elderlyMode ? "text-[14px]" : "text-[10px]"}`}>
+                  Upload a Health report to see it here.
+                </p>
               </div>
             </>
           ) : (
             /* 👇 Shown when allowReportSharing === true (or undefined) */
             <div className="p-8 text-center text-on-surface-variant bg-surface-container-low rounded-2xl border border-outline-variant/15">
-              <span className="material-symbols-outlined text-3xl text-outline-variant">visibility_off</span>
-              <p className="text-xs font-bold mt-2">Reports Not Shared</p>
-              <p className="text-[10px]">This member has chosen not to share medical reports.</p>
+              <span
+                className={`material-symbols-outlined text-outline-variant ${elderlyMode ? "text-[34px]" : "text-3xl"
+                  }`}
+              >
+                visibility_off
+              </span>
+              <p
+                className={`text-xs font-bold mt-2 ${elderlyMode ? "text-[16px]" : "text-xs"
+                  }`}
+              >
+                Reports Not Shared
+              </p>
+              <p className={`${elderlyMode ? "text-[14px]" : "text-[10px]"}`}>
+                This member has chosen not to share medical reports.
+              </p>
             </div>
           )}
         </div>
@@ -1303,31 +1850,77 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
       {/* APPOINTMENTS SUBSECTION */}
       {activeTab === "appointments" && (
         <div className="space-y-3">
-          <h4 className="font-headline-md text-xs text-secondary font-bold">Doctor Appointments List</h4>
+          <h4
+            className={`font-headline-md text-secondary font-bold ${elderlyMode ? "text-[16px]" : "text-xs"
+              }`}
+          >
+            Doctor Appointments List
+          </h4>
           <div className="space-y-2.5">
-            {(!memberAppointments.length) ? (
+            {!memberAppointments.length ? (
               memberAppointments.map((apt) => (
-                <div key={apt.id} className="p-4 bg-white border border-outline-variant/15 rounded-2xl flex justify-between items-center gap-3">
+                <div
+                  key={apt.id}
+                  className="p-4 bg-white border border-outline-variant/15 rounded-2xl flex justify-between items-center gap-3"
+                >
                   <div className="flex gap-3 items-center">
                     <div className="w-10 h-10 bg-primary/5 text-primary rounded-xl flex items-center justify-center flex-shrink-0">
-                      <span className="material-symbols-outlined">medical_information</span>
+                      <span className="material-symbols-outlined">
+                        medical_information
+                      </span>
                     </div>
                     <div>
-                      <h5 className="font-headline-md text-xs text-secondary font-extrabold">{apt.doctorName}</h5>
-                      <p className="text-[9px] text-outline font-bold">{apt.specialization} • {apt.hospital}</p>
-                      <p className="text-[10px] text-on-surface-variant font-medium mt-1">Date: {apt.date} at {apt.time}</p>
+                      <h5
+                        className={`font-headline-md text-secondary font-extrabold ${elderlyMode ? "text-[16px]" : "text-xs"
+                          }`}
+                      >
+                        {apt.doctorName}
+                      </h5>
+                      <p
+                        className={`text-outline font-bold ${elderlyMode ? "text-[13px]" : "text-[9px]"
+                          }`}
+                      >
+                        {apt.specialization} • {apt.hospital}
+                      </p>
+                      <p
+                        className={`text-on-surface-variant font-medium mt-1 ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                          }`}
+                      >
+                        Date: {apt.date} at {apt.time}
+                      </p>
                     </div>
                   </div>
-                  <span className={`text-[8px] font-extrabold px-2 py-0.5 rounded uppercase ${apt.status === "upcoming" ? "bg-primary/10 text-primary" : "bg-tertiary/10 text-tertiary"
-                    }`}>{apt.status}</span>
+                  <span
+                    className={`${elderlyMode ? "text-[12px]" : "text-[8px]"
+                      } font-extrabold px-2 py-0.5 rounded uppercase ${apt.status === "upcoming"
+                        ? "bg-primary/10 text-primary"
+                        : "bg-tertiary/10 text-tertiary"
+                      }`}
+                  >
+                    {apt.status}
+                  </span>
                 </div>
               ))
             ) : (
               <div className="space-y-3">
                 <div className="p-8 text-center text-on-surface-variant bg-surface-container-low rounded-2xl border border-outline-variant/15">
-                  <span className="material-symbols-outlined text-3xl text-outline-variant">event_busy</span>
-                  <p className="text-xs font-bold mt-2">No Appointments Scheduled</p>
-                  <p className="text-[10px]">Upcoming appointments will be listed here.</p>
+                  <span
+                    className={`material-symbols-outlined text-outline-variant ${elderlyMode ? "text-[34px]" : "text-3xl"
+                      }`}
+                  >
+                    event_busy
+                  </span>
+                  <p
+                    className={`text-xs font-bold mt-2 ${elderlyMode ? "text-[16px]" : "text-xs"
+                      }`}
+                  >
+                    No Appointments Scheduled
+                  </p>
+                  <p
+                    className={`${elderlyMode ? "text-[14px]" : "text-[10px]"}`}
+                  >
+                    Upcoming appointments will be listed here.
+                  </p>
                 </div>
               </div>
             )}
@@ -1339,25 +1932,48 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
       {activeTab === "timeline" && (
         <div className="space-y-3 pl-4 relative border-l-2 border-outline-variant/20">
           {["morning", "afternoon", "evening", "night"].map((slot) => {
-            const slotRems = memberReminders.filter(r => r.timingSlot === slot);
+            const slotRems = memberReminders.filter(
+              (r) => r.timingSlot === slot,
+            );
             return (
               <div key={slot} className="relative pl-3 pb-4">
                 <div className="absolute -left-[23px] top-1 w-3.5 h-3.5 rounded-full bg-white border-2 border-primary" />
-                <h4 className="font-headline-md text-xs text-secondary font-bold uppercase tracking-wider">{slot}</h4>
+                <h4
+                  className={`font-headline-md text-xs text-secondary font-bold uppercase tracking-wider ${elderlyMode ? "text-[16px]" : "text-xs"
+                    }`}
+                >
+                  {slot}
+                </h4>
                 <div className="space-y-2 mt-2">
                   {slotRems.map((r) => (
-                    <div key={r.id} className="p-3 bg-white border border-outline-variant/15 rounded-xl flex justify-between items-center">
+                    <div
+                      key={r.id}
+                      className="p-3 bg-white border border-outline-variant/15 rounded-xl flex justify-between items-center"
+                    >
                       <div>
-                        <span className="text-xs font-bold text-secondary block">{r.medicineName}</span>
-                        <span className="text-[9px] text-on-surface-variant">{r.dosage} • {r.instructions}</span>
+                        <span
+                          className={`text-xs font-bold text-secondary block ${elderlyMode ? "text-[16px]" : "text-xs"
+                            }`}
+                        >
+                          {r.medicineName}
+                        </span>
+                        <span
+                          className={`text-[9px] text-on-surface-variant ${elderlyMode ? "text-[13px]" : "text-[9px]"
+                            }`}
+                        >
+                          {r.dosage} • {r.instructions}
+                        </span>
                       </div>
                       <div className="flex items-center gap-2">
                         {r.status === "taken" ? (
-                          <span className="material-symbols-outlined text-tertiary text-lg">check_circle</span>
+                          <span className="material-symbols-outlined text-tertiary text-lg">
+                            check_circle
+                          </span>
                         ) : (
                           <button
-                            onClick={() => toggleReminderStatus(r.id, "taken")}
-                            className="bg-primary text-on-primary px-3 py-1 rounded-lg text-[9px] font-bold shadow-xs hover:opacity-90"
+                            onClick={() => markMemberReminderTaken(r.id)}
+                            className={`bg-primary text-on-primary px-3 py-1 rounded-lg ${elderlyMode ? "text-[13px]" : "text-[9px]"
+                              } font-bold shadow-xs hover:opacity-90`}
                           >
                             Take
                           </button>
@@ -1366,7 +1982,12 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                     </div>
                   ))}
                   {slotRems.length === 0 && (
-                    <p className="text-[10px] text-on-surface-variant italic">No medications scheduled for {slot}</p>
+                    <p
+                      className={` text-on-surface-variant italic ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                        }`}
+                    >
+                      No medications scheduled for {slot}
+                    </p>
                   )}
                 </div>
               </div>
@@ -1378,18 +1999,36 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
       {/* HISTORY SUBSECTION */}
       {activeTab === "history" && (
         <div className="space-y-4">
-          <h4 className="font-headline-md text-xs text-secondary font-bold">Chronological Health Journal</h4>
+          <h4
+            className={`font-headline-md text-secondary font-bold ${elderlyMode ? "text-[16px]" : "text-xs"
+              }`}
+          >
+            Chronological Health Journal
+          </h4>
           <div className="relative pl-6 space-y-6">
             <div className="absolute left-2 top-2 bottom-2 w-0.5 bg-outline-variant/30" />
-            {(!memberHistory.length) ? (
+            {!memberHistory.length ? (
               memberHistory.map((h, idx) => (
                 <div key={idx} className="relative">
                   <div className="absolute -left-[21px] top-1.5 w-3 h-3 rounded-full bg-secondary border-2 border-white shadow-xs" />
                   <div>
-                    <span className="text-[9px] text-outline font-bold">{h.date}</span>
+                    <span
+                      className={`text-[9px] text-outline font-bold ${elderlyMode ? "text-[13px]" : "text-[9px]"
+                        }`}
+                    >
+                      {h.date}
+                    </span>
                     <div className="p-3 bg-surface-container-low border border-outline-variant/10 rounded-xl mt-1">
-                      <p className="text-xs font-bold text-secondary">{h.title}</p>
-                      <span className="bg-primary/5 text-primary text-[8px] px-1.5 py-0.5 rounded font-extrabold uppercase mt-2 inline-block">
+                      <p
+                        className={`text-xs font-bold text-secondary ${elderlyMode ? "text-[13px]" : "text-[9px]"
+                          }`}
+                      >
+                        {h.title}
+                      </p>
+                      <span
+                        className={`bg-primary/5 text-primary  px-1.5 py-0.5 rounded font-extrabold uppercase mt-2 inline-block ${elderlyMode ? "text-[12px]" : "text-[8px]"
+                          }`}
+                      >
                         {h.category}
                       </span>
                     </div>
@@ -1399,9 +2038,23 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
             ) : (
               <div className="space-y-3">
                 <div className="p-8 text-center text-on-surface-variant bg-surface-container-low rounded-2xl border border-outline-variant/15">
-                  <span className="material-symbols-outlined text-3xl text-outline-variant">history</span>
-                  <p className="text-xs font-bold mt-2">No History Records</p>
-                  <p className="text-[10px]">Historical health events will appear here.</p>
+                  <span
+                    className={`material-symbols-outlined ${elderlyMode ? "text-[34px]" : "text-3xl"
+                      } text-outline-variant`}
+                  >
+                    history
+                  </span>
+                  <p
+                    className={` font-bold mt-2 ${elderlyMode ? "text-[16px]" : "text-xs"
+                      }`}
+                  >
+                    No History Records
+                  </p>
+                  <p
+                    className={`${elderlyMode ? "text-[14px]" : "text-[10px]"}`}
+                  >
+                    Historical health events will appear here.
+                  </p>
                 </div>
               </div>
             )}
@@ -1422,7 +2075,12 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
           }}
           className="w-12 h-12 bg-primary text-on-primary rounded-full flex items-center justify-center shadow-xl hover:scale-105 active:scale-95 transition-all"
         >
-          <span className="material-symbols-outlined text-2xl font-bold">add</span>
+          <span
+            className={`material-symbols-outlined ${elderlyMode ? "text-[28px]" : "text-2xl"
+              } font-bold`}
+          >
+            add
+          </span>
         </button>
       </div>
 
@@ -1431,30 +2089,52 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
         <div className="fixed inset-0 bg-inverse-surface/40 backdrop-blur-md z-[60] flex items-center justify-center p-4">
           <div className="w-full max-w-[420px] bg-white rounded-3xl p-6 shadow-2xl border border-outline-variant/30 flex flex-col max-h-[85vh] overflow-y-auto animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="font-headline-md text-sm text-secondary font-bold flex items-center gap-2">
-                <span className="material-symbols-outlined text-primary text-xl">medication</span>
+              <h3
+                className={`text-sm text-secondary font-bold flex items-center gap-2 ${elderlyMode ? "text-[18px]" : "text-sm"
+                  }`}
+              >
+                <span
+                  className={`material-symbols-outlined ${elderlyMode ? "text-[24px]" : "text-xl"
+                    } text-primary`}
+                >
+                  medication
+                </span>
                 <span>Add Medicine for {member.nickname || member.name}</span>
               </h3>
               <button
                 onClick={() => setShowAddMedsModal(false)}
                 className="w-8 h-8 rounded-full bg-surface-container hover:bg-surface-container-high flex items-center justify-center focus:outline-none"
               >
-                <span className="material-symbols-outlined text-sm">close</span>
+                <span
+                  className={`material-symbols-outlined ${elderlyMode ? "text-[18px]" : "text-sm"
+                    }`}
+                >
+                  close
+                </span>
               </button>
             </div>
 
             <form onSubmit={handleAddMedSubmit} className="space-y-4 text-left">
               {/* Medicine Name with Suggestions */}
               <div className="space-y-1 relative">
-                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Medicine Name</label>
+                <label
+                  className={`block font-bold text-outline uppercase tracking-wider ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                    }`}
+                >
+                  Medicine Name
+                </label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Metformin, Atorvastatin"
                   value={newMedName}
                   onChange={(query) => searchMedicines(query.target.value)}
-                  onFocus={() => { if (filteredSuggestions.length > 0) setShowSuggestions(true); }}
-                  className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                  onFocus={() => {
+                    if (filteredSuggestions.length > 0)
+                      setShowSuggestions(true);
+                  }}
+                  className={`w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl text-on-surface focus:outline-none focus:border-primary ${elderlyMode ? "text-[16px]" : "text-xs"
+                    }`}
                 />
                 {showSuggestions && filteredSuggestions.length > 0 && (
                   <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-outline-variant/20 rounded-xl shadow-lg z-50 max-h-48 overflow-y-auto">
@@ -1463,14 +2143,27 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                         key={s.id ?? s.medicine_name}
                         type="button"
                         onClick={() => handleSelectSuggestion(s)}
-                        className="w-full text-left px-3.5 py-2.5 hover:bg-primary-container/10 transition-colors flex justify-between items-center text-xs"
+                        className={`w-full text-left px-3.5 py-2.5 hover:bg-primary-container/10 transition-colors flex justify-between items-center ${elderlyMode ? "text-[16px]" : "text-xs"
+                          }`}
                       >
                         <div>
-                          <span className="font-bold text-secondary">{s.medicine_name}</span>
-                          {s.strength && <span className="text-[10px] text-on-surface-variant block mt-0.5">{s.strength}</span>}
+                          <span className="font-bold text-secondary">
+                            {s.medicine_name}
+                          </span>
+                          {s.strength && (
+                            <span
+                              className={`text-on-surface-variant block mt-0.5 ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                                }`}
+                            >
+                              {s.strength}
+                            </span>
+                          )}
                         </div>
                         {s.dosage_form && (
-                          <span className="text-[10px] text-primary bg-primary/10 px-2 py-0.5 rounded-full font-bold">
+                          <span
+                            className={`text-primary bg-primary/10 px-2 py-0.5 rounded-full font-bold ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                              }`}
+                          >
                             {s.dosage_form}
                           </span>
                         )}
@@ -1483,45 +2176,72 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
               {/* Dosage & Instructions */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Dosage</label>
+                  <label
+                    className={`block font-bold text-outline uppercase tracking-wider ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                      }`}
+                  >
+                    Dosage
+                  </label>
                   <input
                     type="text"
                     placeholder="e.g. 500mg, 1 tablet"
                     value={newDosage}
                     onChange={(e) => setNewDosage(e.target.value)}
-                    className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                    className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl text-on-surface focus:outline-none focus:border-primary"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Instructions</label>
+                  <label
+                    className={`block font-bold text-outline uppercase tracking-wider ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                      }`}
+                  >
+                    Instructions
+                  </label>
                   <input
                     type="text"
                     placeholder="e.g. After Food, Empty Stomach"
                     value={newInstructions}
                     onChange={(e) => setNewInstructions(e.target.value)}
-                    className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                    className={`w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl text-on-surface focus:outline-none focus:border-primary ${elderlyMode ? "text-[16px]" : "text-xs"
+                      }`}
                   />
                 </div>
               </div>
 
               {/* Stock Count */}
               <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Stock Count</label>
+                <label
+                  className={`block font-bold text-outline uppercase tracking-wider ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                    }`}
+                >
+                  Stock Count
+                </label>
                 <input
                   type="number"
                   min="1"
                   placeholder="e.g. 30 (pills/doses)"
                   value={newStockCount}
                   onChange={(e) => setNewStockCount(e.target.value)}
-                  className="w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                  className={`w-full px-3 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl text-on-surface focus:outline-none focus:border-primary ${elderlyMode ? "text-[16px]" : "text-xs"
+                    }`}
                 />
               </div>
 
               {/* Keep Private Checkbox */}
               <div className="space-y-1.5 p-3 rounded-2xl bg-orange-50/30 border border-orange-200/40 flex items-center justify-between">
                 <div>
-                  <label className="block text-[10px] font-bold text-secondary uppercase tracking-wider">Keep Private</label>
-                  <span className="text-[10px] text-on-surface-variant block">Do not share this medicine on family portal</span>
+                  <label
+                    className={`block font-bold text-secondary uppercase tracking-wider ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                      }`}
+                  >
+                    Keep Private
+                  </label>
+                  <span
+                    className={`text-on-surface-variant block ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                      }`}
+                  >
+                    Do not share this medicine on family portal
+                  </span>
                 </div>
                 <input
                   type="checkbox"
@@ -1533,11 +2253,19 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
 
               {/* Frequency Section */}
               <div className="space-y-2 bg-surface-container-low/40 p-3 rounded-2xl border border-outline-variant/10">
-                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Frequency</label>
+                <label
+                  className={`block font-bold text-outline uppercase tracking-wider ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                    }`}
+                >
+                  Frequency
+                </label>
                 <select
                   value={frequency}
                   onChange={(e) => {
-                    const newFreq = e.target.value as "every_day" | "specific_days" | "interval";
+                    const newFreq = e.target.value as
+                      | "every_day"
+                      | "specific_days"
+                      | "interval";
                     setFrequency(newFreq);
                     if (newFreq === "specific_days") {
                       setSelectedDayType("weekdays");
@@ -1556,53 +2284,82 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                       setRepeatEveryNDays(null);
                     }
                   }}
-                  className="w-full px-3 py-2 bg-white border border-outline-variant/30 rounded-xl text-xs text-on-surface focus:outline-none focus:border-primary"
+                  className={`w-full px-3 py-2 bg-white border border-outline-variant/30 rounded-xl text-on-surface focus:outline-none focus:border-primary ${elderlyMode ? "text-[16px]" : "text-xs"
+                    }`}
                 >
                   {frequencyOptions.map(({ value, label }) => (
-                    <option key={value} value={value}>{label}</option>
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
                   ))}
                 </select>
 
                 {/* Interval Options */}
-                {frequency === 'interval' && (
-                  <div className='flex flex-col gap-2'>
-                    <span className='text-sm flex items-center gap-2'>
+                {frequency === "interval" && (
+                  <div className="flex flex-col gap-2">
+                    <span
+                      className={`text-sm flex items-center gap-2 ${elderlyMode ? "text-[16px]" : "text-xs"
+                        }`}
+                    >
                       Remind every
                       <select
                         value={intervalHours}
-                        onChange={(e) => setIntervalHours(Number(e.target.value))}
-                        className='border border-primary rounded px-2 py-1 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-primary'
+                        onChange={(e) =>
+                          setIntervalHours(Number(e.target.value))
+                        }
+                        className={`border border-primary rounded px-2 py-1 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-primary ${elderlyMode ? "text-[18px]" : "text-sm"
+                          }`}
                       >
-                        {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(h => (
-                          <option key={h} value={h}>{h} {h === 1 ? 'Hour' : 'Hours'}</option>
+                        {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((h) => (
+                          <option key={h} value={h}>
+                            {h} {h === 1 ? "Hour" : "Hours"}
+                          </option>
                         ))}
                       </select>
                       <select
                         value={intervalMinutes}
-                        onChange={(e) => setIntervalMinutes(Number(e.target.value))}
-                        className='border border-primary rounded px-2 py-1 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-primary'
+                        onChange={(e) =>
+                          setIntervalMinutes(Number(e.target.value))
+                        }
+                        className={`border border-primary rounded px-2 py-1 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-primary ${elderlyMode ? "text-[18px]" : "text-sm"
+                          }`}
                       >
-                        {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map(m => (
-                          <option key={m} value={m}>{m} min</option>
-                        ))}
+                        {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map(
+                          (m) => (
+                            <option key={m} value={m}>
+                              {m} min
+                            </option>
+                          ),
+                        )}
                       </select>
                     </span>
-                    <span className='text-sm relative flex items-center'>
+                    <span
+                      className={`relative flex items-center ${elderlyMode ? "text-[18px]" : "text-sm"
+                        }`}
+                    >
                       Start time
                       <button
-                        type='button'
-                        className='border border-primary px-2 py-1 rounded ml-3 bg-white'
-                        onClick={() => setShowStartTimeDropdown(!showStartTimeDropdown)}
+                        type="button"
+                        className={`border border-primary px-2 py-1 rounded ml-3 bg-white`}
+                        onClick={() =>
+                          setShowStartTimeDropdown(!showStartTimeDropdown)
+                        }
                       >
-                        {getAllTimeOptions().find(o => o.value === intervalStartTime)?.label || '8:00 AM'}
+                        {getAllTimeOptions().find(
+                          (o) => o.value === intervalStartTime,
+                        )?.label || "8:00 AM"}
                       </button>
                       {showStartTimeDropdown && (
                         <div className="absolute mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto z-50 w-40 top-full left-0">
-                          {getAllTimeOptions().map(opt => (
+                          {getAllTimeOptions().map((opt) => (
                             <div
                               key={opt.value}
-                              className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm"
-                              onClick={() => { setIntervalStartTime(opt.value); setShowStartTimeDropdown(false); }}
+                              className={`px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm ${elderlyMode ? "text-[18px]" : "text-sm"
+                                }`}
+                              onClick={() => {
+                                setIntervalStartTime(opt.value);
+                                setShowStartTimeDropdown(false);
+                              }}
                             >
                               {opt.label}
                             </div>
@@ -1618,23 +2375,37 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                   <div className="inline-flex w-full p-1 rounded-lg bg-orange-50/30 border border-orange-200/60">
                     <button
                       type="button"
-                      onClick={() => { setShowWeekOptions(true); setShowDurationPicker(false); setSelectedDayType("weekdays"); setRepeatEveryNDays(null); }}
-                      className={`flex-1 px-4 py-1 text-sm font-medium rounded-md transition-all ${selectedDayType === "weekdays"
-                        ? "bg-white text-orange-600 shadow-sm ring-1 ring-orange-200"
-                        : "text-gray-500 hover:text-orange-600 hover:bg-orange-100/50"
+                      onClick={() => {
+                        setShowWeekOptions(true);
+                        setShowDurationPicker(false);
+                        setSelectedDayType("weekdays");
+                        setRepeatEveryNDays(null);
+                      }}
+                      className={`flex-1 px-4 py-1 ${elderlyMode ? "text-[18px]" : "text-sm"
+                        } font-medium rounded-md transition-all ${selectedDayType === "weekdays"
+                          ? "bg-white text-orange-600 shadow-sm ring-1 ring-orange-200"
+                          : "text-gray-500 hover:text-orange-600 hover:bg-orange-100/50"
                         }`}
                     >
                       Week Days
                     </button>
                     <button
                       type="button"
-                      onClick={() => { setShowDurationPicker(true); setShowWeekOptions(false); setSelectedDayType("normal"); }}
-                      className={`flex-1 px-4 py-1 text-sm font-medium rounded-md transition-all ${selectedDayType === "normal"
-                        ? "bg-white text-orange-600 shadow-sm ring-1 ring-orange-200"
-                        : "text-gray-500 hover:text-orange-600 hover:bg-orange-100/50"
+                      onClick={() => {
+                        setShowDurationPicker(true);
+                        setShowWeekOptions(false);
+                        setSelectedDayType("normal");
+                      }}
+                      className={`flex-1 px-4 py-1  ${elderlyMode ? "text-[18px]" : "text-sm"
+                        } font-medium rounded-md transition-all ${selectedDayType === "normal"
+                          ? "bg-white text-orange-600 shadow-sm ring-1 ring-orange-200"
+                          : "text-gray-500 hover:text-orange-600 hover:bg-orange-100/50"
                         }`}
                     >
-                      {repeatEveryNDays !== null ? `Every ${repeatEveryNDays} day${repeatEveryNDays > 1 ? 's' : ''}` : "Days"}
+                      {repeatEveryNDays !== null
+                        ? `Every ${repeatEveryNDays} day${repeatEveryNDays > 1 ? "s" : ""
+                        }`
+                        : "Days"}
                     </button>
                   </div>
                 )}
@@ -1645,20 +2416,32 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                     {WEEK_DAYS.map((day) => {
                       const isSelected = selectedDays.includes(day.key);
                       return (
-                        <label key={day.key} className={`flex items-center gap-2 px-3 py-2 rounded-xl border cursor-pointer transition-all ${isSelected
-                          ? "bg-primary-container/20 border-primary text-primary"
-                          : "bg-white border-outline-variant/30 text-on-surface-variant"
-                          }`}>
+                        <label
+                          key={day.key}
+                          className={`flex items-center gap-2 px-3 py-2 rounded-xl border cursor-pointer transition-all ${isSelected
+                            ? "bg-primary-container/20 border-primary text-primary"
+                            : "bg-white border-outline-variant/30 text-on-surface-variant"
+                            }`}
+                        >
                           <input
                             type="checkbox"
                             checked={isSelected}
                             onChange={(e) => {
-                              if (e.target.checked) setSelectedDays(prev => [...prev, day.key]);
-                              else setSelectedDays(prev => prev.filter(item => item !== day.key));
+                              if (e.target.checked)
+                                setSelectedDays((prev) => [...prev, day.key]);
+                              else
+                                setSelectedDays((prev) =>
+                                  prev.filter((item) => item !== day.key),
+                                );
                             }}
                             className="h-4 w-4 rounded border-outline-variant/50 text-primary accent-primary"
                           />
-                          <span className="text-xs font-bold">{day.label}</span>
+                          <span
+                            className={`${elderlyMode ? "text-[16px]" : "text-xs"
+                              } font-bold`}
+                          >
+                            {day.label}
+                          </span>
                         </label>
                       );
                     })}
@@ -1669,16 +2452,25 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                 {showDurationPicker && (
                   <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40">
                     <div className="w-[360px] bg-white rounded-2xl p-5 shadow-2xl">
-                      <h3 className="text-sm font-bold mb-4">Every</h3>
+                      <h3
+                        className={`${elderlyMode ? "text-[18px]" : "text-sm"
+                          } font-bold mb-4`}
+                      >
+                        Every
+                      </h3>
                       <div className="max-h-52 overflow-y-auto">
                         {[1, 2, 3, 4, 5, 7, 14, 30, 60, 90, 100].map((days) => (
                           <button
                             key={days}
                             type="button"
-                            onClick={() => { setRepeatEveryNDays(days); setShowDurationPicker(false); }}
-                            className={`w-full py-3 text-center text-sm ${repeatEveryNDays === days
-                              ? "text-primary font-bold border-y border-primary"
-                              : "text-gray-500"
+                            onClick={() => {
+                              setRepeatEveryNDays(days);
+                              setShowDurationPicker(false);
+                            }}
+                            className={`w-full py-3 text-center ${elderlyMode ? "text-[18px]" : "text-sm"
+                              } font-medium rounded-md transition-all ${repeatEveryNDays === days
+                                ? "text-primary font-bold border-y border-primary"
+                                : "text-gray-500"
                               }`}
                           >
                             {days} {days === 1 ? "day" : "days"}
@@ -1686,8 +2478,22 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                         ))}
                       </div>
                       <div className="flex justify-end gap-6 mt-5">
-                        <button type="button" onClick={() => setShowDurationPicker(false)} className="text-primary font-bold text-sm">CANCEL</button>
-                        <button type="button" onClick={() => setShowDurationPicker(false)} className="text-primary font-bold text-sm">SET</button>
+                        <button
+                          type="button"
+                          onClick={() => setShowDurationPicker(false)}
+                          className={`text-primary font-bold ${elderlyMode ? "text-[18px]" : "text-sm"
+                            }`}
+                        >
+                          CANCEL
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowDurationPicker(false)}
+                          className={`text-primary font-bold ${elderlyMode ? "text-[18px]" : "text-sm"
+                            }`}
+                        >
+                          SET
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -1700,18 +2506,28 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                     onChange={(e) => setUntilStopped(e.target.checked)}
                     className="h-4 w-4 rounded border-outline-variant/50 text-primary accent-primary"
                   />
-                  <span className="font-label-sm text-xs font-bold text-secondary">Set reminder until stopped</span>
+                  <span
+                    className={`${elderlyMode ? "text-[16px]" : "text-xs"
+                      } font-bold text-secondary`}
+                  >
+                    Set reminder until stopped
+                  </span>
                 </label>
 
                 {!untilStopped && (
                   <div className="space-y-1.5 pt-1.5">
-                    <label className="block text-[9px] font-bold text-outline uppercase tracking-wider">Remind Until Date</label>
+                    <label
+                      className={`block  ${elderlyMode ? "text-[13px]" : "text-[9px]"
+                        } font-bold text-outline uppercase tracking-wider`}
+                    >
+                      Remind Until Date
+                    </label>
                     <input
                       type="date"
                       required={!untilStopped}
                       value={newEndDate}
                       onChange={(e) => setNewEndDate(e.target.value)}
-                      className="w-full px-3 py-1.5 bg-white border border-outline-variant/30 rounded-xl font-body-md text-xs text-on-surface focus:outline-none focus:border-primary"
+                      className="w-full px-3 py-1.5 bg-white border border-outline-variant/30 rounded-xl text-xs text-on-surface focus:outline-none focus:border-primary"
                     />
                   </div>
                 )}
@@ -1721,77 +2537,113 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
               {frequency !== "interval" && (
                 <>
                   <div className="space-y-1.5">
-                    <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Schedule Slots</label>
+                    <label
+                      className={`block  ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                        } font-bold text-outline uppercase tracking-wider`}
+                    >
+                      Schedule Slots
+                    </label>
                     <div className="grid grid-cols-2 gap-2">
-                      {["morning", "afternoon", "evening", "night"].map((slot) => {
-                        const isSelected = newSelectedTimings.includes(slot as any);
-                        return (
-                          <button
-                            key={slot}
-                            type="button"
-                            onClick={() => handleTimingToggle(slot as any)}
-                            className={`py-2 px-3 rounded-xl border text-center transition-all flex items-center justify-center gap-1.5 font-label-md text-xs font-bold ${isSelected
-                              ? "bg-primary-container/20 border-primary text-primary"
-                              : "bg-white border-outline-variant/30 text-on-surface-variant hover:border-primary/30"
-                              }`}
-                          >
-                            <span className="material-symbols-outlined text-sm">
-                              {slot === "morning" && "light_mode"}
-                              {slot === "afternoon" && "sunny"}
-                              {slot === "evening" && "wb_twilight"}
-                              {slot === "night" && "bedtime"}
-                            </span>
-                            <span className="capitalize">{slot}</span>
-                          </button>
-                        );
-                      })}
+                      {["morning", "afternoon", "evening", "night"].map(
+                        (slot) => {
+                          const isSelected = newSelectedTimings.includes(
+                            slot as any,
+                          );
+                          return (
+                            <button
+                              key={slot}
+                              type="button"
+                              onClick={() => handleTimingToggle(slot as any)}
+                              className={`py-2 px-3 rounded-xl border text-center transition-all flex items-center justify-center gap-1.5 font-label-md  font-bold ${elderlyMode ? "text-[16px]" : "text-xs"
+                                } ${isSelected
+                                  ? "bg-primary-container/20 border-primary text-primary"
+                                  : "bg-white border-outline-variant/30 text-on-surface-variant hover:border-primary/30"
+                                }`}
+                            >
+                              <span
+                                className={`material-symbols-outlined ${elderlyMode ? "text-[18px]" : "text-sm"
+                                  }`}
+                              >
+                                {slot === "morning" && "light_mode"}
+                                {slot === "afternoon" && "sunny"}
+                                {slot === "evening" && "wb_twilight"}
+                                {slot === "night" && "bedtime"}
+                              </span>
+                              <span className="capitalize">{slot}</span>
+                            </button>
+                          );
+                        },
+                      )}
                     </div>
                   </div>
 
                   <div className="space-y-1.5 bg-surface-container-low/40 p-3 rounded-2xl border border-outline-variant/10">
-                    <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Preferred Intake Times</label>
-                    <div className="flex gap-2">
+                    <label
+                      className={`block  ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                        } font-bold text-outline uppercase tracking-wider`}
+                    >
+                      Preferred Intake Times
+                    </label>
+                    <div className="w-full">
                       <select
                         value={timeInput}
-                        onChange={(e) => setTimeInput(e.target.value)}
-                        className="flex-1 px-3 py-2 bg-white border border-outline-variant/30 rounded-xl font-body-md text-xs focus:outline-none focus:border-primary text-on-surface"
+                        onChange={(e) => {
+                          const selectedTime = e.target.value;
+
+                          setTimeInput(selectedTime);
+
+                          if (
+                            selectedTime &&
+                            !newIntakeTimes.includes(selectedTime)
+                          ) {
+                            setNewIntakeTimes((prev) =>
+                              [...prev, selectedTime].sort(),
+                            );
+                          }
+                        }}
+                        className={`w-full px-3 py-2 bg-white border border-outline-variant/30 rounded-xl font-body-md font-bold ${elderlyMode ? "text-[16px]" : "text-xs"
+                          } focus:outline-none focus:border-primary text-on-surface`}
                       >
                         {getIntakeTimeOptions().length > 0 ? (
                           getIntakeTimeOptions().map((opt) => (
-                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
                           ))
                         ) : (
                           <option value="">Select general slot first</option>
                         )}
                       </select>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (timeInput && !newIntakeTimes.includes(timeInput)) {
-                            setNewIntakeTimes(prev => [...prev, timeInput].sort());
-                          }
-                        }}
-                        className="px-3 py-1.5 bg-primary text-on-primary font-bold rounded-xl text-xs hover:opacity-90 active:scale-95 transition-all"
-                      >
-                        Add Time
-                      </button>
                     </div>
                     {newIntakeTimes.length > 0 && (
                       <div className="flex flex-wrap gap-1.5 pt-1.5">
-                        {newIntakeTimes.map(t => {
+                        {newIntakeTimes.map((t) => {
                           const [hStr, mStr] = t.split(":");
                           const h = parseInt(hStr, 10);
                           const ampm = h >= 12 ? "PM" : "AM";
                           const displayHour = h % 12 === 0 ? 12 : h % 12;
                           return (
-                            <span key={t} className="bg-primary/5 text-primary text-[10px] pl-2.5 pr-1.5 py-0.5 rounded-full font-bold flex items-center gap-1 border border-primary/10">
+                            <span
+                              key={t}
+                              className={`bg-primary/5 text-primary font-bold rounded-full flex items-center gap-1 border border-primary/10 ${elderlyMode ? "text-[16px]" : "text-xs"
+                                }`}
+                            >
                               <span>{`${displayHour}:${mStr} ${ampm}`}</span>
                               <button
                                 type="button"
-                                onClick={() => setNewIntakeTimes(prev => prev.filter(item => item !== t))}
+                                onClick={() =>
+                                  setNewIntakeTimes((prev) =>
+                                    prev.filter((item) => item !== t),
+                                  )
+                                }
                                 className="w-4 h-4 rounded-full flex items-center justify-center hover:bg-primary/10 text-primary"
                               >
-                                <span className="material-symbols-outlined text-[10px] font-bold">close</span>
+                                <span
+                                  className={`material-symbols-outlined font-bold ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                                    }`}
+                                >
+                                  close
+                                </span>
                               </button>
                             </span>
                           );
@@ -1804,20 +2656,37 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
 
               {/* Note: Member is fixed, no need for Family Member Select */}
               <div className="p-3 bg-primary/5 rounded-xl border border-primary/20">
-                <p className="text-[10px] text-secondary font-bold">
-                  <span className="material-symbols-outlined text-sm align-middle">person</span>
-                  This medicine will be added for: <span className="text-primary font-extrabold">{member.nickname || member.name}</span>
+                <p
+                  className={`text-secondary font-bold ${elderlyMode ? "text-[16px]" : "text-[10px]"
+                    }`}
+                >
+                  <span
+                    className={`material-symbols-outlined align-middle ${elderlyMode ? "text-[16px]" : "text-sm"
+                      }`}
+                  >
+                    person
+                  </span>
+                  This medicine will be added for:{" "}
+                  <span className="text-primary font-extrabold">
+                    {member.nickname || member.name}
+                  </span>
                 </p>
               </div>
 
               {validationError && (
-                <p className="text-red-500 text-xs font-bold text-center mt-2">{validationError}</p>
+                <p
+                  className={`text-red-500 font-bold text-center mt-2 ${elderlyMode ? "text-[16px]" : "text-xs"
+                    }`}
+                >
+                  {validationError}
+                </p>
               )}
 
               <button
                 type="submit"
                 disabled={isAddingMedicine}
-                className="w-full py-3 bg-primary text-on-primary font-bold rounded-xl text-xs hover:opacity-90 active:scale-95 transition-all shadow-md mt-2 flex items-center justify-center gap-2"
+                className={`w-full py-3 bg-primary text-on-primary font-bold rounded-xl hover:opacity-90 active:scale-95 transition-all shadow-md mt-2 flex items-center justify-center gap-2 ${elderlyMode ? "text-[16px]" : "text-xs"
+                  }`}
               >
                 {isAddingMedicine ? (
                   <>
@@ -1825,7 +2694,7 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                     Saving...
                   </>
                 ) : (
-                  'Add Medicine for ' + (member.nickname || member.name)
+                  "Add Medicine for " + (member.nickname || member.name)
                 )}
               </button>
             </form>
@@ -1846,12 +2715,21 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b border-outline-variant/20 bg-white/80 backdrop-blur-sm">
               <div className="flex items-center gap-3 min-w-0">
-                <span className="material-symbols-outlined text-primary">description</span>
+                <span className="material-symbols-outlined text-primary">
+                  description
+                </span>
                 <div className="min-w-0">
-                  <h3 className="font-headline-md text-sm text-secondary font-bold truncate">
-                    {selectedReport.report_title || selectedReport.report_category}
+                  <h3
+                    className={`text-secondary font-bold truncate ${elderlyMode ? "text-[18px]" : "text-sm"
+                      }`}
+                  >
+                    {selectedReport.report_title ||
+                      selectedReport.report_category}
                   </h3>
-                  <p className="text-[10px] text-outline">
+                  <p
+                    className={`text-outline ${elderlyMode ? "text-[14px]" : "text-[10px]"
+                      }`}
+                  >
                     {selectedReport.date || ""} • AI summarized
                   </p>
                 </div>
@@ -1861,7 +2739,12 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                   onClick={() => setSelectedReport(null)}
                   className="p-2 rounded-full hover:bg-surface-container transition-colors"
                 >
-                  <span className="material-symbols-outlined text-sm">close</span>
+                  <span
+                    className={`material-symbols-outlined ${elderlyMode ? "text-[18px]" : "text-sm"
+                      }`}
+                  >
+                    close
+                  </span>
                 </button>
               </div>
             </div>
@@ -1869,16 +2752,30 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
             {/* Preview Content */}
             <div className="flex-1 overflow-auto p-4 bg-surface-container-low/30">
               {(() => {
-                const previewSrc = signedUrl || selectedReport?.fileUrl || selectedReport?.document?.previewUrl || null;
+                const previewSrc =
+                  signedUrl ||
+                  selectedReport?.fileUrl ||
+                  selectedReport?.document?.previewUrl ||
+                  null;
                 if (!previewSrc) {
                   return (
                     <div className="flex flex-col items-center justify-center h-[70vh] text-center">
-                      <span className="material-symbols-outlined text-6xl text-outline-variant">image_not_supported</span>
-                      <p className="text-sm text-on-surface-variant mt-2">No preview available for this report.</p>
+                      <span
+                        className={`material-symbols-outlined ${elderlyMode ? "text-[64px]" : "text-6xl"
+                          } text-outline-variant`}
+                      >
+                        image_not_supported
+                      </span>
+                      <p
+                        className={`text-on-surface-variant mt-2 ${elderlyMode ? "text-[18px]" : "text-sm"
+                          }`}
+                      >
+                        No preview available for this report.
+                      </p>
                     </div>
                   );
                 }
-                if (previewSrc.toLowerCase().endsWith('.pdf')) {
+                if (previewSrc.toLowerCase().endsWith(".pdf")) {
                   return (
                     <iframe
                       src={previewSrc}
@@ -1905,12 +2802,16 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                           setPreviewLoading(false);
                           setPreviewError(true);
                         }}
-                        style={{ display: previewLoading ? 'none' : 'block' }}
+                        style={{ display: previewLoading ? "none" : "block" }}
                       />
                     ) : (
                       <div className="flex flex-col items-center justify-center h-[70vh] text-center">
-                        <span className="material-symbols-outlined text-6xl text-outline-variant">image_not_supported</span>
-                        <p className="text-sm text-on-surface-variant mt-2">Failed to load image preview.</p>
+                        <span className="material-symbols-outlined text-6xl text-outline-variant">
+                          image_not_supported
+                        </span>
+                        <p className="text-sm text-on-surface-variant mt-2">
+                          Failed to load image preview.
+                        </p>
                         <a
                           href={previewSrc}
                           target="_blank"
@@ -1943,21 +2844,29 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
             <div className="flex items-center justify-between p-4 border-b border-outline-variant/20 bg-white/80 backdrop-blur-sm">
               <div className="flex items-center gap-3 min-w-0">
                 <span className="material-symbols-outlined text-primary">
-                  {selectedDocument.mimeType === "application/pdf" ? "picture_as_pdf" : "image"}
+                  {selectedDocument.mimeType === "application/pdf"
+                    ? "picture_as_pdf"
+                    : "image"}
                 </span>
                 <div className="min-w-0">
-                  <h3 className="font-headline-md text-sm text-secondary font-bold truncate">
+                  <h3 className="text-sm text-secondary font-bold truncate">
                     {selectedDocument.fileName}
                   </h3>
                   <p className="text-[10px] text-outline">
-                    {TEST_CATEGORY.find((c) => c.key === selectedDocument.reportCategory)?.label
-                      || selectedDocument.reportCategory
-                      || "Document"}
+                    {TEST_CATEGORY.find(
+                      (c) => c.key === selectedDocument.reportCategory,
+                    )?.label ||
+                      selectedDocument.reportCategory ||
+                      "Document"}
                     {" • "}
                     {selectedDocument.reportDate
-                      ? new Date(selectedDocument.reportDate).toLocaleDateString()
+                      ? new Date(
+                        selectedDocument.reportDate,
+                      ).toLocaleDateString()
                       : selectedDocument.createdAt
-                        ? new Date(selectedDocument.createdAt).toLocaleDateString()
+                        ? new Date(
+                          selectedDocument.createdAt,
+                        ).toLocaleDateString()
                         : "—"}
                   </p>
                 </div>
@@ -1975,7 +2884,9 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
               {documentPreviewLoading ? (
                 <div className="flex flex-col items-center justify-center h-[70vh]">
                   <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-primary" />
-                  <p className="text-xs text-outline mt-3">Loading document...</p>
+                  <p className="text-xs text-outline mt-3">
+                    Loading document...
+                  </p>
                 </div>
               ) : documentPreviewError || !selectedDocumentUrl ? (
                 <div className="flex flex-col items-center justify-center h-[70vh] text-center">
@@ -1995,10 +2906,10 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                 />
               ) : (
                 <div className="relative flex items-center justify-center min-h-[50vh]">
-                  <img
+                  <ZoomableDocumentImage
+                    key={selectedDocument.id}
                     src={selectedDocumentUrl}
                     alt={selectedDocument.fileName}
-                    className="max-w-full max-h-[70vh] object-contain mx-auto rounded-lg"
                     onError={() => setDocumentPreviewError(true)}
                   />
                 </div>
@@ -2025,8 +2936,10 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
         <div className="fixed inset-0 bg-inverse-surface/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="w-full max-w-[420px] bg-white rounded-3xl p-6 shadow-2xl border border-outline-variant/30 flex flex-col max-h-[85vh] overflow-y-auto animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="font-headline-md text-sm text-secondary font-bold flex items-center gap-2">
-                <span className="material-symbols-outlined text-primary text-xl">medication</span>
+              <h3 className="text-sm text-secondary font-bold flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-xl">
+                  medication
+                </span>
                 <span>Add Reminder</span>
               </h3>
               <button
@@ -2056,13 +2969,20 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                   <div className="border-2 border-dashed border-outline-variant/30 rounded-xl p-4 bg-surface-container-low/30">
                     <OCRUploader
                       onComplete={async (data) => {
+                        await trackEvent('prescription_upload', {
+                          status: 'success',
+                        });
                         setOcrError(null);
                         setOcrWarning?.(null); // if you have this state, otherwise remove
                         setSelectedMedicineIndex(null);
                         setOcrMedicineData(data);
 
-                        const hasMedicines = data.medicines && data.medicines.length > 0;
-                        const hasReportResults = data.report && data.report.results && data.report.results.length > 0;
+                        const hasMedicines =
+                          data.medicines && data.medicines.length > 0;
+                        const hasReportResults =
+                          data.report &&
+                          data.report.results &&
+                          data.report.results.length > 0;
                         const hasValidData = hasMedicines;
 
                         if (hasValidData) {
@@ -2077,13 +2997,21 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                           }
                         } else {
                           setOcrMedicineData(null);
-                          setOcrError('No medicines found. Please try again or enter manually.');
+                          setOcrError(
+                            "No medicines found. Please try again or enter manually.",
+                          );
                           setExtractedPreviewVisible(false);
                         }
                       }}
-                      onError={(err) => {
+                      onError={async (err) => {
+                          await trackEvent('prescription_upload', {
+                          status: 'failure',
+                          error_code: 'upload_failed',
+                        });
                         setOcrMedicineData(null);
-                        setOcrError('Please upload a valid image or PDF to generate automatically.');
+                        setOcrError(
+                          "Please upload a valid image or PDF to generate automatically.",
+                        );
                         console.error(err);
                       }}
                       onClear={() => {
@@ -2092,13 +3020,19 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                         setOcrWarning?.(null);
                       }}
                     />
-                    {ocrError && <p className="text-red-500 text-xs font-medium text-center mt-2">{ocrError}</p>}
+                    {ocrError && (
+                      <p className="text-red-500 text-xs font-medium text-center mt-2">
+                        {ocrError}
+                      </p>
+                    )}
                   </div>
 
                   {/* Divider */}
                   <div className="flex items-center gap-3">
                     <div className="flex-grow h-px bg-outline-variant/30" />
-                    <span className="text-[10px] text-outline font-bold uppercase tracking-wider">Or</span>
+                    <span className="text-[10px] text-outline font-bold uppercase tracking-wider">
+                      Or
+                    </span>
                     <div className="flex-grow h-px bg-outline-variant/30" />
                   </div>
 
@@ -2127,7 +3061,9 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                     }}
                     className="w-full py-3 bg-surface-container hover:bg-surface-container-high border border-outline-variant/30 rounded-xl font-label-md text-[15px] text-secondary font-bold flex items-center justify-center gap-2 transition-all active:scale-98"
                   >
-                    <span className="material-symbols-outlined text-sm">edit_note</span>
+                    <span className="material-symbols-outlined text-sm">
+                      edit_note
+                    </span>
                     <span>Add Manually by Typing Name</span>
                   </button>
                 </>
@@ -2136,11 +3072,18 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                 <>
                   {/* Warning banner */}
                   <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2 text-xs text-amber-700">
-                    <span className="material-symbols-outlined text-sm mt-0.5">warning</span>
-                    <span>Extracted information may contain errors. Please verify it against the original prescription or report before use.</span>
+                    <span className="material-symbols-outlined text-sm mt-0.5">
+                      warning
+                    </span>
+                    <span>
+                      Extracted information may contain errors. Please verify it
+                      against the original prescription or report before use.
+                    </span>
                   </div>
                   <h4 className="font-headline-md text-xs text-secondary font-bold flex items-center gap-2">
-                    <span className="material-symbols-outlined text-primary text-sm">preview</span>
+                    <span className="material-symbols-outlined text-primary text-sm">
+                      preview
+                    </span>
                     Extracted Details
                   </h4>
 
@@ -2158,14 +3101,19 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                                 className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${isSelected
                                   ? "bg-primary-container/10 border-primary"
                                   : "bg-surface-container-low/30 border-outline-variant/10 hover:border-primary/30"
-                                  } ${alreadyAdded ? "opacity-50 pointer-events-none" : ""}`}
+                                  } ${alreadyAdded
+                                    ? "opacity-50 pointer-events-none"
+                                    : ""
+                                  }`}
                               >
                                 <input
                                   type="checkbox"
                                   checked={isSelected}
                                   onChange={() => {
                                     if (alreadyAdded) return;
-                                    setSelectedMedicineIndex(prev => prev === idx ? null : idx);
+                                    setSelectedMedicineIndex((prev) =>
+                                      prev === idx ? null : idx,
+                                    );
                                   }}
                                   disabled={alreadyAdded}
                                   className="mt-0.5 h-4 w-4 rounded border-outline-variant/50 text-primary accent-primary"
@@ -2180,10 +3128,14 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                                     </span>
                                   </div>
                                   {med.instructions && (
-                                    <p className="text-[10px] text-on-surface-variant mt-0.5">{med.instructions}</p>
+                                    <p className="text-[10px] text-on-surface-variant mt-0.5">
+                                      {med.instructions}
+                                    </p>
                                   )}
                                   {med.duration && (
-                                    <p className="text-[10px] text-on-surface-variant mt-0.5">Duration: {med.duration}</p>
+                                    <p className="text-[10px] text-on-surface-variant mt-0.5">
+                                      Duration: {med.duration}
+                                    </p>
                                   )}
                                   {alreadyAdded && (
                                     <span className="text-[8px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full inline-block mt-1">
@@ -2202,12 +3154,15 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                         <button
                           onClick={() => {
                             if (selectedMedicineIndex === null) return;
-                            const med = extractedMedicines[selectedMedicineIndex];
+                            const med =
+                              extractedMedicines[selectedMedicineIndex];
                             // Pre‑fill the manual form
                             setNewMedName(med.medicine_name || med.name);
                             setNewDosage(med.dosage || "");
                             setNewInstructions(med.instructions || "");
-                            setEditingDocumentId(ocrMedicineData?.document_id || null);
+                            setEditingDocumentId(
+                              ocrMedicineData?.document_id || null,
+                            );
                             // Reset other fields as needed
                             setNewSelectedTimings(["morning"]);
                             setNewIntakeTimes([]);
@@ -2231,61 +3186,78 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                             : "bg-outline-variant/20 text-on-surface-variant/50 cursor-not-allowed"
                             }`}
                         >
-                          <span className="material-symbols-outlined text-sm align-middle">add</span>
+                          <span className="material-symbols-outlined text-sm align-middle">
+                            add
+                          </span>
                           Add Reminder
                         </button>
                       </div>
 
                       <p className="text-[10px] text-on-surface-variant text-center mt-1">
-                        <span className="material-symbols-outlined text-xs align-middle">info</span>
-                        Select a medicine, then click “Add Reminder” to edit and save.
+                        <span className="material-symbols-outlined text-xs align-middle">
+                          info
+                        </span>
+                        Select a medicine, then click “Add Reminder” to edit and
+                        save.
                       </p>
                     </>
-                  ) : extractedReport && extractedReport.results && extractedReport.results.length > 0 ? (
+                  ) : extractedReport &&
+                    extractedReport.results &&
+                    extractedReport.results.length > 0 ? (
                     /* Lab report preview (no checkboxes) */
                     <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
                       <div className="bg-primary-container/5 p-2 rounded-lg border border-outline-variant/10">
                         <p className="text-[10px] font-bold text-secondary">
-                          {extractedReport.title || extractedReport.category || "Lab Report"}
+                          {extractedReport.title ||
+                            extractedReport.category ||
+                            "Lab Report"}
                         </p>
                         {extractedReport.diagnosis && (
                           <p className="text-[10px] text-on-surface-variant mt-0.5">
                             Diagnosis: {extractedReport.diagnosis}
                           </p>
                         )}
-                        {(extractedReport.doctor_name || extractedReport.hospital_name) && (
-                          <p className="text-[10px] text-on-surface-variant">
-                            {extractedReport.doctor_name && `${extractedReport.doctor_name} • `}
-                            {extractedReport.hospital_name}
-                          </p>
-                        )}
+                        {(extractedReport.doctor_name ||
+                          extractedReport.hospital_name) && (
+                            <p className="text-[10px] text-on-surface-variant">
+                              {extractedReport.doctor_name &&
+                                `${extractedReport.doctor_name} • `}
+                              {extractedReport.hospital_name}
+                            </p>
+                          )}
                       </div>
 
                       <div className="grid grid-cols-2 gap-2">
-                        {extractedReport.results.map((result: any, idx: number) => (
-                          <div
-                            key={idx}
-                            className="bg-surface-container-low/30 p-2 rounded-lg border border-outline-variant/10 text-center"
-                          >
-                            <span className="text-[8px] uppercase font-bold text-outline tracking-wider block leading-tight">
-                              {result.test_name}
-                            </span>
-                            <span className="text-sm font-bold text-secondary block mt-0.5">
-                              {result.value_text || "--"}
-                            </span>
-                            {result.unit && (
-                              <span className="text-[8px] text-on-surface-variant block">{result.unit}</span>
-                            )}
-                            {result.abnormal_flag && (
-                              <span
-                                className={`text-[8px] font-bold mt-0.5 block ${result.abnormal_flag === "NORMAL" ? "text-tertiary" : "text-orange-600"
-                                  }`}
-                              >
-                                {result.abnormal_flag}
+                        {extractedReport.results.map(
+                          (result: any, idx: number) => (
+                            <div
+                              key={idx}
+                              className="bg-surface-container-low/30 p-2 rounded-lg border border-outline-variant/10 text-center"
+                            >
+                              <span className="text-[8px] uppercase font-bold text-outline tracking-wider block leading-tight">
+                                {result.test_name}
                               </span>
-                            )}
-                          </div>
-                        ))}
+                              <span className="text-sm font-bold text-secondary block mt-0.5">
+                                {result.value_text || "--"}
+                              </span>
+                              {result.unit && (
+                                <span className="text-[8px] text-on-surface-variant block">
+                                  {result.unit}
+                                </span>
+                              )}
+                              {result.abnormal_flag && (
+                                <span
+                                  className={`text-[8px] font-bold mt-0.5 block ${result.abnormal_flag === "NORMAL"
+                                    ? "text-tertiary"
+                                    : "text-orange-600"
+                                    }`}
+                                >
+                                  {result.abnormal_flag}
+                                </span>
+                              )}
+                            </div>
+                          ),
+                        )}
                       </div>
 
                       <button
@@ -2297,12 +3269,16 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                         }}
                         className="w-full py-2.5 bg-surface-container hover:bg-surface-container-high border border-outline-variant/30 rounded-xl font-label-md text-xs text-secondary font-bold transition-all"
                       >
-                        <span className="material-symbols-outlined text-sm align-middle">arrow_back</span>
+                        <span className="material-symbols-outlined text-sm align-middle">
+                          arrow_back
+                        </span>
                         Back
                       </button>
                     </div>
                   ) : (
-                    <p className="text-xs text-on-surface-variant">No extractable data found.</p>
+                    <p className="text-xs text-on-surface-variant">
+                      No extractable data found.
+                    </p>
                   )}
                 </>
               )}
@@ -2316,8 +3292,10 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
         <div className="fixed inset-0 bg-inverse-surface/40 backdrop-blur-md z-[60] flex items-center justify-center p-4">
           <div className="w-full max-w-[420px] bg-white rounded-3xl p-6 shadow-2xl border border-outline-variant/30 flex flex-col max-h-[85vh] overflow-y-auto animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="font-headline-md text-sm text-secondary font-bold flex items-center gap-2">
-                <span className="material-symbols-outlined text-primary text-xl">edit_square</span>
+              <h3 className="text-sm text-secondary font-bold flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-xl">
+                  edit_square
+                </span>
                 <span>Edit Family Profile</span>
               </h3>
               <button
@@ -2333,7 +3311,9 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
               {/* Name & Nickname */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Full Name</label>
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                    Full Name
+                  </label>
                   <input
                     type="text"
                     required
@@ -2344,7 +3324,9 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Nickname</label>
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                    Nickname
+                  </label>
                   <input
                     type="text"
                     placeholder="e.g. Dad, Mom"
@@ -2358,19 +3340,43 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
               {/* Relationship & DOB */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Relationship</label>
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                    Relationship
+                  </label>
                   <select
                     value={editRel}
                     onChange={(e) => setEditRel(e.target.value)}
                     className="w-full px-2 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs focus:outline-none focus:border-primary"
                   >
-                    {["Mother", "Father", "Son", "Daughter", "Brother", "Sister", "Grandmother", "Grandfather", "Husband", "Wife", "Partner", "Friend", "Relative", "Neighbor", "Caregiver", "Patient", "Other"].map((r) => (
-                      <option key={r} value={r}>{r}</option>
+                    {[
+                      "Mother",
+                      "Father",
+                      "Son",
+                      "Daughter",
+                      "Brother",
+                      "Sister",
+                      "Grandmother",
+                      "Grandfather",
+                      "Husband",
+                      "Wife",
+                      "Partner",
+                      "Friend",
+                      "Relative",
+                      "Neighbor",
+                      "Caregiver",
+                      "Patient",
+                      "Other",
+                    ].map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
                     ))}
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Date of Birth</label>
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                    Date of Birth
+                  </label>
                   <input
                     type="date"
                     value={editDob}
@@ -2383,7 +3389,9 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
               {/* Gender & Blood Group */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Gender</label>
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                    Gender
+                  </label>
                   <select
                     value={editGender}
                     onChange={(e) => setEditGender(e.target.value)}
@@ -2395,15 +3403,21 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Blood Group</label>
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                    Blood Group
+                  </label>
                   <select
                     value={editBloodGroup}
                     onChange={(e) => setEditBloodGroup(e.target.value)}
                     className="w-full px-2 py-2 bg-surface-container/30 border border-outline-variant/40 rounded-xl font-body-md text-xs focus:outline-none focus:border-primary"
                   >
-                    {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map((bg) => (
-                      <option key={bg} value={bg}>{bg}</option>
-                    ))}
+                    {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map(
+                      (bg) => (
+                        <option key={bg} value={bg}>
+                          {bg}
+                        </option>
+                      ),
+                    )}
                   </select>
                 </div>
               </div>
@@ -2411,7 +3425,9 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
               {/* Phone & Conditions */}
               <div className="space-y-3">
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Phone Number</label>
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                    Phone Number
+                  </label>
                   <input
                     type="tel"
                     placeholder="e.g. +91 98765 43210"
@@ -2421,7 +3437,9 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Medical Notes / Conditions</label>
+                  <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                    Medical Notes / Conditions
+                  </label>
                   <textarea
                     placeholder="e.g. Penicillin allergy, diabetes"
                     value={editConditions}
@@ -2433,9 +3451,19 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
 
               {/* Identification Color Picker */}
               <div className="space-y-1.5">
-                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Personalized Accent Color</label>
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                  Personalized Accent Color
+                </label>
                 <div className="flex gap-2">
-                  {["blue", "green", "purple", "orange", "pink", "teal", "grey"].map((c) => {
+                  {[
+                    "blue",
+                    "green",
+                    "purple",
+                    "orange",
+                    "pink",
+                    "teal",
+                    "grey",
+                  ].map((c) => {
                     const isSelected = editColor === c;
                     const bgColors: Record<string, string> = {
                       blue: "bg-blue-500",
@@ -2444,17 +3472,20 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                       orange: "bg-orange-500",
                       pink: "bg-pink-500",
                       teal: "bg-teal-500",
-                      grey: "bg-slate-500"
+                      grey: "bg-slate-500",
                     };
                     return (
                       <button
                         key={c}
                         type="button"
                         onClick={() => setEditColor(c)}
-                        className={`w-6 h-6 rounded-full ${bgColors[c] || "bg-blue-500"} transition-all flex items-center justify-center`}
+                        className={`w-6 h-6 rounded-full ${bgColors[c] || "bg-blue-500"
+                          } transition-all flex items-center justify-center`}
                       >
                         {isSelected && (
-                          <span className="material-symbols-outlined text-white text-xs font-bold">done</span>
+                          <span className="material-symbols-outlined text-white text-xs font-bold">
+                            done
+                          </span>
                         )}
                       </button>
                     );
@@ -2464,7 +3495,9 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
 
               {/* Avatar Selector Grid */}
               <div className="space-y-2">
-                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">Select Avatar</label>
+                <label className="block text-[10px] font-bold text-outline uppercase tracking-wider">
+                  Select Avatar
+                </label>
                 <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
                   {AVATAR_CATEGORIES.map((cat) => (
                     <button
@@ -2482,17 +3515,25 @@ export const MemberDashboardView: React.FC<MemberDashboardViewProps> = ({ member
                 </div>
 
                 <div className="grid grid-cols-5 gap-2 max-h-32 overflow-y-auto p-1 bg-white border border-outline-variant/10 rounded-xl">
-                  {AVATAR_ITEMS.filter((av) => av.category === activeEditAvatarCategory).map((av) => {
+                  {AVATAR_ITEMS.filter(
+                    (av) => av.category === activeEditAvatarCategory,
+                  ).map((av) => {
                     const isSelected = editAvatarUrl === av.url;
                     return (
                       <button
                         key={av.id}
                         type="button"
                         onClick={() => setEditAvatarUrl(av.url)}
-                        className={`w-11 h-11 rounded-full p-0.5 border-2 transition-all flex items-center justify-center overflow-hidden flex-shrink-0 ${isSelected ? "border-primary scale-110 shadow-sm" : "border-transparent hover:scale-105"
+                        className={`w-11 h-11 rounded-full p-0.5 border-2 transition-all flex items-center justify-center overflow-hidden flex-shrink-0 ${isSelected
+                          ? "border-primary scale-110 shadow-sm"
+                          : "border-transparent hover:scale-105"
                           }`}
                       >
-                        <img src={av.url} alt={av.label} className="w-full h-full object-cover" />
+                        <img
+                          src={av.url}
+                          alt={av.label}
+                          className="w-full h-full object-cover"
+                        />
                       </button>
                     );
                   })}
